@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -131,7 +130,7 @@ private fun StreamHubApp(store: SettingsStore, player: PlayerController) {
                 remaining = 0L
                 sleepUntil = 0L
                 player.stop()
-                finishAndRemoveTask()
+                (context as? ComponentActivity)?.finishAndRemoveTask()
                 break
             }
             remaining = left
@@ -320,20 +319,22 @@ private fun TvScreen(
 
     LaunchedEffect(Unit) {
         sourceIndex = store.sourceIndex().coerceIn(0, TV_SOURCES.lastIndex)
-        repo.loadCachedIfFresh()?.let {
-            channels = it
+        val cached = repo.loadCachedIfFresh()
+        if (cached != null) {
+            channels = cached
+            loading = false
+        } else {
+            val result = repo.refreshInOrder(sourceIndex)
+            result.onSuccess { (index, list) ->
+                sourceIndex = index
+                channels = list
+                store.setSourceIndex(index)
+                loadError = null
+            }.onFailure {
+                loadError = it.message ?: "Не удалось загрузить плейлист"
+            }
             loading = false
         }
-        val result = repo.refreshInOrder(sourceIndex)
-        result.onSuccess { (index, list) ->
-            sourceIndex = index
-            channels = list
-            store.setSourceIndex(index)
-            loadError = null
-        }.onFailure {
-            if (channels.isEmpty()) loadError = it.message ?: "Не удалось загрузить плейлист"
-        }
-        loading = false
     }
 
     suspend fun loadNextPlaylist() {
