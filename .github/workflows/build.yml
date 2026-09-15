@@ -27,9 +27,17 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Locate APK
+        run: |
+          set -e
+          APK=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
+          test -n "$APK"
+          echo "Found APK: $APK"
+          cp "$APK" streamhub-release.apk
+          ls -lh streamhub-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: StreamHub-release
-          path: app/build/outputs/apk/release/app-release.apk
+          path: streamhub-release.apk
           if-no-files-found: error
