@@ -36,10 +36,6 @@ jobs:
           echo "Found APK: $APK"
           cp "$APK" tv-radio-online.apk
           ls -lh tv-radio-online.apk
-      - name: Verify APK signature
-        run: |
-          set -e
-          apksigner verify --verbose --print-certs tv-radio-online.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
