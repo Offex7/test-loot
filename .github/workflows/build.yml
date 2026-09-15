@@ -33,11 +33,34 @@ jobs:
           APK=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
           test -n "$APK"
           echo "Found APK: $APK"
-          cp "$APK" streamhub-release.apk
-          ls -lh streamhub-release.apk
+          cp "$APK" unsigned-release.apk
+          ls -lh unsigned-release.apk
+      - name: Generate test signing key
+        run: |
+          keytool -genkeypair -v \
+            -keystore streamhub-test.keystore \
+            -alias streamhub \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=TV Radio Online, OU=Android, O=Offex7, L=, ST=, C=US"
+      - name: Sign APK
+        run: |
+          set -e
+          apksigner sign \
+            --ks streamhub-test.keystore \
+            --ks-key-alias streamhub \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out tv-radio-online.apk \
+            unsigned-release.apk
+          apksigner verify --verbose --print-certs tv-radio-online.apk
+          ls -lh tv-radio-online.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamHub-release
-          path: streamhub-release.apk
+          name: TV-Radio-Online-APK
+          path: tv-radio-online.apk
           if-no-files-found: error
