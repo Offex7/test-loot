@@ -5,12 +5,31 @@ plugins {
 
 android {
     namespace = "com.offex7.streamhub"
-    compileSdk = 36
-    defaultConfig { applicationId = "com.offex7.streamhub"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "1.0" }
-    buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") }; debug { isMinifyEnabled = false } }
+    compileSdk = 37
+    defaultConfig {
+        applicationId = "com.offex7.streamhub"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug { isMinifyEnabled = false }
+    }
     packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/NOTICE") }
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    buildFeatures { compose = true; buildConfig = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 kotlin {
