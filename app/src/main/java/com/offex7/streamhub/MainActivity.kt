@@ -2,6 +2,8 @@ package com.offex7.streamhub
 
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -74,8 +76,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -115,6 +117,7 @@ private val Panel = Color(0xFF151515)
 private val PanelAlt = Color(0xFF202020)
 private val Skeleton = Color(0xFF2A2A2A)
 private const val RESTORE_WINDOW_MS = 10 * 60 * 1000L
+private const val DONATION_WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 
 class MainActivity : ComponentActivity() {
     private lateinit var settingsStore: SettingsStore
@@ -192,7 +195,6 @@ private fun StreamHubTheme(content: @Composable () -> Unit) {
 private fun StreamHubApp(store: SettingsStore, tvPlayer: PlayerController, radioPlayer: RadioMediaController, activity: MainActivity) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
     var section by remember { mutableStateOf<Section?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     var restoreItem by remember { mutableStateOf<StreamItem?>(null) }
@@ -672,11 +674,17 @@ private fun TvPlayerScreen(player: PlayerController, channel: StreamItem, playba
 
 @Composable
 private fun SettingsScreen(store: SettingsStore, sleepText: String?, pipEnabled: Boolean, onPipChange: (Boolean) -> Unit, onBack: () -> Unit, onSleep: (Long) -> Unit, onReset: () -> Unit) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var sourceIndex by remember { mutableIntStateOf(0) }
     var custom by remember { mutableStateOf("") }
+    var walletCopied by remember { mutableStateOf(false) }
     val presets = listOf("15 мин" to 15L, "30 мин" to 30L, "1 ч" to 60L, "2 ч" to 120L, "4 ч" to 240L, "8 ч" to 480L)
     LaunchedEffect(Unit) { sourceIndex = store.sourceIndex().coerceIn(0, TV_SOURCES.lastIndex) }
+    LaunchedEffect(walletCopied) {
+        if (walletCopied) { delay(2200L); walletCopied = false }
+    }
     Surface(Modifier.fillMaxSize(), color = Background) {
         Column {
             AppHeader("Настройки", sleepText, onBack, null)
@@ -686,7 +694,10 @@ private fun SettingsScreen(store: SettingsStore, sleepText: String?, pipEnabled:
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Tv, null, tint = Red); Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) { Text("PiP при сворачивании", fontWeight = FontWeight.SemiBold); Text("Мини-окно ТВ при уходе из приложения", fontSize = 11.sp, color = Color.LightGray) }
+                            Column(Modifier.weight(1f)) {
+                                Text("PiP при сворачивании", fontWeight = FontWeight.SemiBold)
+                                Text("Мини-окно ТВ при уходе из приложения", fontSize = 11.sp, color = Color.LightGray)
+                            }
                             androidx.compose.material3.Switch(checked = pipEnabled, onCheckedChange = onPipChange)
                         }
                     }
@@ -701,6 +712,54 @@ private fun SettingsScreen(store: SettingsStore, sleepText: String?, pipEnabled:
                 item { Text("Источник ТВ-плейлиста", style = MaterialTheme.typography.titleMedium) }
                 items(TV_SOURCES.indices.toList()) { index ->
                     TextButton(onClick = { sourceIndex = index; scope.launch { store.setSourceIndex(index) } }, Modifier.fillMaxWidth()) { Text((if (sourceIndex == index) "●  " else "○  ") + TV_SOURCES[index].name, color = if (sourceIndex == index) Red else Color.White) }
+                }
+                item {
+                    Text("Пожертвования", style = MaterialTheme.typography.titleMedium)
+                }
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Panel),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Favorite, null, tint = Red)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Поддержать проект", fontWeight = FontWeight.SemiBold)
+                                    Text("USDT TRC20", fontSize = 11.sp, color = Color.LightGray)
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(PanelAlt, RoundedCornerShape(10.dp))
+                                    .combinedClickable(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Donation wallet", DONATION_WALLET))
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            walletCopied = true
+                                        },
+                                        onLongClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Donation wallet", DONATION_WALLET))
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            walletCopied = true
+                                        }
+                                    )
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Адрес кошелька", color = Color.LightGray, fontSize = 11.sp)
+                                    Text(DONATION_WALLET, color = Color.White, fontSize = 13.sp, maxLines = 2)
+                                }
+                                Text(if (walletCopied) "Скопировано" else "Копировать", color = Red, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
                 }
                 item { Button(onClick = onReset, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text("Сбросить выбор раздела") } }
             }
