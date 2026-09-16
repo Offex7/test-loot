@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.offex7.streamhub"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.offex7.streamhub"
         minSdk = 29
@@ -55,5 +55,5 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.0")
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("io.coil-kt.coil3:coil-compose:3.6.2")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.2")
+    implementation("io.coil-kt.coil-network-okhttp:3.6.2")
 }
