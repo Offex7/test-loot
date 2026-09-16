@@ -1,18 +1,18 @@
 name: Android APK
 
 concurrency:
-  group: android-apk-v3
+  group: android-apk-v4
   cancel-in-progress: true
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, v3.0 ]
+    branches: [ main, v3.0, v4.0 ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -39,17 +39,17 @@ jobs:
           APK=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
           test -n "$APK"
           echo "Found APK: $APK"
-          cp "$APK" tv-radio-online-v3.apk
-          ls -lh tv-radio-online-v3.apk
+          cp "$APK" tv-radio-online-v4.apk
+          ls -lh tv-radio-online-v4.apk
       - name: Verify APK signature
         run: |
           set -e
-          APK=tv-radio-online-v3.apk
+          APK=tv-radio-online-v4.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-Radio-Online-v3-APK
-          path: tv-radio-online-v3.apk
+          name: TV-Radio-Online-v4-APK
+          path: tv-radio-online-v4.apk
           if-no-files-found: error
