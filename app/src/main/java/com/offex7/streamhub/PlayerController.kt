@@ -1,10 +1,12 @@
 package com.offex7.streamhub
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.animation.ValueAnimator
+import android.os.Handler
+import android.os.Looper
 import android.view.animation.LinearInterpolator
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -21,17 +23,14 @@ class PlayerController(private val context: Context) {
     private val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(15_000, 50_000, 1_500, 3_000)
         .build()
-
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setLoadControl(loadControl)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build(),
-            true
-        )
-        .build()
+                .build(), true
+        ).build()
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -39,16 +38,22 @@ class PlayerController(private val context: Context) {
     val error: StateFlow<String?> = _error.asStateFlow()
     private val _waitingForNetwork = MutableStateFlow(false)
     val waitingForNetwork: StateFlow<Boolean> = _waitingForNetwork.asStateFlow()
+    private val _networkWarning = MutableStateFlow<String?>(null)
+    val networkWarning: StateFlow<String?> = _networkWarning.asStateFlow()
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
     private var reconnectAttempts = 0
     private var lastUrl: String? = null
     private var wasPlayingBeforeNetworkLoss = false
-    private var networkLostAt = 0L
     private var fadeAnimator: ValueAnimator? = null
-    private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+
+    private val networkWarningTask = Runnable { _networkWarning.value = "Проверьте подключение к интернету" }
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (hasValidatedInternet()) {
+                handler.removeCallbacks(networkWarningTask)
+                _networkWarning.value = null
                 _waitingForNetwork.value = false
                 if (wasPlayingBeforeNetworkLoss && lastUrl != null) play(lastUrl!!)
                 wasPlayingBeforeNetworkLoss = false
@@ -57,9 +62,10 @@ class PlayerController(private val context: Context) {
         override fun onLost(network: Network) {
             if (!hasValidatedInternet()) {
                 wasPlayingBeforeNetworkLoss = player.isPlaying || player.playWhenReady
-                networkLostAt = System.currentTimeMillis()
                 if (wasPlayingBeforeNetworkLoss) player.pause()
                 _waitingForNetwork.value = true
+                handler.removeCallbacks(networkWarningTask)
+                handler.postDelayed(networkWarningTask, 90_000L)
             }
         }
     }
@@ -81,9 +87,7 @@ class PlayerController(private val context: Context) {
                 }
             }
         })
-        runCatching {
-            connectivityManager.registerDefaultNetworkCallback(callback)
-        }
+        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
     }
 
     private fun hasValidatedInternet(): Boolean = connectivityManager.allNetworks.any { network ->
@@ -108,31 +112,24 @@ class PlayerController(private val context: Context) {
         player.prepare()
         player.playWhenReady = true
     }
-
     fun toggle() { if (player.isPlaying) player.pause() else player.play() }
-    fun stop() { fadeAnimator?.cancel(); player.stop(); lastUrl = null; _error.value = null; _isPlaying.value = false }
+    fun stop() { fadeAnimator?.cancel(); handler.removeCallbacks(networkWarningTask); player.stop(); lastUrl = null; _error.value = null; _waitingForNetwork.value = false; _networkWarning.value = null; _isPlaying.value = false }
     fun pause() { player.pause() }
 
-    fun fadeOut(durationMs: Long = 10_000L, onEnd: (() -> Unit)? = null) {
+    fun fadeOut(durationMs: Long = 10_000L) {
         fadeAnimator?.cancel()
         val start = player.volume.coerceIn(0f, 1f)
         fadeAnimator = ValueAnimator.ofFloat(start, 0f).apply {
             duration = durationMs
             interpolator = LinearInterpolator()
             addUpdateListener { player.volume = it.animatedValue as Float }
-            doOnEnd { onEnd?.invoke() }
             start()
         }
     }
 
-    private fun ValueAnimator.doOnEnd(block: () -> Unit) {
-        addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: android.animation.Animator) = block()
-        })
-    }
-
     fun release() {
         fadeAnimator?.cancel()
+        handler.removeCallbacks(networkWarningTask)
         runCatching { connectivityManager.unregisterNetworkCallback(callback) }
         player.release()
     }
