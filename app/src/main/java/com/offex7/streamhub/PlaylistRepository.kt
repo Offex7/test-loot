@@ -13,98 +13,79 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class PlaylistRepository(private val context: Context) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(25, TimeUnit.SECONDS)
-        .build()
-    private val cacheFile = File(context.filesDir, "tv_playlist_combined.m3u")
-    private val stampFile = File(context.filesDir, "tv_playlist_combined.timestamp")
+    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(25, TimeUnit.SECONDS).build()
+    private fun cacheFile(index: Int) = File(context.filesDir, "tv_playlist_$index.m3u")
+    private fun stampFile(index: Int) = File(context.filesDir, "tv_playlist_$index.timestamp")
+    private val fallbackByName = mutableMapOf<String, List<String>>()
+    @Volatile private var warming = false
 
-    suspend fun loadCachedIfFresh(): List<StreamItem>? = withContext(Dispatchers.IO) {
-        if (!cacheFile.exists() || !stampFile.exists()) return@withContext null
-        val stamp = stampFile.readText().toLongOrNull() ?: return@withContext null
-        val age = System.currentTimeMillis() - stamp
-        if (age !in 0..(24L * 60L * 60L * 1000L)) null else parse(cacheFile.readText())
+    suspend fun loadCached(index: Int): List<StreamItem>? = withContext(Dispatchers.IO) {
+        val cache = cacheFile(index); val stamp = stampFile(index)
+        if (!cache.exists() || !stamp.exists()) return@withContext null
+        val ts = stamp.readText().toLongOrNull() ?: return@withContext null
+        val age = System.currentTimeMillis() - ts
+        if (age !in 0..86_400_000L) null else parse(cache.readText())
     }
 
-    suspend fun refreshCombined(): Result<List<StreamItem>> = withContext(Dispatchers.IO) {
-        val downloaded = coroutineScope {
-            TV_PLAYLIST_URLS.map { url ->
-                async { url to runCatching { download(url) }.getOrNull() }
-            }.awaitAll().toMap()
+    suspend fun loadSource(index: Int): Result<List<StreamItem>> = withContext(Dispatchers.IO) {
+        val selected = index.coerceIn(0, TV_SOURCES.lastIndex)
+        val candidateIndexes = if (selected == 0) listOf(1, 2, 3, 4, 5, 6) else listOf(selected)
+        var lastError: Throwable? = null
+        for (sourceIndex in candidateIndexes) {
+            try {
+                val list = parse(download(TV_SOURCES[sourceIndex].url))
+                if (list.isNotEmpty()) {
+                    writeCache(sourceIndex, list)
+                    return@withContext Result.success(list)
+                }
+                lastError = IllegalStateException("Плейлист пуст")
+            } catch (t: Throwable) { lastError = t }
         }
-        val parsed = TV_PLAYLIST_URLS.map { url -> downloaded[url].orEmpty() }.map(::parse)
-        val base = parsed.firstOrNull().orEmpty()
-        if (base.isEmpty() && parsed.drop(1).all { it.isEmpty() }) {
-            return@withContext Result.failure(IllegalStateException("Не удалось загрузить объединённый плейлист"))
-        }
+        Result.failure(lastError ?: IllegalStateException("Не удалось загрузить ТВ-плейлист"))
+    }
 
-        val merged = LinkedHashMap<String, StreamItem>()
-        val urls = HashSet<String>()
-        val orderedLists = if (base.isNotEmpty()) parsed else parsed.drop(1)
-        orderedLists.forEach { list ->
-            list.forEach { item ->
-                val nameKey = normalizeChannelName(item.name)
-                if (nameKey.isBlank()) return@forEach
-                if (merged.containsKey(nameKey) || !urls.add(item.url)) return@forEach
-                merged[nameKey] = item
+    suspend fun warmFallbacks() {
+        if (warming) return
+        synchronized(this) { if (warming) return; warming = true }
+        try {
+            coroutineScope {
+                TV_PLAYLIST_URLS.drop(1).mapIndexed { offset, url ->
+                    async(Dispatchers.IO) {
+                        runCatching {
+                            val list = parse(download(url))
+                            writeCache(offset + 2, list)
+                            list.forEach { item ->
+                                val key = normalizeChannelName(item.name)
+                                if (key.isNotBlank()) synchronized(fallbackByName) {
+                                    val bucket = fallbackByName[key].orEmpty()
+                                    if (item.url !in bucket) fallbackByName[key] = bucket + item.url
+                                }
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
-        }
-        val result = merged.values.toList()
-        if (result.isEmpty()) return@withContext Result.failure(IllegalStateException("Плейлист пуст"))
-        cacheFile.writeText(toM3u(result))
-        stampFile.writeText(System.currentTimeMillis().toString())
-        Result.success(result)
+        } finally { warming = false }
     }
 
+    fun fallbackUrlsFor(name: String): List<String> = synchronized(fallbackByName) { fallbackByName[normalizeChannelName(name)].orEmpty() }
+
+    private fun writeCache(index: Int, items: List<StreamItem>) = runCatching { cacheFile(index).writeText(toM3u(items)); stampFile(index).writeText(System.currentTimeMillis().toString()) }
     private fun download(url: String): String {
-        val request = Request.Builder().url(url).header("User-Agent", "TV-Radio-Online/3.0").build()
-        return client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            response.body?.string().orEmpty().also { if (it.isBlank()) error("Пустой ответ") }
-        }
+        val request = Request.Builder().url(url).header("User-Agent", "TV-Radio-Online/4.0").build()
+        return client.newCall(request).execute().use { response -> if (!response.isSuccessful) error("HTTP ${response.code}"); response.body?.string().orEmpty().also { if (it.isBlank()) error("Пустой ответ") } }
     }
-
     private fun parse(text: String): List<StreamItem> {
-        val result = mutableListOf<StreamItem>()
-        var pendingName: String? = null
-        var pendingLogo: String? = null
-        var pendingEpgLogo: String? = null
-        text.lineSequence().map(String::trim).filter(String::isNotEmpty).forEach { line ->
+        val result = mutableListOf<StreamItem>(); var name: String? = null; var logo: String? = null; var epg: String? = null
+        text.lineSequence().map(String::trim).forEach { line ->
             when {
-                line.startsWith("#EXTINF", true) -> {
-                    pendingName = line.substringAfterLast(',', "Без названия").trim().ifBlank { "Без названия" }
-                    pendingLogo = attr(line, "tvg-logo")
-                    pendingEpgLogo = attr(line, "epg-logo") ?: attr(line, "logo")
-                }
-                !line.startsWith("#") && pendingName != null && (line.startsWith("http://") || line.startsWith("https://")) -> {
-                    result += StreamItem(pendingName!!, line, pendingLogo, pendingEpgLogo)
-                    pendingName = null; pendingLogo = null; pendingEpgLogo = null
-                }
+                line.startsWith("#EXTINF", true) -> { name = line.substringAfterLast(',', "Без названия").trim().ifBlank { "Без названия" }; logo = attr(line, "tvg-logo"); epg = attr(line, "epg-logo") ?: attr(line, "logo") }
+                !line.startsWith("#") && name != null && (line.startsWith("http://") || line.startsWith("https://")) -> { result += StreamItem(name!!, line, logo, epg); name = null; logo = null; epg = null }
             }
         }
         return result
     }
-
-    private fun attr(line: String, name: String): String? {
-        val regex = Regex("(?:^|\\s)$name=\\\"([^\\\"]+)\\\"", RegexOption.IGNORE_CASE)
-        return regex.find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-    }
-
-    private fun toM3u(items: List<StreamItem>): String = buildString {
-        appendLine("#EXTM3U")
-        items.forEach { item ->
-            val logo = item.logoUrl?.let { " tvg-logo=\"$it\"" }.orEmpty()
-            appendLine("#EXTINF:-1$logo,${item.name}")
-            appendLine(item.url)
-        }
-    }
-
-    private fun normalizeChannelName(value: String): String = value
-        .lowercase(Locale.ROOT)
-        .replace(Regex("\\(.*?\\)"), " ")
-        .replace(Regex("\\[.*?]"), " ")
-        .replace(Regex("\\b(fhd|uhd|hd|sd|4k|1080p|720p|576p|480p)\\b"), " ")
-        .filter(Char::isLetterOrDigit)
+    private fun attr(line: String, key: String): String? = Regex("(?:^|\\s)$key=\\\"([^\\\"]+)\\\"", RegexOption.IGNORE_CASE).find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    private fun toM3u(items: List<StreamItem>): String = buildString { appendLine("#EXTM3U"); items.forEach { item -> val logo = item.logoUrl?.let { " tvg-logo=\"$it\"" }.orEmpty(); appendLine("#EXTINF:-1$logo,${item.name}"); appendLine(item.url) } }
+    private fun normalizeChannelName(value: String): String = value.lowercase(Locale.ROOT).replace(Regex("\\(.*?\\)"), " ").replace(Regex("\\[.*?]"), " ").replace(Regex("\\b(fhd|uhd|hd|sd|4k|1080p|720p|576p|480p|50fps|60fps)\\b"), " ").filter(Char::isLetterOrDigit)
 }
