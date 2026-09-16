@@ -24,6 +24,7 @@ android {
     packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/NOTICE") }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v4res"))
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -63,21 +64,22 @@ val v4Assets = mapOf(
     "logo_psy" to "https://dfm.ru/b/d/a9C4t_hQkezt4_erPjcva6o4JuuCN9MOEI0j77hVMcD9iKP0DLhWWxZENyFfMZsgTgVNeCjIRm2cyeWlz8QjcNK6FJXYlqOLWg=cz1cYtES_SBOB1fZ0h832A.webp",
     "logo_metalcore" to "https://lh3.ggpht.com/3F-VojAzJppXcdFDGvjZ_55ONQyBo4mlpEqbIS9n5w-kG-W4NxT2MqdQU5qcwsXJ7g=s180",
     "logo_yug" to "https://yug-radio.ru/writable/uploads/grafskiy-photos/________________________-mobile.jpg",
-    "logo_relax" to "https://avatars.mds.yandex.net/i?id=03476032ca5ccd22a23ac6b876142cd3_l-9291097-images-thumbs&n=13"
+    "logo_relax" to "https://avatars.mds.yandex.net/i?id=03476032ca5ccd22a23ac6b876142cd3_l-9291097-images-thumbs&n=13",
+    "logo_fallback" to "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13"
 )
 
 val downloadV4Assets by tasks.registering {
-    val outDir = layout.projectDirectory.dir("src/main/res/drawable")
+    val outDir = layout.buildDirectory.dir("generated/v4res/drawable")
     outputs.dir(outDir)
     doLast {
-        val dir = outDir.asFile
+        val dir = outDir.get().asFile
         dir.mkdirs()
         fun run(vararg args: String): Boolean = runCatching { ProcessBuilder(*args).inheritIO().start().waitFor() == 0 }.getOrDefault(false)
         for ((name, url) in v4Assets) {
             val raw = File(dir, "${name}.source")
             val png = File(dir, "${name}.png")
             if (!png.exists()) {
-                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--max-time", "30", "-A", "TV-Radio-Online/4.0", "-o", raw.absolutePath, url)
+                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "TV-Radio-Online/4.0", "-o", raw.absolutePath, url)
                 if (downloaded) run("convert", raw.absolutePath, "-resize", "512x512^", "-gravity", "center", "-extent", "512x512", png.absolutePath)
             }
             raw.delete()
