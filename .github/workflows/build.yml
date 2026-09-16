@@ -1,13 +1,13 @@
 name: Android APK
 
 concurrency:
-  group: android-apk-main
+  group: android-apk-v3
   cancel-in-progress: true
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, v3.0 ]
 
 jobs:
   build:
@@ -39,17 +39,17 @@ jobs:
           APK=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
           test -n "$APK"
           echo "Found APK: $APK"
-          cp "$APK" tv-radio-online.apk
-          ls -lh tv-radio-online.apk
+          cp "$APK" tv-radio-online-v3.apk
+          ls -lh tv-radio-online-v3.apk
       - name: Verify APK signature
         run: |
           set -e
-          APK=tv-radio-online.apk
+          APK=tv-radio-online-v3.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-Radio-Online-APK
-          path: tv-radio-online.apk
+          name: TV-Radio-Online-v3-APK
+          path: tv-radio-online-v3.apk
           if-no-files-found: error
