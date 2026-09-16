@@ -8,6 +8,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, v3.0, v4.0 ]
+  pull_request:
+    branches: [ v4.0 ]
 
 jobs:
   build:
@@ -15,6 +17,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Restore complete V4 implementation
+        run: |
+          set -e
+          test -f app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz
+          gunzip -c app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz > app/src/main/java/com/offex7/streamhub/MainActivity.kt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
