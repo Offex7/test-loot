@@ -8,60 +8,61 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.http.GET
-import retrofit2.http.Url
-import okhttp3.ResponseBody
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-private interface PlaylistApi { @GET suspend fun getPlaylist(@Url url: String): Response<ResponseBody> }
-
 class PlaylistRepository(private val context: Context) {
-    private val api = Retrofit.Builder().baseUrl("https://example.com/").build().create(PlaylistApi::class.java)
-    private val headClient = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .callTimeout(5, TimeUnit.SECONDS)
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .build()
-    private val cacheFile = File(context.filesDir, "tv_playlist.m3u")
-    private val stampFile = File(context.filesDir, "tv_playlist.timestamp")
+    private val cacheFile = File(context.filesDir, "tv_playlist_combined.m3u")
+    private val stampFile = File(context.filesDir, "tv_playlist_combined.timestamp")
 
     suspend fun loadCachedIfFresh(): List<StreamItem>? = withContext(Dispatchers.IO) {
         if (!cacheFile.exists() || !stampFile.exists()) return@withContext null
-        val age = System.currentTimeMillis() - (stampFile.readText().toLongOrNull() ?: Long.MAX_VALUE)
-        if (age > 24L * 60L * 60L * 1000L) null else parse(cacheFile.readText())
+        val stamp = stampFile.readText().toLongOrNull() ?: return@withContext null
+        val age = System.currentTimeMillis() - stamp
+        if (age !in 0..(24L * 60L * 60L * 1000L)) null else parse(cacheFile.readText())
     }
 
-    suspend fun refreshInOrder(preferredIndex: Int): Result<Pair<Int, List<StreamItem>>> = withContext(Dispatchers.IO) {
-        val safeIndex = preferredIndex.coerceIn(0, TV_SOURCES.lastIndex)
-        val indexes = listOf(safeIndex) + TV_SOURCES.indices.filter { it != safeIndex }
-        var lastError: Throwable? = null
-        for (index in indexes) try {
-            val response = api.getPlaylist(TV_SOURCES[index].url)
-            val body = response.body()?.string()
-            if (!response.isSuccessful || body.isNullOrBlank()) throw IllegalStateException("HTTP ${response.code()}")
-            val parsed = parse(body)
-            if (parsed.isEmpty()) throw IllegalStateException("Плейлист пуст")
-            cacheFile.writeText(body)
-            stampFile.writeText(System.currentTimeMillis().toString())
-            return@withContext Result.success(index to parsed)
-        } catch (t: Throwable) { lastError = t }
-        Result.failure(lastError ?: IllegalStateException("Все источники недоступны"))
-    }
-
-    suspend fun checkAvailability(items: List<StreamItem>): Map<String, AvailabilityStatus> = withContext(Dispatchers.IO) {
-        coroutineScope {
-            items.map { item ->
-                async {
-                    val request = Request.Builder().url(item.url).head().build()
-                    val status = runCatching { headClient.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
-                    } }.getOrDefault(AvailabilityStatus.OFFLINE)
-                    item.url to status
-                }
+    suspend fun refreshCombined(): Result<List<StreamItem>> = withContext(Dispatchers.IO) {
+        val downloaded = coroutineScope {
+            TV_PLAYLIST_URLS.map { url ->
+                async { url to runCatching { download(url) }.getOrNull() }
             }.awaitAll().toMap()
+        }
+        val parsed = TV_PLAYLIST_URLS.map { url -> downloaded[url].orEmpty() }.map(::parse)
+        val base = parsed.firstOrNull().orEmpty()
+        if (base.isEmpty() && parsed.drop(1).all { it.isEmpty() }) {
+            return@withContext Result.failure(IllegalStateException("Не удалось загрузить объединённый плейлист"))
+        }
+
+        val merged = LinkedHashMap<String, StreamItem>()
+        val urls = HashSet<String>()
+        val orderedLists = if (base.isNotEmpty()) parsed else parsed.drop(1)
+        orderedLists.forEach { list ->
+            list.forEach { item ->
+                val nameKey = normalizeChannelName(item.name)
+                if (nameKey.isBlank()) return@forEach
+                if (merged.containsKey(nameKey) || !urls.add(item.url)) return@forEach
+                merged[nameKey] = item
+            }
+        }
+        val result = merged.values.toList()
+        if (result.isEmpty()) return@withContext Result.failure(IllegalStateException("Плейлист пуст"))
+        cacheFile.writeText(toM3u(result))
+        stampFile.writeText(System.currentTimeMillis().toString())
+        Result.success(result)
+    }
+
+    private fun download(url: String): String {
+        val request = Request.Builder().url(url).header("User-Agent", "TV-Radio-Online/3.0").build()
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code}")
+            response.body?.string().orEmpty().also { if (it.isBlank()) error("Пустой ответ") }
         }
     }
 
@@ -70,24 +71,40 @@ class PlaylistRepository(private val context: Context) {
         var pendingName: String? = null
         var pendingLogo: String? = null
         var pendingEpgLogo: String? = null
-        for (line in text.lines().map(String::trim).filter(String::isNotEmpty)) {
-            if (line.startsWith("#EXTINF", true)) {
-                pendingName = line.substringAfter(',', "").trim().ifBlank { "Без названия" }
-                pendingLogo = attr(line, "tvg-logo")
-                pendingEpgLogo = attr(line, "epg-logo")
-            } else if (!line.startsWith("#") && pendingName != null &&
-                (line.startsWith("http://") || line.startsWith("https://"))) {
-                result += StreamItem(pendingName!!, line, pendingLogo, pendingEpgLogo)
-                pendingName = null
-                pendingLogo = null
-                pendingEpgLogo = null
+        text.lineSequence().map(String::trim).filter(String::isNotEmpty).forEach { line ->
+            when {
+                line.startsWith("#EXTINF", true) -> {
+                    pendingName = line.substringAfterLast(',', "Без названия").trim().ifBlank { "Без названия" }
+                    pendingLogo = attr(line, "tvg-logo")
+                    pendingEpgLogo = attr(line, "epg-logo") ?: attr(line, "logo")
+                }
+                !line.startsWith("#") && pendingName != null && (line.startsWith("http://") || line.startsWith("https://")) -> {
+                    result += StreamItem(pendingName!!, line, pendingLogo, pendingEpgLogo)
+                    pendingName = null; pendingLogo = null; pendingEpgLogo = null
+                }
             }
         }
-        return result.distinctBy { it.url }
+        return result
     }
 
     private fun attr(line: String, name: String): String? {
         val regex = Regex("(?:^|\\s)$name=\\\"([^\\\"]+)\\\"", RegexOption.IGNORE_CASE)
         return regex.find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
+
+    private fun toM3u(items: List<StreamItem>): String = buildString {
+        appendLine("#EXTM3U")
+        items.forEach { item ->
+            val logo = item.logoUrl?.let { " tvg-logo=\"$it\"" }.orEmpty()
+            appendLine("#EXTINF:-1$logo,${item.name}")
+            appendLine(item.url)
+        }
+    }
+
+    private fun normalizeChannelName(value: String): String = value
+        .lowercase(Locale.ROOT)
+        .replace(Regex("\\(.*?\\)"), " ")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\b(fhd|uhd|hd|sd|4k|1080p|720p|576p|480p)\\b"), " ")
+        .filter(Char::isLetterOrDigit)
 }
