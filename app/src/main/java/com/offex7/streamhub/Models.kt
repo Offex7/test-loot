@@ -7,12 +7,9 @@ data class StreamItem(
     val epgLogoUrl: String? = null,
     val isOffline: Boolean = false,
     val sourceUrls: List<String> = emptyList()
-) {
-    val key: String get() = url
-}
+) { val key: String get() = url }
 
 data class PlaylistSource(val name: String, val url: String)
-
 enum class Section { TV, RADIO }
 enum class AvailabilityStatus { UNKNOWN, ONLINE, OFFLINE }
 
@@ -48,11 +45,9 @@ val RADIO_LOGO_URLS = mapOf(
     "METALCORE" to "https://lh3.ggpht.com/3F-VojAzJppXcdFDGvjZ_55ONQyBo4mlpEqbIS9n5w-kG-W4NxT2MqdQU5qcwsXJ7g=s180",
     "ЮГ МОЛОДОЙ" to "https://yug-radio.ru/writable/uploads/grafskiy-photos/________________________-mobile.jpg"
 )
-
-const val RADIO_LOGO_FALLBACK_URL = "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146497-images-thumbs&n=13"
+const val RADIO_LOGO_FALLBACK_URL = "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13"
 
 val TV_SOURCES = listOf(
-    PlaylistSource("Объединённый (smolnp + NaggDD + LoganetX + RUSSIAiptv + DropTV + Zabava)", "combined://tv"),
     PlaylistSource("smolnp-стабильный", "https://smolnp.github.io/IPTVru//IPTVstable.m3u8"),
     PlaylistSource("NaggDD-основной", "https://naggdd.github.io/iptv/ru.m3u"),
     PlaylistSource("LoganetX", "https://raw.githubusercontent.com/blackbirdstudiorus/LoganetXIPTV/main/LoganetXAll.m3u"),
@@ -61,11 +56,4 @@ val TV_SOURCES = listOf(
     PlaylistSource("Zabava", "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u")
 )
 
-val TV_PLAYLIST_URLS = listOf(
-    "https://smolnp.github.io/IPTVru//IPTVstable.m3u8",
-    "https://naggdd.github.io/iptv/ru.m3u",
-    "https://raw.githubusercontent.com/blackbirdstudiorus/LoganetXIPTV/main/LoganetXAll.m3u",
-    "https://iptv-org.github.io/iptv/countries/ru.m3u",
-    "https://raw.githubusercontent.com/IPTVRU2026/IPTVMIR/main/IPTV_MEGA_PLAYLIST.m3u",
-    "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u"
-)
+val TV_PLAYLIST_URLS = TV_SOURCES.map { it.url }
