@@ -5,7 +5,6 @@ import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
-import android.graphics.Rect
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -48,7 +47,6 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -96,17 +94,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
-import coil3.ImageLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -121,7 +118,7 @@ private const val RESTORE_WINDOW_MS = 10 * 60 * 1000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var settingsStore: SettingsStore
-    private lateinit var playerController: PlayerController
+    private lateinit var tvPlayer: PlayerController
     private lateinit var radioController: RadioMediaController
     internal var tvViewing = false
     internal var pipEnabled = true
@@ -131,13 +128,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         settingsStore = SettingsStore(applicationContext)
-        playerController = PlayerController(applicationContext)
+        tvPlayer = PlayerController(applicationContext)
         radioController = RadioMediaController(applicationContext)
-        setContent {
-            StreamHubTheme {
-                StreamHubApp(settingsStore, playerController, radioController, this)
-            }
-        }
+        setContent { StreamHubTheme { StreamHubApp(settingsStore, tvPlayer, radioController, this) } }
         handlePipIntent(intent)
     }
 
@@ -148,46 +141,32 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePipIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(PipActionReceiver.EXTRA_TOGGLE_PLAYBACK, false) == true) {
-            playerController.toggle()
+            tvPlayer.toggle()
             intent.removeExtra(PipActionReceiver.EXTRA_TOGGLE_PLAYBACK)
         }
     }
 
     override fun onUserLeaveHint() {
         if (tvViewing && pipEnabled && !isInPictureInPictureMode) {
-            val toggleIntent = Intent(this, PipActionReceiver::class.java).setAction(PipActionReceiver.ACTION_TOGGLE)
-            val togglePendingIntent = PendingIntent.getBroadcast(
-                this,
-                4101,
-                toggleIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val actionIntent = Intent(this, PipActionReceiver::class.java).setAction(PipActionReceiver.ACTION_TOGGLE)
+            val pendingIntent = PendingIntent.getBroadcast(this, 4101, actionIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val actionIcon = android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_play)
-            val action = android.app.RemoteAction(actionIcon, "Play/Pause", "Play/Pause", togglePendingIntent)
-            enterPictureInPictureMode(
-                PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .setActions(listOf(action))
-                    .build()
-            )
+            val action = android.app.RemoteAction(actionIcon, "Play/Pause", "Play/Pause", pendingIntent)
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(listOf(action)).build())
         }
         super.onUserLeaveHint()
     }
 
     override fun onStop() {
-        lifecycleScopeCompat { settingsStore.setLastExitTime(System.currentTimeMillis()) }
+        androidx.lifecycle.lifecycleScope.launch { settingsStore.setLastExitTime(System.currentTimeMillis()) }
         super.onStop()
     }
 
     override fun onDestroy() {
-        playerController.release()
+        tvPlayer.release()
         radioController.release()
         super.onDestroy()
     }
-}
-
-private fun ComponentActivity.lifecycleScopeCompat(block: suspend () -> Unit) {
-    androidx.lifecycle.lifecycleScope.launch { block() }
 }
 
 @Composable
@@ -210,12 +189,7 @@ private fun StreamHubTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun StreamHubApp(
-    store: SettingsStore,
-    tvPlayer: PlayerController,
-    radioPlayer: RadioMediaController,
-    activity: MainActivity
-) {
+private fun StreamHubApp(store: SettingsStore, tvPlayer: PlayerController, radioPlayer: RadioMediaController, activity: MainActivity) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -265,10 +239,7 @@ private fun StreamHubApp(
     }
 
     LaunchedEffect(sleepMessage) {
-        if (sleepMessage != null) {
-            delay(4000L)
-            sleepMessage = null
-        }
+        if (sleepMessage != null) { delay(4000L); sleepMessage = null }
     }
 
     val sleepText = if (remaining > 0L) formatRemaining(remaining) else null
@@ -292,10 +263,7 @@ private fun StreamHubApp(
     Surface(Modifier.fillMaxSize(), color = Background) {
         Column {
             AnimatedVisibility(sleepMessage != null, enter = fadeIn(), exit = fadeOut()) {
-                Row(
-                    Modifier.fillMaxWidth().background(PanelAlt).padding(horizontal = 16.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(Modifier.fillMaxWidth().background(PanelAlt).padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.AccessTime, null, tint = Red)
                     Spacer(Modifier.width(8.dp))
                     Text(sleepMessage ?: "", fontSize = 13.sp)
@@ -317,7 +285,7 @@ private fun StreamHubApp(
                         player = radioPlayer,
                         store = store,
                         sleepText = sleepText,
-                        restoreItem = restoreItem?.takeIf { currentSection == Section.RADIO },
+                        restoreItem = restoreItem,
                         onRestoreDismiss = { restoreItem = null },
                         onBack = ::backToPicker,
                         onSettings = { settingsOpen = true },
@@ -327,7 +295,7 @@ private fun StreamHubApp(
                         player = tvPlayer,
                         store = store,
                         sleepText = sleepText,
-                        restoreItem = restoreItem?.takeIf { currentSection == Section.TV },
+                        restoreItem = restoreItem,
                         onRestoreDismiss = { restoreItem = null },
                         onBack = ::backToPicker,
                         onSettings = { settingsOpen = true },
@@ -341,22 +309,9 @@ private fun StreamHubApp(
 }
 
 @Composable
-private fun AppHeader(
-    title: String,
-    sleepText: String?,
-    onBack: (() -> Unit)?,
-    onSettings: (() -> Unit)?,
-    onSearch: (() -> Unit)? = null,
-    searchOpen: Boolean = false,
-    query: String = "",
-    onQueryChange: (String) -> Unit = {},
-    onCloseSearch: () -> Unit = {}
-) {
+private fun AppHeader(title: String, sleepText: String?, onBack: (() -> Unit)?, onSettings: (() -> Unit)?, onSearch: (() -> Unit)? = null, searchOpen: Boolean = false, query: String = "", onQueryChange: (String) -> Unit = {}, onCloseSearch: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().animateContentSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Red) }
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (sleepText != null) Text(sleepText, color = Red, fontSize = 12.sp)
@@ -364,7 +319,7 @@ private fun AppHeader(
             if (onSettings != null && !searchOpen) IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Настройки", tint = Red) }
             if (searchOpen) IconButton(onClick = onCloseSearch) { Icon(Icons.Default.Close, "Закрыть", tint = Red) }
         }
-        AnimatedVisibility(visible = searchOpen, enter = expandHorizontally(), exit = shrinkHorizontally()) {
+        AnimatedVisibility(searchOpen, enter = expandHorizontally(), exit = shrinkHorizontally()) {
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
@@ -381,11 +336,7 @@ private fun AppHeader(
 @Composable
 private fun PickerScreen(onSelect: (Section) -> Unit) {
     Surface(Modifier.fillMaxSize(), color = Background) {
-        Column(
-            Modifier.fillMaxSize().padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Text("TV / RADIO", color = Red, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("ONLINE", color = Color.White, style = MaterialTheme.typography.titleLarge, letterSpacing = 5.sp)
             Spacer(Modifier.height(34.dp))
@@ -399,12 +350,7 @@ private fun PickerScreen(onSelect: (Section) -> Unit) {
 
 @Composable
 private fun PickerButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.height(96.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Red)
-    ) {
+    Button(onClick = onClick, modifier = modifier.height(96.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Red)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, Modifier.size(30.dp))
             Spacer(Modifier.height(5.dp))
@@ -415,11 +361,7 @@ private fun PickerButton(label: String, icon: androidx.compose.ui.graphics.vecto
 
 @Composable
 private fun RestoreBanner(item: StreamItem, onContinue: () -> Unit, onClose: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = PanelAlt),
-        shape = RoundedCornerShape(14.dp)
-    ) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = PanelAlt), shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             LogoImage(item, 48.dp)
             Spacer(Modifier.width(10.dp))
@@ -434,37 +376,24 @@ private fun RestoreBanner(item: StreamItem, onContinue: () -> Unit, onClose: () 
 }
 
 @Composable
-private fun RadioScreen(
-    player: RadioMediaController,
-    store: SettingsStore,
-    sleepText: String?,
-    restoreItem: StreamItem?,
-    onRestoreDismiss: () -> Unit,
-    onBack: () -> Unit,
-    onSettings: () -> Unit,
-    onSelect: (StreamItem) -> Unit
-) {
+private fun RadioScreen(player: RadioMediaController, store: SettingsStore, sleepText: String?, restoreItem: StreamItem?, onRestoreDismiss: () -> Unit, onBack: () -> Unit, onSettings: () -> Unit, onSelect: (StreamItem) -> Unit) {
     val connected by player.connected.collectAsState()
     val playing by player.isPlaying.collectAsState()
-    val index by player.currentIndex.collectAsState()
+    val currentIndex by player.currentIndex.collectAsState()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var pendingIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(connected, pendingIndex) {
-        if (connected && pendingIndex >= 0) {
-            player.play(pendingIndex)
-            pendingIndex = -1
-        }
+        if (connected && pendingIndex >= 0) { player.play(pendingIndex); pendingIndex = -1 }
     }
-
     LaunchedEffect(restoreItem) {
-        restoreItem?.let { item ->
-            val idx = RADIO_STATIONS.indexOfFirst { it.url == item.url }
-            if (idx >= 0 && isWifiConnected(LocalContext.current)) pendingIndex = idx
-        }
+        val item = restoreItem ?: return@LaunchedEffect
+        val idx = RADIO_STATIONS.indexOfFirst { it.url == item.url }
+        if (idx >= 0 && isWifiConnected(context)) pendingIndex = idx
     }
 
     val filtered = remember(query) { fuzzySort(RADIO_STATIONS, query) }
@@ -472,15 +401,11 @@ private fun RadioScreen(
         Column {
             AppHeader("RADIO", sleepText, onBack, onSettings, onSearch = { searchOpen = true }, searchOpen = searchOpen, query = query, onQueryChange = { query = it }, onCloseSearch = { query = ""; searchOpen = false })
             if (restoreItem != null) {
-                RestoreBanner(
-                    item = restoreItem,
-                    onContinue = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        val idx = RADIO_STATIONS.indexOfFirst { it.url == restoreItem.url }
-                        if (idx >= 0) { pendingIndex = idx; onSelect(restoreItem) }
-                    },
-                    onClose = onRestoreDismiss
-                )
+                RestoreBanner(restoreItem, onContinue = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    val idx = RADIO_STATIONS.indexOfFirst { it.url == restoreItem.url }
+                    if (idx >= 0) { pendingIndex = idx; onSelect(restoreItem) }
+                }, onClose = onRestoreDismiss)
             }
             AnimatedContent(targetState = filtered.isEmpty(), label = "radio_search") { empty ->
                 if (empty) EmptySearchState()
@@ -488,23 +413,15 @@ private fun RadioScreen(
                     items(filtered, key = { it.url }) { station ->
                         var favorite by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) { favorite = store.isFavorite(station.url) }
-                        ChannelRow(
-                            item = station,
-                            favorite = favorite,
-                            playing = index >= 0 && RADIO_STATIONS.getOrNull(index)?.url == station.url && playing,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(station)
-                                pendingIndex = RADIO_STATIONS.indexOfFirst { it.url == station.url }
-                            },
-                            onLongClick = { scope.launch { store.setFavorite(station.url, !favorite); favorite = !favorite } }
-                        )
+                        ChannelRow(item = station, favorite = favorite, playing = currentIndex >= 0 && RADIO_STATIONS.getOrNull(currentIndex)?.url == station.url && playing, onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(station)
+                            pendingIndex = RADIO_STATIONS.indexOfFirst { it.url == station.url }
+                        }, onLongClick = { scope.launch { val newValue = !favorite; store.setFavorite(station.url, newValue); favorite = newValue } })
                     }
                 }
             }
-            if (playing) {
-                RadioMiniControls(player)
-            }
+            if (playing) RadioMiniControls(player)
         }
     }
 }
@@ -512,11 +429,7 @@ private fun RadioScreen(
 @Composable
 private fun RadioMiniControls(player: RadioMediaController) {
     val playing by player.isPlaying.collectAsState()
-    Row(
-        Modifier.fillMaxWidth().background(PanelAlt).padding(8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(Modifier.fillMaxWidth().background(PanelAlt).padding(8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = player::previous) { Icon(Icons.Default.SkipPrevious, null, tint = Red) }
         IconButton(onClick = player::toggle) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Red) }
         IconButton(onClick = player::stop) { Icon(Icons.Default.Stop, null, tint = Red) }
@@ -526,17 +439,7 @@ private fun RadioMiniControls(player: RadioMediaController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TvScreen(
-    player: PlayerController,
-    store: SettingsStore,
-    sleepText: String?,
-    restoreItem: StreamItem?,
-    onRestoreDismiss: () -> Unit,
-    onBack: () -> Unit,
-    onSettings: () -> Unit,
-    onFullScreenChanged: (Boolean) -> Unit,
-    onSelect: (StreamItem) -> Unit
-) {
+private fun TvScreen(player: PlayerController, store: SettingsStore, sleepText: String?, restoreItem: StreamItem?, onRestoreDismiss: () -> Unit, onBack: () -> Unit, onSettings: () -> Unit, onFullScreenChanged: (Boolean) -> Unit, onSelect: (StreamItem) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -557,53 +460,40 @@ private fun TvScreen(
     var favorites by remember { mutableStateOf(emptySet<String>()) }
     val playbackError by player.error.collectAsState()
     val waitingNetwork by player.waitingForNetwork.collectAsState()
+    val networkWarning by player.networkWarning.collectAsState()
 
     LaunchedEffect(Unit) { favorites = store.favorites() }
     LaunchedEffect(fullScreen) { onFullScreenChanged(fullScreen) }
     LaunchedEffect(Unit) {
         sourceIndex = store.sourceIndex().coerceIn(0, TV_SOURCES.lastIndex)
         val cached = repo.loadCachedIfFresh()
-        if (cached != null) {
-            channels = cached
-            loading = false
-        } else {
-            repo.refreshInOrder(sourceIndex).onSuccess { (idx, list) ->
-                sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null
-            }.onFailure { loadError = it.message ?: "Не удалось загрузить плейлист" }
+        if (cached != null) { channels = cached; loading = false }
+        else {
+            repo.refreshInOrder(sourceIndex).onSuccess { (idx, list) -> sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null }.onFailure { loadError = it.message ?: "Не удалось загрузить плейлист" }
             loading = false
         }
     }
-
     LaunchedEffect(channels) {
         if (channels.isNotEmpty() && System.currentTimeMillis() - availabilityStamp >= 60 * 60 * 1000L) {
             availabilityStamp = System.currentTimeMillis()
             availability = repo.checkAvailability(channels.take(50))
         }
     }
-
     LaunchedEffect(restoreItem, channels) {
         val item = restoreItem ?: return@LaunchedEffect
         val idx = channels.indexOfFirst { it.url == item.url }
-        if (idx >= 0) {
-            selectedIndex = idx
-            if (isWifiConnected(context)) player.play(item.url)
-        }
+        if (idx >= 0) { selectedIndex = idx; if (isWifiConnected(context)) player.play(item.url) }
     }
 
     suspend fun refresh() {
         refreshing = true
-        repo.refreshInOrder(sourceIndex).onSuccess { (idx, list) ->
-            sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null; availabilityStamp = 0L
-        }.onFailure { loadError = it.message ?: "Не удалось обновить плейлист" }
+        repo.refreshInOrder(sourceIndex).onSuccess { (idx, list) -> sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null; availabilityStamp = 0L }.onFailure { loadError = it.message ?: "Не удалось обновить плейлист" }
         refreshing = false
     }
-
     suspend fun loadNextPlaylist() {
         refreshing = true
         val next = (sourceIndex + 1) % TV_SOURCES.size
-        repo.refreshInOrder(next).onSuccess { (idx, list) ->
-            sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null; availabilityStamp = 0L
-        }.onFailure { loadError = it.message ?: "Канал недоступен" }
+        repo.refreshInOrder(next).onSuccess { (idx, list) -> sourceIndex = idx; channels = list; store.setSourceIndex(idx); loadError = null; availabilityStamp = 0L }.onFailure { loadError = it.message ?: "Канал недоступен" }
         refreshing = false
     }
 
@@ -613,34 +503,21 @@ private fun TvScreen(
     }
 
     if (fullScreen && selectedIndex in channels.indices) {
-        TvPlayerScreen(
-            player = player,
-            channel = channels[selectedIndex],
-            playbackError = playbackError,
-            waitingNetwork = waitingNetwork,
-            onBack = { fullScreen = false },
-            onPrevious = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                selectedIndex = if (selectedIndex <= 0) channels.lastIndex else selectedIndex - 1
-                player.play(channels[selectedIndex].url)
-                onSelect(channels[selectedIndex])
-            },
-            onNext = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                selectedIndex = (selectedIndex + 1) % channels.size
-                player.play(channels[selectedIndex].url)
-                onSelect(channels[selectedIndex])
-            },
-            onOtherPlaylist = { scope.launch { loadNextPlaylist() } }
-        )
+        TvPlayerScreen(player, channels[selectedIndex], playbackError, waitingNetwork, networkWarning, onBack = { fullScreen = false }, onPrevious = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            selectedIndex = if (selectedIndex <= 0) channels.lastIndex else selectedIndex - 1
+            player.play(channels[selectedIndex].url); onSelect(channels[selectedIndex])
+        }, onNext = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            selectedIndex = (selectedIndex + 1) % channels.size
+            player.play(channels[selectedIndex].url); onSelect(channels[selectedIndex])
+        }, onOtherPlaylist = { scope.launch { loadNextPlaylist() } })
         return
     }
 
     Surface(Modifier.fillMaxSize(), color = Background) {
         Column {
-            AnimatedVisibility(waitingNetwork, enter = fadeIn(), exit = fadeOut()) {
-                NetworkBanner()
-            }
+            AnimatedVisibility(waitingNetwork, enter = fadeIn(), exit = fadeOut()) { NetworkBanner(networkWarning) }
             AppHeader("TV", sleepText, onBack, onSettings, onSearch = { searchOpen = true }, searchOpen = searchOpen, query = query, onQueryChange = { query = it }, onCloseSearch = { query = ""; searchOpen = false })
             if (restoreItem != null) RestoreBanner(restoreItem, onContinue = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -654,22 +531,14 @@ private fun TvScreen(
                     else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { scope.launch { refresh() } }, state = refreshState, modifier = Modifier.fillMaxSize()) {
                         LazyColumn(state = listState, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             itemsIndexed(ordered, key = { _, item -> item.url }) { _, channel ->
-                                val status = availability[channel.url] ?: AvailabilityStatus.UNKNOWN
-                                val offline = status == AvailabilityStatus.OFFLINE
-                                val logoItem = channel.copy(isOffline = offline)
-                                ChannelRow(
-                                    item = logoItem,
-                                    favorite = favorites.contains(channel.url),
-                                    offline = offline,
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        selectedIndex = channels.indexOfFirst { it.url == channel.url }
-                                        player.play(channel.url)
-                                        fullScreen = true
-                                        onSelect(channel)
-                                    },
-                                    onLongClick = { scope.launch { val newValue = !favorites.contains(channel.url); store.setFavorite(channel.url, newValue); favorites = store.favorites() } }
-                                )
+                                val offline = availability[channel.url] == AvailabilityStatus.OFFLINE
+                                ChannelRow(item = channel.copy(isOffline = offline), favorite = favorites.contains(channel.url), offline = offline, onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    selectedIndex = channels.indexOfFirst { it.url == channel.url }
+                                    player.play(channel.url)
+                                    fullScreen = true
+                                    onSelect(channel)
+                                }, onLongClick = { scope.launch { store.setFavorite(channel.url, !favorites.contains(channel.url)); favorites = store.favorites() } })
                             }
                         }
                     }
@@ -684,68 +553,41 @@ private fun TvScreen(
 }
 
 @Composable
-private fun ChannelRow(
-    item: StreamItem,
-    favorite: Boolean,
-    playing: Boolean = false,
-    offline: Boolean = item.isOffline,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    Card(
-        Modifier.fillMaxWidth().alpha(if (offline) 0.5f else 1f).combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        colors = CardDefaults.cardColors(containerColor = Panel),
-        shape = RoundedCornerShape(13.dp)
-    ) {
+private fun ChannelRow(item: StreamItem, favorite: Boolean, playing: Boolean = false, offline: Boolean = item.isOffline, onClick: () -> Unit, onLongClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().alpha(if (offline) 0.5f else 1f).combinedClickable(onClick = onClick, onLongClick = onLongClick), colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(13.dp)) {
         Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             LogoImage(item, 48.dp)
             Spacer(Modifier.width(10.dp))
             Text(item.name, Modifier.weight(1f), maxLines = 2)
-            if (offline) Icon(Icons.Default.WifiOff, "Офлайн", tint = Color.Gray, Modifier.size(18.dp))
-            else if (playing) Icon(Icons.Default.PlayArrow, "Играет", tint = Red, Modifier.size(18.dp))
+            if (offline) Icon(Icons.Default.WifiOff, "Офлайн", tint = Color.Gray, Modifier.size(18.dp)) else if (playing) Icon(Icons.Default.PlayArrow, "Играет", tint = Red, Modifier.size(18.dp))
             if (favorite) { Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Favorite, "Избранное", tint = Red, Modifier.size(17.dp)) }
         }
     }
 }
 
 @Composable
-private fun LogoImage(item: StreamItem, size: androidx.compose.ui.unit.Dp) {
+private fun LogoImage(item: StreamItem, size: Dp) {
     var sourceIndex by remember(item.url) { mutableIntStateOf(0) }
-    val sources = remember(item.logoUrl, item.epgLogoUrl) {
-        listOfNotNull(item.logoUrl, item.epgLogoUrl).distinct()
-    }
+    val sources = remember(item.logoUrl, item.epgLogoUrl) { listOfNotNull(item.logoUrl, item.epgLogoUrl).distinct() }
     if (sourceIndex < sources.size) {
         var loading by remember(sources.getOrNull(sourceIndex)) { mutableStateOf(true) }
         Box(Modifier.size(size), contentAlignment = Alignment.Center) {
             if (loading) ShimmerBox(Modifier.size(size), CircleShape)
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(sources[sourceIndex])
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .crossfade(true)
-                    .build(),
+                model = ImageRequest.Builder(LocalContext.current).data(sources[sourceIndex]).diskCachePolicy(CachePolicy.ENABLED).memoryCachePolicy(CachePolicy.ENABLED).crossfade(true).build(),
                 contentDescription = item.name,
                 modifier = Modifier.size(size),
                 onLoading = { loading = true },
                 onSuccess = { loading = false },
-                onError = {
-                    loading = false
-                    if (sourceIndex + 1 < sources.size) sourceIndex++ else sourceIndex = sources.size
-                }
+                onError = { loading = false; if (sourceIndex + 1 < sources.size) sourceIndex++ else sourceIndex = sources.size }
             )
         }
-    } else {
-        PlaceholderLogo(item.name, size, item.name.any { it.lowercaseChar() in 'а'..'я' || it.lowercaseChar() in 'a'..'z' })
-    }
+    } else PlaceholderLogo(item.name, size, true)
 }
 
 @Composable
-private fun PlaceholderLogo(name: String, size: androidx.compose.ui.unit.Dp, tv: Boolean) {
-    Box(
-        Modifier.size(size).background(Brush.linearGradient(listOf(Red, DeepRed)), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
+private fun PlaceholderLogo(name: String, size: Dp, tv: Boolean) {
+    Box(Modifier.size(size).background(Brush.linearGradient(listOf(Red, DeepRed)), CircleShape), contentAlignment = Alignment.Center) {
         Text(name.firstOrNull()?.uppercase() ?: "?", color = Color.White, fontSize = (size.value * .42f).sp, fontWeight = FontWeight.Bold)
         Text(if (tv) "📺" else "📻", fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp))
     }
@@ -753,29 +595,14 @@ private fun PlaceholderLogo(name: String, size: androidx.compose.ui.unit.Dp, tv:
 
 @Composable
 private fun SkeletonList(count: Int = 10) {
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        items(count) { SkeletonRow() }
-    }
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) { items(count) { SkeletonRow() } }
 }
 
 @Composable
 private fun SkeletonRow() {
-    val transition = remember { androidx.compose.animation.core.InfiniteTransition() }
     val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "shimmer")
-    val shift by infinite.animateFloat(
-        initialValue = -1f,
-        targetValue = 2f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(1200),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
-        ),
-        label = "shimmer_shift"
-    )
-    val brush = Brush.linearGradient(
-        listOf(Skeleton, Color(0xFF454545), Skeleton),
-        start = androidx.compose.ui.geometry.Offset(shift * 400f, 0f),
-        end = androidx.compose.ui.geometry.Offset((shift + 1f) * 400f, 0f)
-    )
+    val shift by infinite.animateFloat(-1f, 2f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1200)), label = "shimmer_shift")
+    val brush = Brush.linearGradient(listOf(Skeleton, Color(0xFF454545), Skeleton), start = androidx.compose.ui.geometry.Offset(shift * 400f, 0f), end = androidx.compose.ui.geometry.Offset((shift + 1f) * 400f, 0f))
     Row(Modifier.fillMaxWidth().background(brush, RoundedCornerShape(13.dp)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(48.dp).background(Skeleton, CircleShape))
         Spacer(Modifier.width(10.dp))
@@ -791,40 +618,28 @@ private fun ShimmerBox(modifier: Modifier, shape: androidx.compose.ui.graphics.S
 }
 
 @Composable
-private fun NetworkBanner() {
+private fun NetworkBanner(message: String?) {
     Row(Modifier.fillMaxWidth().background(PanelAlt).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Default.WifiOff, null, tint = Red, Modifier.size(18.dp))
         Spacer(Modifier.width(7.dp))
-        Text("Ожидание сети…", color = Color.White, fontSize = 13.sp)
+        Text(message ?: "Ожидание сети…", color = Color.White, fontSize = 13.sp)
     }
 }
 
 @Composable
 private fun EmptySearchState() {
+    val context = LocalContext.current
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Default.Info, null, tint = Red, Modifier.size(42.dp))
         Spacer(Modifier.height(10.dp))
         Text("Ничего не найдено", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = {
-            LocalContext.current.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/TvRadioOnline")))
-        }) {
-            Text("Перейти в Telegram для обсуждения", color = Red)
-        }
+        TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/TvRadioOnline"))) }) { Text("Перейти в Telegram для обсуждения", color = Red) }
     }
 }
 
 @Composable
-private fun TvPlayerScreen(
-    player: PlayerController,
-    channel: StreamItem,
-    playbackError: String?,
-    waitingNetwork: Boolean,
-    onBack: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onOtherPlaylist: () -> Unit
-) {
+private fun TvPlayerScreen(player: PlayerController, channel: StreamItem, playbackError: String?, waitingNetwork: Boolean, networkWarning: String?, onBack: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onOtherPlaylist: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val playing by player.isPlaying.collectAsState()
@@ -836,7 +651,7 @@ private fun TvPlayerScreen(
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = false; this.player = player.player } }, update = { it.player = player.player }, modifier = Modifier.fillMaxSize())
-        AnimatedVisibility(waitingNetwork, Modifier.align(Alignment.TopCenter), enter = fadeIn(), exit = fadeOut()) { NetworkBanner() }
+        AnimatedVisibility(waitingNetwork, Modifier.align(Alignment.TopCenter), enter = fadeIn(), exit = fadeOut()) { NetworkBanner(networkWarning) }
         Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(12.dp)) {
             Row(Modifier.fillMaxWidth().background(Color(0xD9161616), RoundedCornerShape(14.dp)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Red) }
@@ -856,15 +671,7 @@ private fun TvPlayerScreen(
 }
 
 @Composable
-private fun SettingsScreen(
-    store: SettingsStore,
-    sleepText: String?,
-    pipEnabled: Boolean,
-    onPipChange: (Boolean) -> Unit,
-    onBack: () -> Unit,
-    onSleep: (Long) -> Unit,
-    onReset: () -> Unit
-) {
+private fun SettingsScreen(store: SettingsStore, sleepText: String?, pipEnabled: Boolean, onPipChange: (Boolean) -> Unit, onBack: () -> Unit, onSleep: (Long) -> Unit, onReset: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sourceIndex by remember { mutableIntStateOf(0) }
     var custom by remember { mutableStateOf("") }
@@ -878,20 +685,14 @@ private fun SettingsScreen(
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Tv, null, tint = Red)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("PiP при сворачивании", fontWeight = FontWeight.SemiBold)
-                                Text("Мини-окно ТВ при уходе из приложения", fontSize = 11.sp, color = Color.LightGray)
-                            }
+                            Icon(Icons.Default.Tv, null, tint = Red); Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) { Text("PiP при сворачивании", fontWeight = FontWeight.SemiBold); Text("Мини-окно ТВ при уходе из приложения", fontSize = 11.sp, color = Color.LightGray) }
                             androidx.compose.material3.Switch(checked = pipEnabled, onCheckedChange = onPipChange)
                         }
                     }
                 }
                 item { Text("Таймер сна", style = MaterialTheme.typography.titleMedium) }
-                items(presets) { (label, minutes) ->
-                    Button(onClick = { onSleep(minutes) }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text(label) }
-                }
+                items(presets) { (label, minutes) -> Button(onClick = { onSleep(minutes) }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text(label) } }
                 item {
                     OutlinedTextField(value = custom, onValueChange = { value -> if (value.length <= 3 && value.all(Char::isDigit)) custom = value }, label = { Text("Свои минуты (1–480)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(7.dp))
@@ -899,9 +700,7 @@ private fun SettingsScreen(
                 }
                 item { Text("Источник ТВ-плейлиста", style = MaterialTheme.typography.titleMedium) }
                 items(TV_SOURCES.indices.toList()) { index ->
-                    TextButton(onClick = { sourceIndex = index; scope.launch { store.setSourceIndex(index) } }, Modifier.fillMaxWidth()) {
-                        Text((if (sourceIndex == index) "●  " else "○  ") + TV_SOURCES[index].name, color = if (sourceIndex == index) Red else Color.White)
-                    }
+                    TextButton(onClick = { sourceIndex = index; scope.launch { store.setSourceIndex(index) } }, Modifier.fillMaxWidth()) { Text((if (sourceIndex == index) "●  " else "○  ") + TV_SOURCES[index].name, color = if (sourceIndex == index) Red else Color.White) }
                 }
                 item { Button(onClick = onReset, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text("Сбросить выбор раздела") } }
             }
@@ -925,8 +724,7 @@ private fun fuzzyScore(name: String, query: String): Int {
     return if (matched == q.length) 500 - (position - q.length) else Int.MIN_VALUE
 }
 
-private fun fuzzySort(items: List<StreamItem>, query: String): List<StreamItem> =
-    if (query.isBlank()) items else items.map { it to fuzzyScore(it.name, query) }.filter { it.second != Int.MIN_VALUE }.sortedByDescending { it.second }.map { it.first }
+private fun fuzzySort(items: List<StreamItem>, query: String): List<StreamItem> = if (query.isBlank()) items else items.map { it to fuzzyScore(it.name, query) }.filter { it.second != Int.MIN_VALUE }.sortedByDescending { it.second }.map { it.first }
 
 private fun isWifiConnected(context: Context): Boolean {
     val cm = context.getSystemService(ConnectivityManager::class.java)
