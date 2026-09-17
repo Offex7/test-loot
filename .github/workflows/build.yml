@@ -1,7 +1,7 @@
 name: Android APK
 
 concurrency:
-  group: android-apk-v4
+  group: android-apk-v4-final
   cancel-in-progress: true
 
 on:
