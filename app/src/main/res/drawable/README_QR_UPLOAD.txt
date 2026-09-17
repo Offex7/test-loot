@@ -1,1 +1,0 @@
-The exact binary QR is installed by GitHub Git data API in the next commit.
