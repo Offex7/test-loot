@@ -52,6 +52,7 @@ jobs:
           sed -i 's/if (maxWidth >= 560.dp)/if (LocalConfiguration.current.screenWidthDp >= 560)/' "$SRC"
           sed -i 's/player = this@TvPlayer.player.player/this.player = player.player/' "$SRC"
           python3 -c "from pathlib import Path; p=Path('$SRC'); s=p.read_text(encoding='utf-8'); old='private fun awaitDisposeCompat(onDispose: () -> Unit): suspend () -> Unit {\n    try {\n        kotlinx.coroutines.awaitCancellation()\n    } finally {\n        onDispose()\n    }\n}'; new='private suspend fun awaitDisposeCompat(onDispose: () -> Unit) {\n    try {\n        kotlinx.coroutines.awaitCancellation()\n    } finally {\n        onDispose()\n    }\n}'; p.write_text(s.replace(old,new),encoding='utf-8')"
+          sed -i 's/snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short)/scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }/' "$SRC"
       - name: Validate donation QR resource
         run: |
           set -e
