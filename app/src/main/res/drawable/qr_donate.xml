@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="180dp"
+    android:viewportWidth="180"
+    android:viewportHeight="180">
+    <!-- Donation QR placeholder: attached binary QR could not be transferred through the GitHub connector. -->
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h180v180h-180z" />
+    <path android:fillColor="#111111" android:pathData="M12,12h48v48h-48zM120,12h48v48h-48zM12,120h48v48h-48z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M20,20h32v32h-32zM128,20h32v32h-32zM20,128h32v32h-32z" />
+    <path android:fillColor="#111111" android:pathData="M28,28h16v16h-16zM136,28h16v16h-16zM28,136h16v16h-16z" />
+    <path android:fillColor="#111111" android:pathData="M72,18h8v20h-8zM88,18h8v12h-8zM68,44h12v8h-12zM92,38h18v8h-18zM68,72h8v8h-8zM84,64h12v12h-12zM104,72h8v20h-8zM68,88h8v16h-8zM84,84h8v8h-8zM96,96h16v8h-16zM72,112h12v8h-12zM88,108h8v20h-8zM104,120h16v8h-16zM120,92h8v16h-8zM136,72h8v8h-8zM148,76h12v8h-12zM124,112h8v20h-8zM140,100h8v12h-8zM148,124h12v8h-12zM112,140h8v20h-8zM88,136h12v8h-12zM68,148h8v12h-8z" />
+    <path android:fillColor="#E53935" android:pathData="M72,70h36a10,10 0,0 1,10 10v30a10,10 0,0 1,-10 10h-36a10,10 0,0 1,-10 -10v-30a10,10 0,0 1,10 -10z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M78,88h10v6h-10zM92,84h10v6h-10zM78,100h24v6h-24zM82,112h16v6h-16z" />
+</vector>
