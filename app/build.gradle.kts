@@ -98,15 +98,41 @@ tasks.named("preBuild") {
         val source = file("src/main/java/com/offex7/streamhub/MainActivity.kt")
         if (source.exists()) {
             var text = source.readText(Charsets.UTF_8)
-            if (!text.contains("import androidx.lifecycle.lifecycleScope")) {
-                text = text.replace("import androidx.media3.ui.PlayerView", "import androidx.lifecycle.lifecycleScope\nimport androidx.media3.ui.PlayerView")
-            }
+
+            // Kotlin 2.2+ / Compose compatibility fixes for the checked-in compact V4 source.
+            text = text.replace("import androidx.compose.foundation.layout.weight\n", "")
+            text = text.replace("import androidx.media3.ui.PlayerView", "import androidx.lifecycle.lifecycleScope\nimport androidx.compose.runtime.awaitDispose\nimport androidx.media3.ui.PlayerView")
+            text = text.replace("sessionZoom", "zoomByChannel")
+            text = text.replace("@Composable private fun Theme(c:@Composable()->Unit)=MaterialTheme", "@Composable private fun Theme(content: @Composable () -> Unit)=MaterialTheme")
+            text = text.replace("content=c)", "content=content)")
+
+            // Persist the last visited section for the 10-minute restore banner.
             if (!text.contains("override fun onStop()")) {
                 text = text.replace(" override fun onDestroy(){", " override fun onStop(){lifecycleScope.launch{store.setLastExitTime(System.currentTimeMillis())};super.onStop()}\n override fun onDestroy(){")
             }
+
+            // Dedicated local radio logos; radio list logos are 96dp, TV logos stay 56dp.
+            text = text.replace("else->\"logo_fallback\"", "\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";else->\"logo_fallback\"")
             val radioNames = "setOf(\"RECORD\",\"CHOCOLATE\",\"ЭНЕРДЖИ\",\"ULTRA\",\"КАЛЬЯН РЭП\",\"PIRATE STATION\",\"VOCAL DRUM\",\"CHILL HOUSE\",\"PSY TRANCE\",\"METALCORE\",\"RELAX\",\"COMEDY CLUB\",\"АВТОРАДИО\",\"ЮГ МОЛОДОЙ\")"
-            text = text.replace("LocalLogo(it,56.dp,offline)", "LocalLogo(it,if(it.name.uppercase(Locale.ROOT) in $radioNames) 96.dp else 56.dp,offline)")
-            text = text.replace("\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";\"RELAX\"->\"logo_relax\"", "\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";\"RELAX\"->\"logo_relax\"")
+            text = text.replace("LogoImage(item,56.dp,offline)", "LogoImage(item,if(item.name.uppercase(Locale.ROOT) in $radioNames) 96.dp else 56.dp,offline)")
+
+            // Replace the malformed Disclaimer string with valid Kotlin source.
+            val ds = text.indexOf("@Composable private fun Disclaimer")
+            val de = text.indexOf("@Composable private fun ChannelRow", ds)
+            if (ds >= 0 && de > ds) {
+                val disclaimer = """
+@Composable private fun Disclaimer(onBack:()->Unit){
+    val c=LocalContext.current
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        item{Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,\"Назад\",tint=Red)};Text(\"Отказ от ответственности\",fontSize=20.sp,fontWeight=FontWeight.Bold)}}
+        item{Text(\"Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.\\n\\nПриложение не хранит, не распространяет и не модифицирует транслируемый контент. Все трансляции предоставляются третьими лицами. Разработчик не несёт ответственности за содержание транслируемого контента.\\n\\nЕсли вы являетесь правообладателем и считаете, что ваши права нарушаются — свяжитесь с нами через Telegram: ${'$'}TELEGRAM\",color=Color.LightGray,fontSize=14.sp,lineHeight=21.sp)}
+        item{OutlinedButton(onClick={openUrl(c,TELEGRAM)},Modifier.fillMaxWidth()){Text(\"Telegram\")}}
+    }
+}
+
+"""
+                text = text.substring(0,ds)+disclaimer+text.substring(de)
+            }
             source.writeText(text, Charsets.UTF_8)
         }
     }
