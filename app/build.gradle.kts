@@ -97,11 +97,17 @@ tasks.named("preBuild") {
     doLast {
         val source = file("src/main/java/com/offex7/streamhub/MainActivity.kt")
         if (source.exists()) {
-            val original = source.readText(Charsets.UTF_8)
-            val marker = "else->\"logo_fallback\""
-            val replacement = "\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";$marker"
-            val patched = original.replace(marker, replacement)
-            if (patched != original) source.writeText(patched, Charsets.UTF_8)
+            var text = source.readText(Charsets.UTF_8)
+            if (!text.contains("import androidx.lifecycle.lifecycleScope")) {
+                text = text.replace("import androidx.media3.ui.PlayerView", "import androidx.lifecycle.lifecycleScope\nimport androidx.media3.ui.PlayerView")
+            }
+            if (!text.contains("override fun onStop()")) {
+                text = text.replace(" override fun onDestroy(){", " override fun onStop(){lifecycleScope.launch{store.setLastExitTime(System.currentTimeMillis())};super.onStop()}\n override fun onDestroy(){")
+            }
+            val radioNames = "setOf(\"RECORD\",\"CHOCOLATE\",\"ЭНЕРДЖИ\",\"ULTRA\",\"КАЛЬЯН РЭП\",\"PIRATE STATION\",\"VOCAL DRUM\",\"CHILL HOUSE\",\"PSY TRANCE\",\"METALCORE\",\"RELAX\",\"COMEDY CLUB\",\"АВТОРАДИО\",\"ЮГ МОЛОДОЙ\")"
+            text = text.replace("LocalLogo(it,56.dp,offline)", "LocalLogo(it,if(it.name.uppercase(Locale.ROOT) in $radioNames) 96.dp else 56.dp,offline)")
+            text = text.replace("\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";\"RELAX\"->\"logo_relax\"", "\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";\"RELAX\"->\"logo_relax\"")
+            source.writeText(text, Charsets.UTF_8)
         }
     }
 }
