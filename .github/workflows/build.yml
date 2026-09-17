@@ -1,7 +1,7 @@
 name: Android APK
 
 concurrency:
-  group: android-apk-v4-canonical
+  group: android-apk-v4
   cancel-in-progress: true
 
 on:
@@ -31,20 +31,6 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
-      - name: Restore canonical V4 MainActivity source
-        run: |
-          set -e
-          SRC=app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          GZ=app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz
-          test -f "$GZ"
-          gunzip -c "$GZ" > "$SRC"
-          test -s "$SRC"
-          grep -q "class MainActivity" "$SRC"
-          if grep -q "sessionZoom" "$SRC"; then
-            echo "Stale sessionZoom symbol found in canonical source" >&2
-            exit 1
-          fi
-          echo "Canonical source restored: $(wc -c < "$SRC") bytes"
       - name: Build installable debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - name: Locate APK
