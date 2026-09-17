@@ -92,4 +92,16 @@ val downloadV4Assets by tasks.registering {
     }
 }
 
-tasks.named("preBuild") { dependsOn(downloadV4Assets) }
+tasks.named("preBuild") {
+    dependsOn(downloadV4Assets)
+    doLast {
+        val source = file("src/main/java/com/offex7/streamhub/MainActivity.kt")
+        if (source.exists()) {
+            val original = source.readText(Charsets.UTF_8)
+            val marker = "else->\"logo_fallback\""
+            val replacement = "\"COMEDY CLUB\"->\"logo_comedy\";\"АВТОРАДИО\"->\"logo_autoradio\";$marker"
+            val patched = original.replace(marker, replacement)
+            if (patched != original) source.writeText(patched, Charsets.UTF_8)
+        }
+    }
+}
