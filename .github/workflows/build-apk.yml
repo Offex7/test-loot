@@ -1,9 +1,5 @@
 name: Build Android APK
 
-concurrency:
-  group: android-apk-v4
-  cancel-in-progress: true
-
 on:
   workflow_dispatch:
   push:
