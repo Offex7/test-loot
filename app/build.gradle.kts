@@ -93,3 +93,4 @@ val downloadV4Assets by tasks.registering {
 }
 
 tasks.named("preBuild") { dependsOn(downloadV4Assets) }
+tasks.matching { it.name == "generateDebugResources" || it.name == "processDebugResources" }.configureEach { dependsOn(downloadV4Assets) }
