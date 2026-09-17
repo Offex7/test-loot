@@ -24,7 +24,7 @@ android {
     packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/NOTICE") }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
-    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v4res"))
+    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v4res").get().asFile)
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -65,7 +65,9 @@ val v4Assets = mapOf(
     "logo_metalcore" to "https://lh3.ggpht.com/3F-VojAzJppXcdFDGvjZ_55ONQyBo4mlpEqbIS9n5w-kG-W4NxT2MqdQU5qcwsXJ7g=s180",
     "logo_yug" to "https://yug-radio.ru/writable/uploads/grafskiy-photos/________________________-mobile.jpg",
     "logo_relax" to "https://avatars.mds.yandex.net/i?id=03476032ca5ccd22a23ac6b876142cd3_l-9291097-images-thumbs&n=13",
-    "logo_fallback" to "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13"
+    "logo_fallback" to "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13",
+    "logo_comedy" to "https://mediaplano.ru/wp-content/uploads/2019/11/comedy-radio-logo.png",
+    "logo_autoradio" to "https://commons.wikimedia.org/wiki/Special:Redirect/file/Avtoradio4.png"
 )
 
 val downloadV4Assets by tasks.registering {
