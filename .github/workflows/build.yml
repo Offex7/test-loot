@@ -31,6 +31,22 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+      - name: Apply V4 source compatibility fixes
+        run: |
+          set -e
+          SRC=app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/offex7/streamhub/MainActivity.kt")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace("import androidx.activity.BackHandler", "import androidx.activity.compose.BackHandler")
+          s = s.replace("import androidx.media3.ui.PlayerView", "import androidx.compose.runtime.awaitDispose\nimport androidx.media3.ui.PlayerView")
+          s = s.replace("awaitDisposeCompat { runCatching { manager.unregisterNetworkCallback(callback) } }", "awaitDispose { runCatching { manager.unregisterNetworkCallback(callback) } }")
+          p.write_text(s, encoding="utf-8")
+          PY
+          grep -q "androidx.activity.compose.BackHandler" "$SRC"
+          grep -q "androidx.compose.runtime.awaitDispose" "$SRC"
+          grep -q "zoomByChannel" "$SRC"
       - name: Build installable debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - name: Locate APK
