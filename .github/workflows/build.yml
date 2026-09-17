@@ -36,16 +36,8 @@ jobs:
           set -e
           SRC=app/src/main/java/com/offex7/streamhub/MainActivity.kt
           GZ=app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz
-          B64=app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.b64.part1
-          if [ -f "$B64" ]; then
-            base64 -d "$B64" > /tmp/MainActivity_v4.kt.gz
-            gunzip -c /tmp/MainActivity_v4.kt.gz > "$SRC"
-          elif [ -f "$GZ" ]; then
-            gunzip -c "$GZ" > "$SRC"
-          else
-            echo "Canonical V4 source archive is missing" >&2
-            exit 1
-          fi
+          test -f "$GZ"
+          gunzip -c "$GZ" > "$SRC"
           test -s "$SRC"
           grep -q "class MainActivity" "$SRC"
           if grep -q "sessionZoom" "$SRC"; then
