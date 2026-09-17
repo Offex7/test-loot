@@ -42,6 +42,7 @@ jobs:
           s = s.replace("import androidx.activity.BackHandler", "import androidx.activity.compose.BackHandler")
           s = s.replace("import androidx.media3.ui.PlayerView", "import androidx.compose.runtime.awaitDispose\nimport androidx.media3.ui.PlayerView")
           s = s.replace("awaitDisposeCompat { runCatching { manager.unregisterNetworkCallback(callback) } }", "awaitDispose { runCatching { manager.unregisterNetworkCallback(callback) } }")
+          s = s.replace('snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short)', 'scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }')
           p.write_text(s, encoding="utf-8")
           PY
           grep -q "androidx.activity.compose.BackHandler" "$SRC"
