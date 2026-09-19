@@ -7,7 +7,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_app_icon"
-        android:label="Radio.TV"
+        android:label="TV / Radio"
         android:roundIcon="@drawable/ic_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.StreamHub"
