@@ -29,6 +29,8 @@ class SettingsStore(private val context: Context) {
     private val pipKey = booleanPreferencesKey("pip_on_minimize")
     private val tvUsageKey = longPreferencesKey("usage_tv_seconds")
     private val radioUsageKey = longPreferencesKey("usage_radio_seconds")
+    private val tvChannelUsageKey = stringPreferencesKey("usage_tv_channels")
+    private val radioStationUsageKey = stringPreferencesKey("usage_radio_stations")
     private val tvScrollIndexKey = intPreferencesKey("tv_scroll_index")
     private val tvScrollOffsetKey = intPreferencesKey("tv_scroll_offset")
     private val radioScrollIndexKey = intPreferencesKey("radio_scroll_index")
@@ -93,7 +95,57 @@ class SettingsStore(private val context: Context) {
             it[key] = (it[key] ?: 0L) + seconds
         }
     }
-    suspend fun resetUsage(section: Section) { context.dataStore.edit { it[if (section == Section.TV) tvUsageKey else radioUsageKey] = 0L } }
+
+    fun channelUsageFlow(section: Section): Flow<Map<String, Long>> =
+        context.dataStore.data.map { prefs ->
+            decodeUsageMap(prefs[if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey])
+        }
+
+    suspend fun addChannelUsage(section: Section, usage: Map<String, Long>) {
+        val cleaned = usage.filterValues { it > 0L }
+        if (cleaned.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val key = if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey
+            val current = decodeUsageMap(prefs[key]).toMutableMap()
+            cleaned.forEach { (id, seconds) ->
+                if (id.isNotBlank() && seconds > 0L) current[id] = (current[id] ?: 0L) + seconds
+            }
+            prefs[key] = encodeUsageMap(current)
+        }
+    }
+
+    suspend fun addPlaybackUsage(section: Section, usage: Map<String, Long>) {
+        val total = usage.values.filter { it > 0L }.sum()
+        if (total <= 0L) return
+        context.dataStore.edit { prefs ->
+            val totalKey = if (section == Section.TV) tvUsageKey else radioUsageKey
+            val mapKey = if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey
+            prefs[totalKey] = (prefs[totalKey] ?: 0L) + total
+            val current = decodeUsageMap(prefs[mapKey]).toMutableMap()
+            usage.forEach { (id, seconds) ->
+                if (id.isNotBlank() && seconds > 0L) current[id] = (current[id] ?: 0L) + seconds
+            }
+            prefs[mapKey] = encodeUsageMap(current)
+        }
+    }
+
+    suspend fun resetUsage(section: Section) {
+        context.dataStore.edit {
+            it[if (section == Section.TV) tvUsageKey else radioUsageKey] = 0L
+            it[if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey] = "{}"
+        }
+    }
+
+    private fun decodeUsageMap(raw: String?): Map<String, Long> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val json = org.json.JSONObject(raw)
+            json.keys().asSequence().associateWith { key -> json.optLong(key, 0L).coerceAtLeast(0L) }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeUsageMap(map: Map<String, Long>): String =
+        org.json.JSONObject().apply { map.forEach { (key, value) -> put(key, value.coerceAtLeast(0L)) } }.toString()
 
     suspend fun scrollPosition(section: Section): Pair<Int, Int> {
         val p = context.dataStore.data.first()
