@@ -82,7 +82,7 @@ val v5Assets = mapOf(
 )
 
 val downloadV5Assets by tasks.registering {
-    val outDir = layout.buildDirectory.dir("generated/v4res/drawable")
+    val outDir = layout.buildDirectory.dir("generated/v5res/drawable")
     outputs.dir(outDir)
     doLast {
         val dir = outDir.get().asFile
