@@ -17,6 +17,8 @@ private val Context.dataStore by preferencesDataStore("streamhub_settings")
 class SettingsStore(private val context: Context) {
     private val sectionKey = stringPreferencesKey("last_section")
     private val sourceKey = intPreferencesKey("tv_source_index")
+    private val activeSourceKeyStorage = stringPreferencesKey("tv_active_source")
+    private val userPlaylistsStorage = stringPreferencesKey("tv_user_playlists_v1")
     private val exitKey = longPreferencesKey("last_exit_time")
     private val tvNameKey = stringPreferencesKey("last_tv_name")
     private val tvUrlKey = stringPreferencesKey("last_tv_url")
@@ -41,7 +43,68 @@ class SettingsStore(private val context: Context) {
     suspend fun clearSection() { context.dataStore.edit { it.remove(sectionKey) } }
 
     suspend fun sourceIndex(): Int = context.dataStore.data.first()[sourceKey] ?: 0
-    suspend fun setSourceIndex(index: Int) { context.dataStore.edit { it[sourceKey] = index.coerceIn(0, TV_SOURCES.lastIndex) } }
+
+    suspend fun setSourceIndex(index: Int) {
+        setActiveSourceKey(builtinSourceKey(index))
+    }
+
+    suspend fun activeSourceKey(): String {
+        val prefs = context.dataStore.data.first()
+        return prefs[activeSourceKeyStorage] ?: builtinSourceKey(prefs[sourceKey] ?: 0)
+    }
+
+    suspend fun setActiveSourceKey(key: String) {
+        val normalized = key.trim()
+        if (normalized.isBlank()) return
+        context.dataStore.edit {
+            it[activeSourceKeyStorage] = normalized
+            if (normalized.startsWith(BUILTIN_SOURCE_PREFIX)) {
+                normalized.removePrefix(BUILTIN_SOURCE_PREFIX).toIntOrNull()?.let { index ->
+                    it[sourceKey] = index.coerceIn(0, TV_SOURCES.lastIndex)
+                }
+            }
+        }
+    }
+
+    suspend fun userPlaylists(): List<UserPlaylist> {
+        val raw = context.dataStore.data.first()[userPlaylistsStorage].orEmpty()
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val json = org.json.JSONArray(raw)
+            buildList {
+                for (i in 0 until json.length()) {
+                    val item = json.optJSONObject(i) ?: continue
+                    val name = item.optString("name").trim()
+                    val url = item.optString("url").trim()
+                    if (name.isNotBlank() && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                        add(UserPlaylist(name, url))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun addUserPlaylist(name: String, url: String): Boolean {
+        val cleanName = name.trim()
+        val cleanUrl = url.trim()
+        if (cleanName.isBlank() || !(cleanUrl.startsWith("http://", true) || cleanUrl.startsWith("https://", true))) return false
+        val current = userPlaylists()
+        if (current.any { it.url.equals(cleanUrl, ignoreCase = true) }) return false
+        context.dataStore.edit { it[userPlaylistsStorage] = encodeUserPlaylists(current + UserPlaylist(cleanName, cleanUrl)) }
+        return true
+    }
+
+    suspend fun removeUserPlaylist(url: String) {
+        val cleanUrl = url.trim()
+        val updated = userPlaylists().filterNot { it.url.equals(cleanUrl, ignoreCase = true) }
+        context.dataStore.edit { it[userPlaylistsStorage] = encodeUserPlaylists(updated) }
+        if (activeSourceKey() == userPlaylistKey(cleanUrl)) setActiveSourceKey(builtinSourceKey(0))
+    }
+
+    private fun encodeUserPlaylists(items: List<UserPlaylist>): String =
+        org.json.JSONArray().apply {
+            items.forEach { put(org.json.JSONObject().apply { put("name", it.name); put("url", it.url) }) }
+        }.toString()
 
     suspend fun lastExitTime(): Long = context.dataStore.data.first()[exitKey] ?: 0L
     suspend fun setLastExitTime(timestamp: Long) { context.dataStore.edit { it[exitKey] = timestamp } }
