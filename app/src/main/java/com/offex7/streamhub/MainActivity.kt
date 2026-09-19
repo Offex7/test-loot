@@ -13,11 +13,11 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
-import androidx.activity.BackHandler
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -50,7 +50,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -248,7 +247,7 @@ private fun App(
                 sleepMinutes = 0L
                 tv.stop()
                 radio.stop()
-                snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short)
+                scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }
                 break
             }
             sleepRemaining = left
@@ -310,7 +309,7 @@ private fun App(
                         sleepUntil = 0L
                         sleepRemaining = 0L
                         sleepMinutes = 0L
-                        snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short)
+                        scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }
                     },
                     onResetStats = { target ->
                         scope.launch {
@@ -417,7 +416,7 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
                     Icon(Icons.Default.Settings, "Настройки", tint = Red)
                 }
             }
-            if (maxWidth >= 560.dp) {
+            if (LocalConfiguration.current.screenWidthDp >= 560) {
                 Row(
                     Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -1013,7 +1012,7 @@ private fun TvPlayer(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
-                    player = this@TvPlayer.player.player
+                    this.player = player.player
                     setShutterBackgroundColor(AColor.BLACK)
                     setKeepContentOnPlayerReset(true)
                 }
@@ -1541,7 +1540,7 @@ private suspend fun scanAvailability(
     return current + output
 }
 
-private fun awaitDisposeCompat(onDispose: () -> Unit): suspend () -> Unit = {
+private suspend fun awaitDisposeCompat(onDispose: () -> Unit) {
     try {
         kotlinx.coroutines.awaitCancellation()
     } finally {
