@@ -1280,11 +1280,12 @@ private fun DonationQrImage(
     contentDescription: String,
     modifier: Modifier
 ) {
+    val context = LocalContext.current
     var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     LaunchedEffect(Unit) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                LocalContext.current.assets.open("qr_donate.png").use { input ->
+                context.assets.open("qr_donate.png").use { input ->
                     BitmapFactory.decodeStream(input)?.asImageBitmap()
                 }
             }.getOrNull()
