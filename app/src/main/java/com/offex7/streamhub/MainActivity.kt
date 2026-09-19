@@ -904,7 +904,7 @@ private fun Tv(
                 onRefresh = {
                     scope.launch {
                         refreshing = true
-                        repo.loadSource(store.sourceIndex())
+                        repo.loadSource(store.activeSourceKey())
                             .onSuccess { channels = it; health = emptyMap(); repo.warmFallbacks() }
                             .onFailure { notify("Возникла проблема. Обсуждаем решения в Telegram.") }
                         refreshing = false
@@ -930,7 +930,7 @@ private fun Tv(
                     onRefresh = {
                         scope.launch {
                             refreshing = true
-                            repo.loadSource(store.sourceIndex())
+                            repo.loadSource(store.activeSourceKey())
                                 .onSuccess { channels = it; health = emptyMap(); repo.warmFallbacks() }
                                 .onFailure { notify("Возникла проблема. Обсуждаем решения в Telegram.") }
                             refreshing = false
