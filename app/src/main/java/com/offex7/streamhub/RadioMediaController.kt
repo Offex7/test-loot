@@ -57,8 +57,18 @@ class RadioMediaController(context: Context) {
     fun pause() { controller?.pause() }
     fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun stop() { controller?.stop(); _error.value = null }
-    fun next() { controller?.seekToNextMediaItem(); controller?.play() }
-    fun previous() { controller?.seekToPreviousMediaItem(); controller?.play() }
+    fun next() {
+        controller?.let {
+            val current = it.currentMediaItemIndex.coerceAtLeast(0)
+            play((current + 1) % RADIO_STATIONS.size)
+        }
+    }
+    fun previous() {
+        controller?.let {
+            val current = it.currentMediaItemIndex.coerceAtLeast(0)
+            play((current - 1 + RADIO_STATIONS.size) % RADIO_STATIONS.size)
+        }
+    }
     fun setVolume(value: Float) { controller?.volume = value.coerceIn(0f, 1f) }
     fun fadeOut(durationMs: Long, onEnd: (() -> Unit)? = null) {
         val target = controller ?: return
