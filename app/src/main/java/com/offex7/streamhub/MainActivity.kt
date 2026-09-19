@@ -649,7 +649,8 @@ private fun Tv(
     notify: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val repo = remember { PlaylistRepository(LocalContext.current.applicationContext) }
+    val context = LocalContext.current
+    val repo = remember(context) { PlaylistRepository(context.applicationContext) }
     val list = rememberLazyListState()
     val network by rememberNetworkState()
     val error by player.error.collectAsState()
