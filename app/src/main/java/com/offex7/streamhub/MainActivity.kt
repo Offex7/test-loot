@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.offex7.streamhub
 
 import android.app.PictureInPictureParams
@@ -421,7 +422,7 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                Text("TV / Radio. Online • V5.0", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
+                Text("TV / Radio. Online", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
                 IconButton(onClick = settings) { Icon(Icons.Default.Settings, "Настройки", tint = Red) }
             }
             if (LocalConfiguration.current.screenWidthDp >= 560) {
