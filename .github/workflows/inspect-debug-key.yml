@@ -10,7 +10,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -30,15 +30,23 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
-      - name: Generate and inspect debug key
+      - name: Build current debug APK
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Inspect debug key and certificate
         run: |
           set -e
-          gradle :app:signingReport --no-daemon
-          test -f "$HOME/.android/debug.keystore"
-          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey
-          cp "$HOME/.android/debug.keystore" android-debug.keystore
+          APK=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
+          echo "DEBUG_KEY_CANDIDATES:"
+          find "$HOME" -path "*/.android/debug.keystore" -type f -print || true
+          KEY="$HOME/.config/.android/debug.keystore"
+          if [ ! -f "$KEY" ]; then KEY="$HOME/.android/debug.keystore"; fi
+          test -f "$KEY"
+          keytool -list -v -keystore "$KEY" -storepass android -alias AndroidDebugKey
+          cp "$KEY" android-debug.keystore
       - uses: actions/upload-artifact@v4
         with:
-          name: android-debug-keystore-inspection
+          name: android-debug-keystore-v5-inspection
           path: android-debug.keystore
           if-no-files-found: error
