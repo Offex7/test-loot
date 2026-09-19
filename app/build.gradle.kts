@@ -37,7 +37,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
     androidResources { noCompress += "png" }
-    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v4res").get().asFile)
+    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v5res").get().asFile)
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -90,7 +90,7 @@ val downloadV5Assets by tasks.registering {
         val dir = outDir.get().asFile
         dir.mkdirs()
         fun run(vararg args: String): Boolean = runCatching { ProcessBuilder(*args).inheritIO().start().waitFor() == 0 }.getOrDefault(false)
-        for ((name, url) in v4Assets) {
+        for ((name, url) in v5Assets) {
             val raw = File(dir, "${name}.source")
             val png = File(dir, "${name}.png")
             if (!png.exists()) {
@@ -105,5 +105,5 @@ val downloadV5Assets by tasks.registering {
     }
 }
 
-tasks.named("preBuild") { dependsOn(downloadV4Assets) }
+tasks.named("preBuild") { dependsOn(downloadV5Assets) }
 tasks.matching { it.name == "generateDebugResources" || it.name == "processDebugResources" }.configureEach { dependsOn(downloadV4Assets) }
