@@ -26,6 +26,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -48,6 +49,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -720,6 +722,16 @@ private fun Tv(
 
     fun candidates(item: StreamItem): List<String> = listOf(item.url) + repo.fallbackUrlsFor(item.name)
 
+    fun previousIndex(start: Int): Int {
+        if (channels.isEmpty()) return -1
+        var cursor = start
+        repeat(channels.size - 1) {
+            cursor = (cursor - 1 + channels.size) % channels.size
+            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
+        }
+        return -1
+    }
+
     fun nextIndex(start: Int): Int {
         if (channels.isEmpty()) return -1
         var cursor = start
@@ -768,7 +780,7 @@ private fun Tv(
             onBack = { playbackJob?.cancel(); full = false },
             onSettings = { playbackJob?.cancel(); full = false; settings() },
             onPrev = {
-                val i = nextIndex(selected - 1)
+                val i = previousIndex(selected)
                 if (i >= 0) startPlayback(i)
             },
             onNext = {
@@ -959,7 +971,7 @@ private fun TvPlayer(
                 ) {
                     IconButton(onClick = { showBars(); onBack() }) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red, modifier = Modifier.size(28.dp)) }
                     Row {
-                        IconButton(onClick = { showBars(); onResetZoom() }) { Icon(Icons.Default.Refresh, "Сбросить зум", tint = Red, modifier = Modifier.size(26.dp)) }
+                        IconButton(onClick = { zoom = 1f; zoomByChannel.remove(channel.key); showBars(); onResetZoom() }) { Icon(Icons.Default.Refresh, "Сбросить зум", tint = Red, modifier = Modifier.size(26.dp)) }
                         IconButton(onClick = { showBars(); onSettings() }) { Icon(Icons.Default.Settings, "Настройки", tint = Red, modifier = Modifier.size(26.dp)) }
                     }
                 }
@@ -1316,7 +1328,7 @@ private fun LogoImage(
             .alpha(if (dimmed) .4f else 1f)
             .then(if (activeRadio) Modifier.border(2.dp, Red.copy(alpha = .7f), RoundedCornerShape(12.dp)) else Modifier)
         if (preferRemote && !item.logoUrl.isNullOrBlank()) {
-            coil.compose.AsyncImage(
+            coil3.compose.AsyncImage(
                 model = item.logoUrl,
                 contentDescription = item.name,
                 modifier = imageModifier,
@@ -1486,7 +1498,7 @@ private fun rememberNetworkState(): androidx.compose.runtime.State<Boolean> {
             override fun onLost(network: Network) { value = networkNow(context) }
         }
         runCatching { manager.registerDefaultNetworkCallback(callback) }
-        awaitDisposeCompat { runCatching { manager.unregisterNetworkCallback(callback) } }
+        awaitDispose { runCatching { manager.unregisterNetworkCallback(callback) } }
     }
 }
 
