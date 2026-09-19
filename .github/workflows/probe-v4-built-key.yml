@@ -1,0 +1,49 @@
+name: Probe V4 Built Debug Key
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact V4 snapshot
+        run: |
+          git fetch origin 0f3028929480f29bc1deb4d4b6bda2ca2ca6d6c1
+          git checkout --detach 0f3028929480f29bc1deb4d4b6bda2ca2ca6d6c1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android SDK
+        run: |
+          set -e
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
+      - name: Build V4 APK and capture signing key
+        run: |
+          set -e
+          gradle :app:assembleDebug --no-daemon --stacktrace
+          echo "Candidate keystores:"
+          find "$HOME" -type f -name "debug.keystore" -print
+          KEY="$HOME/.config/.android/debug.keystore"
+          test -f "$KEY"
+          keytool -list -v -keystore "$KEY" -storepass android -alias AndroidDebugKey | tee key.txt
+          SHA=$(sed -n 's/^[[:space:]]*SHA-256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          echo "EXPECTED_V4_SHA256=0a4d5b1d4fba168800fbece07e0f33c2b3651fa219ccb150828075ae8eaae6bf"
+          echo "BUILT_V4_SHA256=$SHA"
