@@ -17,8 +17,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -442,18 +446,36 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
 
 @Composable
 private fun HomeCard(title: String, logo: Int, modifier: Modifier, onClick: () -> Unit) {
-    BoxWithConstraints {
-        val imageSize = minOf(maxWidth * 0.56f, maxHeight * 0.58f).coerceAtLeast(72.dp)
-        Card(onClick = onClick, modifier = modifier, colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
-            Column(
-                Modifier.fillMaxSize().padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Panel),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                Image(painterResource(logo), title, Modifier.size(imageSize))
-                Spacer(Modifier.height(8.dp))
-                Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                Image(
+                    painter = painterResource(logo),
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxHeight(0.82f).aspectRatio(1f)
+                )
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -539,35 +561,51 @@ private fun Radio(
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
     }
+
     LaunchedEffect(index) {
         if (index != previousIndex) listenedSeconds = 0L
         previousIndex = index
     }
+
     LaunchedEffect(playing, index) {
         while (playing && index >= 0) {
             delay(1000L)
-            if (playing) listenedSeconds++
+            if (player.isPlaying.value && player.currentIndex.value == index) {
+                listenedSeconds++
+            }
         }
     }
+
     LaunchedEffect(Unit) {
         UsageTicker(
-            store,
-            Section.RADIO,
-            channelIdProvider = { RADIO_STATIONS.getOrNull(index)?.name },
-            activeProvider = { player.isPlaying.value }
+            store = store,
+            section = Section.RADIO,
+            channelIdProvider = { RADIO_STATIONS.getOrNull(player.currentIndex.value)?.name },
+            activeProvider = { player.isPlaying.value && player.currentIndex.value >= 0 }
         ).run()
     }
+
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (first, offset) -> store.saveScrollPosition(Section.RADIO, first, offset) }
     }
-    LaunchedEffect(error) { if (error != null) notify("Возникла проблема. Обсуждаем решения в Telegram.") }
+
+    LaunchedEffect(error) {
+        if (error != null) notify("Возникла проблема. Обсуждаем решения в Telegram.")
+    }
 
     val current = RADIO_STATIONS.getOrNull(index)
+    val orderedStations = remember(favorites) {
+        RADIO_STATIONS.sortedWith(
+            compareByDescending<StreamItem> { favorites.contains(it.key) }
+                .thenBy { it.name.lowercase(Locale.ROOT) }
+        )
+    }
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         Column(Modifier.fillMaxSize()) {
             if (!network) NetworkBanner()
+
             Header(
                 title = "РАДИО",
                 timer = "",
@@ -581,26 +619,28 @@ private fun Radio(
                 showSearch = false,
                 showTimer = false
             )
+
             restore?.let { item ->
                 RestoreBanner(
                     item = item,
                     onContinue = {
                         val i = RADIO_STATIONS.indexOfFirst { station -> station.url == item.url }
-                        if (i >= 0) { player.play(i); saveLast(item) }
+                        if (i >= 0) {
+                            player.play(i)
+                            saveLast(RADIO_STATIONS[i])
+                        }
                     },
                     onClose = dismissRestore
                 )
             }
+
             LazyColumn(
                 state = list,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(10.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                items(
-                    RADIO_STATIONS.sortedWith(compareByDescending<StreamItem> { favorites.contains(it.key) }.thenBy { it.name.lowercase(Locale.ROOT) }),
-                    key = { it.key }
-                ) { station ->
+                items(orderedStations, key = { it.key }) { station ->
                     val favorite = favorites.contains(station.key)
                     val active = station.url == current?.url
                     ChannelRow(
@@ -610,7 +650,10 @@ private fun Radio(
                         offline = false,
                         onPlay = {
                             val i = RADIO_STATIONS.indexOf(station)
-                            if (i >= 0) { player.play(i); saveLast(station) }
+                            if (i >= 0) {
+                                player.play(i)
+                                saveLast(station)
+                            }
                         },
                         onFavorite = {
                             scope.launch {
@@ -618,14 +661,18 @@ private fun Radio(
                                     store.setFavorite(Section.RADIO, station.key, !favorite)
                                     favorites = store.favorites(Section.RADIO)
                                     notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
-                                }.onFailure { notify("Не удалось обновить избранное") }
+                                }.onFailure {
+                                    notify("Не удалось обновить избранное")
+                                }
                             }
                         },
-                        logoSize = 82.dp,
+                        logoSize = 72.dp,
                         isRadio = true,
                         activeRadio = active,
-                        radioStatus = if (active) if (playing) "играет" else "пауза" else null,
-                        radioTimer = if (active && playing) formatTime(listenedSeconds) else null,
+                        radioStatus = if (active) {
+                            if (playing) "играет" else "пауза"
+                        } else null,
+                        radioTimer = if (active) formatTime(listenedSeconds) else null,
                         onPrev = if (active) ({ player.previous() }) else null,
                         onToggle = if (active) ({ player.toggle() }) else null,
                         onNext = if (active) ({ player.next() }) else null
@@ -1317,17 +1364,46 @@ private fun LogoImage(
 ) {
     val context = LocalContext.current
     val resourceName = localLogoName(item.name)
-    val resourceId = remember(resourceName) { context.resources.getIdentifier(resourceName, "drawable", context.packageName) }
+    val resourceId = remember(resourceName) {
+        context.resources.getIdentifier(resourceName, "drawable", context.packageName)
+    }
+
+    val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
+    val pulse by pulseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "radio-logo-pulse-value"
+    )
+
+    val targetScale = if (activeRadio) 1.05f + (0.03f * pulse) else 1f
     val scale by animateFloatAsState(
-        targetValue = if (activeRadio) 1.07f else 1f,
+        targetValue = targetScale,
         animationSpec = spring(),
         label = "active-logo-scale"
     )
-    Box(Modifier.size(size).graphicsLayer(scaleX = scale, scaleY = scale), contentAlignment = Alignment.BottomCenter) {
+    val borderColor = if (activeRadio) {
+        Red.copy(alpha = 0.45f + (0.25f * pulse))
+    } else {
+        Color.Transparent
+    }
+
+    Box(
+        Modifier.size(size).graphicsLayer(scaleX = scale, scaleY = scale),
+        contentAlignment = Alignment.BottomCenter
+    ) {
         val imageModifier = Modifier
             .fillMaxSize()
             .alpha(if (dimmed) .4f else 1f)
-            .then(if (activeRadio) Modifier.border(2.dp, Red.copy(alpha = .7f), RoundedCornerShape(12.dp)) else Modifier)
+            .then(
+                if (activeRadio) {
+                    Modifier.border(2.dp, borderColor, RoundedCornerShape(12.dp))
+                } else Modifier
+            )
+
         if (preferRemote && !item.logoUrl.isNullOrBlank()) {
             coil3.compose.AsyncImage(
                 model = item.logoUrl,
@@ -1336,15 +1412,34 @@ private fun LogoImage(
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit
             )
         } else if (resourceId != 0) {
-            Image(painterResource(resourceId), item.name, imageModifier)
+            Image(
+                painter = painterResource(resourceId),
+                contentDescription = item.name,
+                modifier = imageModifier
+            )
         } else {
-            Box(imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            Box(
+                imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
             }
         }
+
         overlayText?.let {
-            Surface(color = Color.Black.copy(alpha = .78f), shape = RoundedCornerShape(6.dp), modifier = Modifier.padding(bottom = 2.dp)) {
-                Text(it, color = Color(0xFF66BB6A), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp), maxLines = 1)
+            Surface(
+                color = Color.Black.copy(alpha = .78f),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.padding(bottom = 2.dp)
+            ) {
+                Text(
+                    it,
+                    color = Color(0xFF66BB6A),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                    maxLines = 1
+                )
             }
         }
     }
@@ -1450,8 +1545,12 @@ private fun fuzzyFilter(items: List<StreamItem>, query: String): List<StreamItem
 @Composable
 private fun KeepSystemBarsVisible() {
     val activity = LocalContext.current as? ComponentActivity
-    LaunchedEffect(activity) {
-        activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView).show(WindowInsetsCompat.Type.systemBars()) }
+    DisposableEffect(activity) {
+        val controller = activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) }
+        controller?.show(WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 }
 
