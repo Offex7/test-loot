@@ -10,6 +10,19 @@ data class StreamItem(
 ) { val key: String get() = url }
 
 data class PlaylistSource(val name: String, val url: String)
+
+data class UserPlaylist(
+    val name: String,
+    val url: String
+) {
+    val key: String get() = userPlaylistKey(url)
+}
+
+const val BUILTIN_SOURCE_PREFIX = "builtin:"
+const val USER_SOURCE_PREFIX = "user:"
+fun builtinSourceKey(index: Int): String = BUILTIN_SOURCE_PREFIX + index.coerceIn(0, TV_SOURCES.lastIndex)
+fun userPlaylistKey(url: String): String = USER_SOURCE_PREFIX + url.trim()
+
 enum class Section { TV, RADIO }
 enum class AvailabilityStatus { UNKNOWN, ONLINE, OFFLINE }
 

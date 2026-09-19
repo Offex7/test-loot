@@ -55,7 +55,16 @@ class RadioMediaController(context: Context) {
         }
     }
     fun pause() { controller?.pause() }
-    fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() {
+        controller?.let {
+            if (it.isPlaying) it.pause()
+            else {
+                _error.value = null
+                if (it.playbackState == Player.STATE_IDLE) it.prepare()
+                it.play()
+            }
+        }
+    }
     fun stop() {
         controller?.stop()
         _error.value = null

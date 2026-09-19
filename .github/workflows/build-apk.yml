@@ -34,11 +34,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate V5 sources
+      - name: Validate V6 sources
         run: |
           set -e
-          grep -q 'versionCode = 5' app/build.gradle.kts
-          grep -q 'versionName = "5.0"' app/build.gradle.kts
+          grep -q 'versionCode = 6' app/build.gradle.kts
+          grep -q 'versionName = "6.0"' app/build.gradle.kts
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'applicationId = "com.offex7.streamhub"' app/build.gradle.kts
@@ -50,8 +50,10 @@ jobs:
           test -f app/src/main/java/com/offex7/streamhub/RadioMediaController.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
           test -f app/signing/radio-tv-v5-debug.keystore
+          keytool -list -v -keystore app/signing/radio-tv-v5-debug.keystore -storepass android -alias AndroidDebugKey > key.txt
+          sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]'
 
-      - name: Validate V5 signing key
+      - name: Validate V6 signing key
         run: |
           set -e
           keytool -list -v             -keystore app/signing/radio-tv-v5-debug.keystore             -storepass android             -alias AndroidDebugKey > key.txt
@@ -67,15 +69,20 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" tv-radio-online-v5.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v5.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v5.0.apk
-          sha256sum tv-radio-online-v5.0.apk
-          ls -lh tv-radio-online-v5.0.apk
+          cp "$APK" tv-radio-online-v6.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v6.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v6.0.apk
+          sha256sum tv-radio-online-v6.0.apk
+          APK_PACKAGE=$(aapt2 dump badging tv-radio-online-v6.0.apk | head -n 1)
+          echo "$APK_PACKAGE"
+          echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
+          echo "$APK_PACKAGE" | grep -q "versionCode='6'"
+          echo "$APK_PACKAGE" | grep -q "versionName='6.0'"
+          ls -lh tv-radio-online-v6.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-Radio-Online-v5.0-APK
-          path: tv-radio-online-v5.0.apk
+          name: TV-Radio-Online-v6.0-APK
+          path: tv-radio-online-v6.0.apk
           if-no-files-found: error
