@@ -92,6 +92,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -223,6 +224,8 @@ private fun App(
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
 
+    fun notify(message: String) { scope.launch { snack.showSnackbar(message, duration = SnackbarDuration.Short) } }
+
     LaunchedEffect(Unit) {
         pip = store.pipEnabled()
         activity.pipEnabled = pip
@@ -247,7 +250,7 @@ private fun App(
                 sleepMinutes = 0L
                 tv.stop()
                 radio.stop()
-                scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }
+                notify("Таймер сна — отключён")
                 break
             }
             sleepRemaining = left
@@ -275,17 +278,11 @@ private fun App(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snack) },
-        containerColor = Bg,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0)
-    ) { padding ->
-        Surface(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
-                .padding(padding),
-            color = Bg
+    Scaffold(snackbarHost = {}, containerColor = Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Box(
+            Modifier.fillMaxSize().padding(padding).windowInsetsPadding(
+                WindowInsets.systemBars.union(WindowInsets.displayCutout)
+            )
         ) {
             when {
                 disclaimer -> Disclaimer { disclaimer = false }
@@ -295,40 +292,34 @@ private fun App(
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
-                    onPip = { enabled ->
-                        pip = enabled
-                        activity.pipEnabled = enabled
-                        scope.launch { store.setPipEnabled(enabled) }
+                    onBack = { settings = false },
+                    onPip = {
+                        pip = it
+                        activity.pipEnabled = it
+                        scope.launch { store.setPipEnabled(it) }
                     },
-                    onSleep = { minutes ->
-                        sleepMinutes = minutes
-                        sleepUntil = System.currentTimeMillis() + minutes * 60_000L
-                        scope.launch { snack.showSnackbar("Таймер сна — запущен", duration = SnackbarDuration.Short) }
+                    onSleep = {
+                        sleepMinutes = it
+                        sleepUntil = System.currentTimeMillis() + it * 60_000L
+                        notify("Таймер сна — запущен")
                     },
                     onCancelSleep = {
                         sleepUntil = 0L
                         sleepRemaining = 0L
                         sleepMinutes = 0L
-                        scope.launch { snack.showSnackbar("Таймер сна — отключён", duration = SnackbarDuration.Short) }
+                        notify("Таймер сна — отключён")
                     },
                     onResetStats = { target ->
                         scope.launch {
                             runCatching { store.resetUsage(target) }
-                                .onSuccess {
-                                    snack.showSnackbar(
-                                        if (target == Section.TV) "Счётчик ТВ сброшен" else "Счётчик Радио сброшен",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                }
-                                .onFailure {
-                                    snack.showSnackbar("Не удалось сбросить счётчик", duration = SnackbarDuration.Short)
-                                }
+                                .onSuccess { notify(if (target == Section.TV) "Счётчик ТВ сброшен" else "Счётчик Радио сброшен") }
+                                .onFailure { notify("Не удалось сбросить счётчик") }
                         }
                     },
-                    onSource = { index ->
+                    onSource = {
                         scope.launch {
-                            store.setSourceIndex(index)
-                            snack.showSnackbar("Источник сохранён", duration = SnackbarDuration.Short)
+                            store.setSourceIndex(it)
+                            notify("Источник сохранён")
                         }
                     },
                     onDisclaimer = { disclaimer = true },
@@ -345,18 +336,16 @@ private fun App(
                                     settings = false
                                     disclaimer = false
                                     restore = null
-                                    snack.showSnackbar("Настройки сброшены", duration = SnackbarDuration.Short)
+                                    notify("Настройки сброшены")
                                 }
-                                .onFailure {
-                                    snack.showSnackbar("Не удалось сбросить настройки", duration = SnackbarDuration.Short)
-                                }
+                                .onFailure { notify("Не удалось сбросить настройки") }
                         }
                     }
                 )
                 section == null -> Home(
-                    open = { target ->
-                        section = target
-                        scope.launch { store.setSection(target) }
+                    open = {
+                        section = it
+                        scope.launch { store.setSection(it) }
                     },
                     settings = { settings = true }
                 )
@@ -365,27 +354,40 @@ private fun App(
                     store = store,
                     restore = restore,
                     dismissRestore = { restore = null },
-                    saveLast = { item ->
+                    saveLast = {
                         restore = null
-                        scope.launch { store.saveLastStream(Section.TV, item) }
+                        scope.launch { store.saveLastStream(Section.TV, it) }
                     },
                     back = ::leaveSection,
                     settings = { settings = true },
-                    fullChanged = { activity.tvViewing = it }
+                    fullChanged = { activity.tvViewing = it },
+                    notify = ::notify
                 )
                 else -> Radio(
                     player = radio,
                     store = store,
                     restore = restore,
                     dismissRestore = { restore = null },
-                    saveLast = { item ->
+                    saveLast = {
                         restore = null
-                        scope.launch { store.saveLastStream(Section.RADIO, item) }
+                        scope.launch { store.saveLastStream(Section.RADIO, it) }
                     },
                     back = ::leaveSection,
-                    settings = { settings = true }
+                    settings = { settings = true },
+                    notify = ::notify
                 )
             }
+
+            AnimatedVisibility(
+                visible = snack.currentSnackbarData != null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .fillMaxWidth(),
+                enter = slideInVertically(initialOffsetY = { -it }, animationSpec = spring()) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = spring()) + fadeOut()
+            ) { SnackbarHost(hostState = snack, modifier = Modifier.fillMaxWidth()) }
         }
     }
 
@@ -394,12 +396,8 @@ private fun App(
             onDismissRequest = { exit = false },
             title = { Text("Выйти из приложения?") },
             text = { Text("Закрыть TV / Radio. Online?") },
-            confirmButton = {
-                TextButton(onClick = { activity.finishAndRemoveTask() }) { Text("Выйти", color = Red) }
-            },
-            dismissButton = {
-                TextButton(onClick = { exit = false }) { Text("Отмена") }
-            }
+            confirmButton = { TextButton(onClick = { activity.finishAndRemoveTask() }) { Text("Выйти", color = Red) } },
+            dismissButton = { TextButton(onClick = { exit = false }) { Text("Отмена") } }
         )
     }
 }
@@ -411,29 +409,21 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                Text("TV / Radio. Online • V4.0", color = Color.Gray, fontSize = 10.sp)
-                IconButton(onClick = settings) {
-                    Icon(Icons.Default.Settings, "Настройки", tint = Red)
-                }
+                Text("TV / Radio. Online • V5.0", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
+                IconButton(onClick = settings) { Icon(Icons.Default.Settings, "Настройки", tint = Red) }
             }
             if (LocalConfiguration.current.screenWidthDp >= 560) {
-                Row(
-                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
+                Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv, Modifier.weight(1f)) { open(Section.TV) }
                     HomeCard("РАДИО", R.drawable.start_radio, Modifier.weight(1f)) { open(Section.RADIO) }
                 }
             } else {
-                Column(
-                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
+                Column(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
                     HomeCard("РАДИО", R.drawable.start_radio, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
                 }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
             Card(
                 onClick = { openUrl(context, TELEGRAM) },
                 Modifier.fillMaxWidth().height(54.dp),
@@ -441,7 +431,7 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Порекомендовать проект друзьям", color = Red, fontSize = 13.sp)
+                    Text("Порекомендовать проект друзьям", color = Red, fontSize = 13.sp, maxLines = 1)
                 }
             }
         }
@@ -450,21 +440,18 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
 
 @Composable
 private fun HomeCard(title: String, logo: Int, modifier: Modifier, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Panel),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(
-            Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Spacer(Modifier.height(2.dp))
-            Image(painterResource(logo), title, Modifier.fillMaxWidth(.58f).aspectRatio(1.1f))
-            Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(2.dp))
+    BoxWithConstraints {
+        val imageSize = minOf(maxWidth * 0.56f, maxHeight * 0.58f).coerceAtLeast(72.dp)
+        Card(onClick = onClick, modifier = modifier, colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
+            Column(
+                Modifier.fillMaxSize().padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Image(painterResource(logo), title, Modifier.size(imageSize))
+                Spacer(Modifier.height(8.dp))
+                Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+            }
         }
     }
 }
@@ -480,44 +467,33 @@ private fun Header(
     onSearchOpen: () -> Unit,
     onQuery: (String) -> Unit,
     onSearchClose: () -> Unit,
-    onRefresh: (() -> Unit)? = null
+    onRefresh: (() -> Unit)? = null,
+    showSearch: Boolean = true,
+    showTimer: Boolean = true
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = back) {
-                Icon(Icons.Default.ArrowBack, "Назад", tint = Red)
-            }
+            IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red) }
             Text(title, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(timer, fontSize = 11.sp, color = Red)
+            if (showTimer && timer.isNotBlank()) Text(timer, fontSize = 11.sp, color = Red)
             if (!searchOpen) {
-                onRefresh?.let {
-                    IconButton(onClick = it) { Icon(Icons.Default.Refresh, "Обновить", tint = Red) }
-                }
-                IconButton(onClick = onSearchOpen) {
-                    Icon(Icons.Default.Search, "Поиск", tint = Red)
-                }
-                settings?.let {
-                    IconButton(onClick = it) { Icon(Icons.Default.Settings, "Настройки", tint = Red) }
-                }
-            } else {
-                IconButton(onClick = onSearchClose) {
-                    Icon(Icons.Default.Close, "Закрыть", tint = Red)
-                }
+                onRefresh?.let { IconButton(onClick = it) { Icon(Icons.Default.Refresh, "Обновить", tint = Red) } }
+                if (showSearch) IconButton(onClick = onSearchOpen) { Icon(Icons.Default.Search, "Поиск", tint = Red) }
+                settings?.let { IconButton(onClick = it) { Icon(Icons.Default.Settings, "Настройки", tint = Red) } }
+            } else if (showSearch) {
+                IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, "Закрыть", tint = Red) }
             }
         }
-        if (searchOpen) {
+        if (searchOpen && showSearch) {
             OutlinedTextField(
                 value = query,
                 onValueChange = onQuery,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                 singleLine = true,
+                maxLines = 1,
                 placeholder = { Text("Поиск…") },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = Red) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, null) }
-                    }
-                }
+                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, null) } }
             )
         }
     }
@@ -541,158 +517,119 @@ private fun Radio(
     dismissRestore: () -> Unit,
     saveLast: (StreamItem) -> Unit,
     back: () -> Unit,
-    settings: () -> Unit
+    settings: () -> Unit,
+    notify: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val index by player.currentIndex.collectAsState()
     val playing by player.isPlaying.collectAsState()
     val error by player.error.collectAsState()
     val network by rememberNetworkState()
     val list = rememberLazyListState()
-    var query by rememberSaveable { mutableStateOf("") }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var stamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var favorites by remember { mutableStateOf(emptySet<String>()) }
-    var seconds by remember { mutableLongStateOf(0L) }
-    var notice by remember { mutableStateOf<String?>(null) }
-    var lastError by remember { mutableLongStateOf(0L) }
+    var listenedSeconds by rememberSaveable { mutableLongStateOf(0L) }
+    var previousIndex by remember { mutableIntStateOf(index) }
+
+    KeepSystemBarsVisible()
 
     LaunchedEffect(Unit) {
         favorites = store.favorites(Section.RADIO)
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
-        val started = System.currentTimeMillis()
-        while (true) {
+    }
+    LaunchedEffect(index) {
+        if (index != previousIndex) listenedSeconds = 0L
+        previousIndex = index
+    }
+    LaunchedEffect(playing, index) {
+        while (playing && index >= 0) {
             delay(1000L)
-            seconds = (System.currentTimeMillis() - started) / 1000L
+            if (playing) listenedSeconds++
         }
     }
-    LaunchedEffect(Unit) { UsageTicker(store, Section.RADIO).run() }
+    LaunchedEffect(Unit) {
+        UsageTicker(
+            store,
+            Section.RADIO,
+            channelIdProvider = { RADIO_STATIONS.getOrNull(index)?.name },
+            activeProvider = { player.isPlaying.value }
+        ).run()
+    }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (first, offset) -> store.saveScrollPosition(Section.RADIO, first, offset) }
     }
-    LaunchedEffect(list) {
-        val activity = context as? ComponentActivity ?: return@LaunchedEffect
-        val controller = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
-        snapshotFlow { list.isScrollInProgress }.collect { if (it) controller.hide(WindowInsetsCompat.Type.navigationBars()) }
-    }
-    LaunchedEffect(error) {
-        if (error != null) {
-            delay(3000L)
-            if (System.currentTimeMillis() - lastError >= ERROR_COOLDOWN) {
-                lastError = System.currentTimeMillis()
-                notice = "Возникла проблема. Обсуждаем решения в Telegram."
-            }
-        }
-    }
-    SearchAutoClose(searchOpen, query, stamp) {
-        query = ""
-        searchOpen = false
-    }
-    BackHandler(enabled = searchOpen) {
-        query = ""
-        searchOpen = false
-        stamp = System.currentTimeMillis()
-    }
+    LaunchedEffect(error) { if (error != null) notify("Возникла проблема. Обсуждаем решения в Telegram.") }
 
     val current = RADIO_STATIONS.getOrNull(index)
-    val itemsList = fuzzyFilter(
-        RADIO_STATIONS.sortedWith(
-            compareByDescending<StreamItem> { favorites.contains(it.key) }
-                .thenBy { it.name.lowercase(Locale.ROOT) }
-        ),
-        query
-    )
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         Column(Modifier.fillMaxSize()) {
             if (!network) NetworkBanner()
             Header(
                 title = "РАДИО",
-                timer = formatTime(seconds),
+                timer = "",
                 back = back,
                 settings = settings,
-                searchOpen = searchOpen,
-                query = query,
-                onSearchOpen = { searchOpen = true; stamp = System.currentTimeMillis() },
-                onQuery = { query = it; stamp = System.currentTimeMillis() },
-                onSearchClose = { query = ""; searchOpen = false; stamp = System.currentTimeMillis() }
+                searchOpen = false,
+                query = "",
+                onSearchOpen = {},
+                onQuery = {},
+                onSearchClose = {},
+                showSearch = false,
+                showTimer = false
             )
-
-            current?.let { station ->
-                Card(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = Panel),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LogoImage(station, 64.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(station.name.uppercase(Locale.ROOT), fontSize = 18.sp, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                            Text(if (playing) "играет" else "пауза", fontSize = 11.sp, color = Color.LightGray)
-                        }
-                        IconButton(onClick = { player.previous() }) { Icon(Icons.Default.SkipPrevious, null, tint = Red) }
-                        IconButton(onClick = { player.toggle() }) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Red) }
-                        IconButton(onClick = { player.next() }) { Icon(Icons.Default.SkipNext, null, tint = Red) }
-                    }
-                }
-            }
-
             restore?.let { item ->
                 RestoreBanner(
                     item = item,
                     onContinue = {
                         val i = RADIO_STATIONS.indexOfFirst { station -> station.url == item.url }
-                        if (i >= 0) {
-                            player.play(i)
-                            saveLast(item)
-                        }
+                        if (i >= 0) { player.play(i); saveLast(item) }
                     },
                     onClose = dismissRestore
                 )
             }
-
             LazyColumn(
                 state = list,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(10.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                items(itemsList, key = { it.key }) { station ->
+                items(
+                    RADIO_STATIONS.sortedWith(compareByDescending<StreamItem> { favorites.contains(it.key) }.thenBy { it.name.lowercase(Locale.ROOT) }),
+                    key = { it.key }
+                ) { station ->
                     val favorite = favorites.contains(station.key)
+                    val active = station.url == current?.url
                     ChannelRow(
                         item = station,
                         favorite = favorite,
-                        playing = station.url == current?.url && playing,
+                        playing = active && playing,
                         offline = false,
                         onPlay = {
                             val i = RADIO_STATIONS.indexOf(station)
-                            if (i >= 0) {
-                                player.play(i)
-                                saveLast(station)
-                            }
+                            if (i >= 0) { player.play(i); saveLast(station) }
                         },
                         onFavorite = {
                             scope.launch {
                                 runCatching {
                                     store.setFavorite(Section.RADIO, station.key, !favorite)
                                     favorites = store.favorites(Section.RADIO)
-                                    notice = if (!favorite) "Добавлено в избранное" else "Удалено из избранного"
-                                }.onFailure { notice = "Не удалось обновить избранное" }
+                                    notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
+                                }.onFailure { notify("Не удалось обновить избранное") }
                             }
                         },
-                        logoSize = 96.dp
+                        logoSize = 82.dp,
+                        isRadio = true,
+                        activeRadio = active,
+                        radioStatus = if (active) if (playing) "играет" else "пауза" else null,
+                        radioTimer = if (active && playing) formatTime(listenedSeconds) else null,
+                        onPrev = if (active) ({ player.previous() }) else null,
+                        onToggle = if (active) ({ player.toggle() }) else null,
+                        onNext = if (active) ({ player.next() }) else null
                     )
                 }
-                if (itemsList.isEmpty()) item { EmptySearchState() }
             }
-            NoticeBanner(notice) { notice = null }
         }
     }
 }
@@ -706,15 +643,16 @@ private fun Tv(
     saveLast: (StreamItem) -> Unit,
     back: () -> Unit,
     settings: () -> Unit,
-    fullChanged: (Boolean) -> Unit
+    fullChanged: (Boolean) -> Unit,
+    notify: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val repo = remember { PlaylistRepository(context.applicationContext) }
+    val repo = remember { PlaylistRepository(LocalContext.current.applicationContext) }
     val list = rememberLazyListState()
     val network by rememberNetworkState()
     val error by player.error.collectAsState()
     val waiting by player.waitingForNetwork.collectAsState()
+    val isPlaying by player.isPlaying.collectAsState()
     var channels by remember { mutableStateOf(emptyList<StreamItem>()) }
     var favorites by remember { mutableStateOf(emptySet<String>()) }
     var health by remember { mutableStateOf(emptyMap<String, AvailabilityStatus>()) }
@@ -723,78 +661,52 @@ private fun Tv(
     var query by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var stamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var seconds by remember { mutableLongStateOf(0L) }
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
-    var notice by remember { mutableStateOf<String?>(null) }
-    var lastError by remember { mutableLongStateOf(0L) }
-    var sourceIndex by remember { mutableIntStateOf(0) }
+    var fallbackMessage by remember { mutableStateOf<String?>(null) }
+    var playbackJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    KeepSystemBarsVisible()
 
     suspend fun loadSource() {
         val source = store.sourceIndex()
-        sourceIndex = source
-        repo.loadCached(source)?.let {
-            channels = it
-            loading = false
-        }
+        repo.loadCached(source)?.let { channels = it; loading = false }
         repo.loadSource(source)
-            .onSuccess {
-                channels = it
-                loading = false
-                repo.warmFallbacks()
-            }
-            .onFailure {
-                loading = false
-                notice = "Возникла проблема. Обсуждаем решения в Telegram."
-            }
+            .onSuccess { channels = it; loading = false; repo.warmFallbacks() }
+            .onFailure { loading = false; notify("Возникла проблема. Обсуждаем решения в Telegram.") }
     }
 
     LaunchedEffect(Unit) {
         favorites = store.favorites(Section.TV)
         val saved = store.scrollPosition(Section.TV)
-        list.scrollToItem(saved.first, saved.second)
-        val started = System.currentTimeMillis()
+        list.scrollToItem(saved.first.coerceAtLeast(0), saved.second)
         loadSource()
-        while (true) {
-            delay(1000L)
-            seconds = (System.currentTimeMillis() - started) / 1000L
-        }
     }
-    LaunchedEffect(Unit) { UsageTicker(store, Section.TV).run() }
+    LaunchedEffect(Unit) {
+        UsageTicker(
+            store,
+            Section.TV,
+            channelIdProvider = { channels.getOrNull(selected)?.name },
+            activeProvider = { full && player.isPlaying.value }
+        ).run()
+    }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (first, offset) -> store.saveScrollPosition(Section.TV, first, offset) }
     }
-    LaunchedEffect(list) {
-        val activity = context as? ComponentActivity ?: return@LaunchedEffect
-        val controller = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
-        snapshotFlow { list.isScrollInProgress }.collect { if (it) controller.hide(WindowInsetsCompat.Type.navigationBars()) }
-    }
     LaunchedEffect(channels) {
-        if (channels.isEmpty()) return@LaunchedEffect
-        health = scanAvailability(channels.take(15), health)
-        while (true) {
-            delay(30 * 60 * 1000L)
-            health = scanAvailability(channels, health)
-        }
+        if (channels.isNotEmpty()) health = scanAvailability(channels.take(18), health)
     }
     LaunchedEffect(list.firstVisibleItemIndex, channels, health) {
-        val first = list.firstVisibleItemIndex
+        if (channels.isEmpty()) return@LaunchedEffect
+        val first = list.firstVisibleItemIndex.coerceIn(0, channels.lastIndex)
         val end = minOf(channels.size, first + 20)
         if (end > first) {
             val pending = channels.subList(first, end).filter { health[it.url] == null }
             if (pending.isNotEmpty()) health = scanAvailability(pending, health)
         }
     }
-    LaunchedEffect(error) {
-        if (error != null) {
-            delay(3000L)
-            if (System.currentTimeMillis() - lastError >= ERROR_COOLDOWN) {
-                lastError = System.currentTimeMillis()
-                notice = "Возникла проблема. Обсуждаем решения в Telegram."
-            }
-        }
-    }
+    LaunchedEffect(error) { if (error != null && full) notify("Возникла проблема. Обсуждаем решения в Telegram.") }
     SearchAutoClose(searchOpen, query, stamp) {
         query = ""
         searchOpen = false
@@ -807,33 +719,41 @@ private fun Tv(
     LaunchedEffect(full) { fullChanged(full) }
 
     fun candidates(item: StreamItem): List<String> = listOf(item.url) + repo.fallbackUrlsFor(item.name)
-    fun play(index: Int) {
-        if (index in channels.indices) {
-            selected = index
-            scope.launch { player.playWithFallback(candidates(channels[index])) }
-        }
-    }
-    fun neighbor(delta: Int): Int {
+
+    fun nextIndex(start: Int): Int {
         if (channels.isEmpty()) return -1
-        var cursor = selected.coerceIn(0, channels.lastIndex)
-        repeat(channels.size) {
-            cursor = (cursor + delta + channels.size) % channels.size
+        var cursor = start
+        repeat(channels.size - 1) {
+            cursor = (cursor + 1 + channels.size) % channels.size
             if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
         }
         return -1
     }
-    fun refresh() {
-        scope.launch {
-            refreshing = true
-            val source = store.sourceIndex()
-            repo.loadSource(source)
-                .onSuccess {
-                    channels = it
-                    health = emptyMap()
-                    repo.warmFallbacks()
+
+    fun startPlayback(startIndex: Int) {
+        playbackJob?.cancel()
+        playbackJob = scope.launch {
+            if (channels.isEmpty()) return@launch
+            var cursor = startIndex.coerceIn(0, channels.lastIndex)
+            repeat(channels.size) {
+                selected = cursor
+                fallbackMessage = null
+                val result = player.playWithFallback(candidates(channels[cursor]))
+                if (result >= 0) {
+                    saveLast(channels[cursor])
+                    return@launch
                 }
-                .onFailure { notice = "Возникла проблема. Обсуждаем решения в Telegram." }
-            refreshing = false
+                fallbackMessage = "Канал временно недоступен — переключаю на следующий"
+                delay(3000L)
+                cursor = nextIndex(cursor)
+                if (cursor < 0) {
+                    full = false
+                    fallbackMessage = null
+                    return@launch
+                }
+            }
+            full = false
+            fallbackMessage = null
         }
     }
 
@@ -841,40 +761,34 @@ private fun Tv(
         TvPlayer(
             player = player,
             channel = channels[selected],
-            error = error,
+            error = if (fallbackMessage == null) error else null,
             waiting = waiting || !network,
-            onBack = { full = false },
+            isPlaying = isPlaying,
+            noticeMessage = fallbackMessage,
+            onBack = { playbackJob?.cancel(); full = false },
+            onSettings = { playbackJob?.cancel(); full = false; settings() },
             onPrev = {
-                val i = neighbor(-1)
-                if (i >= 0) {
-                    play(i)
-                    saveLast(channels[i])
-                }
+                val i = nextIndex(selected - 1)
+                if (i >= 0) startPlayback(i)
             },
             onNext = {
-                val i = neighbor(1)
-                if (i >= 0) {
-                    play(i)
-                    saveLast(channels[i])
-                }
+                val i = nextIndex(selected)
+                if (i >= 0) startPlayback(i)
             },
+            onPause = { player.toggle() },
             onResetZoom = { zoomByChannel.remove(channels[selected].key) }
         )
         return
     }
 
-    val ordered = channels.sortedWith(
-        compareByDescending<StreamItem> { favorites.contains(it.key) }
-            .thenBy { it.name.lowercase(Locale.ROOT) }
-    )
+    val ordered = channels.sortedWith(compareByDescending<StreamItem> { favorites.contains(it.key) }.thenBy { it.name.lowercase(Locale.ROOT) })
     val filtered = fuzzyFilter(ordered, query)
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         Column(Modifier.fillMaxSize()) {
-            if (!network) NetworkBanner()
             Header(
                 title = "ТЕЛЕВИЗОР",
-                timer = formatTime(seconds),
+                timer = "",
                 back = back,
                 settings = settings,
                 searchOpen = searchOpen,
@@ -882,21 +796,23 @@ private fun Tv(
                 onSearchOpen = { searchOpen = true; stamp = System.currentTimeMillis() },
                 onQuery = { query = it; stamp = System.currentTimeMillis() },
                 onSearchClose = { query = ""; searchOpen = false; stamp = System.currentTimeMillis() },
-                onRefresh = ::refresh
+                onRefresh = {
+                    scope.launch {
+                        refreshing = true
+                        repo.loadSource(store.sourceIndex())
+                            .onSuccess { channels = it; health = emptyMap(); repo.warmFallbacks() }
+                            .onFailure { notify("Возникла проблема. Обсуждаем решения в Telegram.") }
+                        refreshing = false
+                    }
+                }
             )
             restore?.let { item ->
                 RestoreBanner(
                     item = item,
                     onContinue = {
-                        val i = channels.indexOfFirst { channel ->
-                            channel.url == item.url || channel.name.equals(item.name, ignoreCase = true)
-                        }
-                        if (i >= 0) {
-                            selected = i
-                            full = true
-                            play(i)
-                            saveLast(channels[i])
-                        }
+                        val i = channels.indexOfFirst { it.url == item.url || it.name.equals(item.name, ignoreCase = true) }
+                        if (i >= 0) { selected = i; full = true; startPlayback(i) }
+                        else notify("Сохранённый канал больше не найден")
                     },
                     onClose = dismissRestore
                 )
@@ -906,7 +822,15 @@ private fun Tv(
                 filtered.isEmpty() -> if (query.isBlank()) EmptyPlaylistState() else EmptySearchState()
                 else -> PullToRefreshBox(
                     isRefreshing = refreshing,
-                    onRefresh = ::refresh,
+                    onRefresh = {
+                        scope.launch {
+                            refreshing = true
+                            repo.loadSource(store.sourceIndex())
+                                .onSuccess { channels = it; health = emptyMap(); repo.warmFallbacks() }
+                                .onFailure { notify("Возникла проблема. Обсуждаем решения в Telegram.") }
+                            refreshing = false
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 ) {
                     LazyColumn(
@@ -925,29 +849,24 @@ private fun Tv(
                                 offline = offline,
                                 onPlay = {
                                     val i = channels.indexOfFirst { it.key == channel.key }
-                                    if (i >= 0) {
-                                        selected = i
-                                        full = true
-                                        play(i)
-                                        saveLast(channel)
-                                    }
+                                    if (i >= 0) { selected = i; full = true; startPlayback(i) }
                                 },
                                 onFavorite = {
                                     scope.launch {
                                         runCatching {
                                             store.setFavorite(Section.TV, channel.key, !favorite)
                                             favorites = store.favorites(Section.TV)
-                                            notice = if (!favorite) "Добавлено в избранное" else "Удалено из избранного"
-                                        }.onFailure { notice = "Не удалось обновить избранное" }
+                                            notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
+                                        }.onFailure { notify("Не удалось обновить избранное") }
                                     }
                                 },
-                                logoSize = 56.dp
+                                logoSize = 56.dp,
+                                preferRemoteLogo = true
                             )
                         }
                     }
                 }
             }
-            NoticeBanner(notice) { notice = null }
         }
     }
 }
@@ -958,52 +877,60 @@ private fun TvPlayer(
     channel: StreamItem,
     error: String?,
     waiting: Boolean,
+    isPlaying: Boolean,
+    noticeMessage: String?,
     onBack: () -> Unit,
+    onSettings: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onPause: () -> Unit,
     onResetZoom: () -> Unit
 ) {
-    val config = LocalConfiguration.current
-    val portrait = config.screenWidthDp < config.screenHeightDp
+    val activity = LocalContext.current as? ComponentActivity
+    val portrait = LocalConfiguration.current.screenWidthDp < LocalConfiguration.current.screenHeightDp
     val haptic = LocalHapticFeedback.current
     var controls by remember(channel.key) { mutableStateOf(true) }
     var taps by remember(channel.key) { mutableIntStateOf(0) }
     var zoom by remember(channel.key) { mutableFloatStateOf(zoomByChannel[channel.key] ?: 1f) }
-    val density = LocalDensity.current
-    val navVisible = WindowInsets.navigationBars.getBottom(density) > 0
+    val controller = remember(activity) { activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) } }
 
+    fun showBars() { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    fun hideBars() { controller?.hide(WindowInsetsCompat.Type.systemBars()) }
+
+    LaunchedEffect(Unit) { hideBars() }
     LaunchedEffect(controls) {
         if (controls) {
+            showBars()
             delay(5000L)
             controls = false
-        }
+            hideBars()
+        } else hideBars()
     }
+    DisposableEffect(Unit) { onDispose { showBars() } }
     BackHandler { onBack() }
 
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
+        Modifier.fillMaxSize().background(Color.Black)
             .pointerInput(channel.key) {
-                detectTapGestures(
-                    onTap = {
-                        controls = true
-                        taps++
-                        if (taps >= 3) {
-                            zoom = 1f
-                            zoomByChannel.remove(channel.key)
-                            onResetZoom()
-                            taps = 0
-                        }
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                detectTapGestures(onTap = {
+                    controls = true
+                    taps++
+                    if (taps >= 3) {
+                        zoom = 1f
+                        zoomByChannel.remove(channel.key)
+                        onResetZoom()
+                        taps = 0
                     }
-                )
+                    showBars()
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                })
             }
             .pointerInput(channel.key) {
                 detectTransformGestures { _, _, gestureZoom, _ ->
                     zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
                     zoomByChannel[channel.key] = zoom
                     controls = true
+                    showBars()
                 }
             }
     ) {
@@ -1018,60 +945,53 @@ private fun TvPlayer(
                 }
             }
         )
-
-        val controlModifier = if (navVisible) {
-            Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.displayCutout)
-        } else {
-            Modifier.align(Alignment.TopCenter)
-        }
         AnimatedVisibility(
             visible = controls,
-            modifier = controlModifier,
+            modifier = Modifier.fillMaxSize(),
             enter = slideInVertically(initialOffsetY = { -it }, animationSpec = spring()) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = spring()) + fadeOut()
         ) {
-            PlayerControls(channel, onBack, onPrev, onNext, portrait)
+            Box(Modifier.fillMaxSize().padding(top = 8.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.displayCutout),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    IconButton(onClick = { showBars(); onBack() }) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red, modifier = Modifier.size(28.dp)) }
+                    Row {
+                        IconButton(onClick = { showBars(); onResetZoom() }) { Icon(Icons.Default.Refresh, "Сбросить зум", tint = Red, modifier = Modifier.size(26.dp)) }
+                        IconButton(onClick = { showBars(); onSettings() }) { Icon(Icons.Default.Settings, "Настройки", tint = Red, modifier = Modifier.size(26.dp)) }
+                    }
+                }
+                Row(
+                    Modifier.align(Alignment.Center).padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    IconButton(onClick = { showBars(); onPrev() }, Modifier.size(58.dp)) {
+                        Icon(Icons.Default.SkipPrevious, "Предыдущий канал", tint = Red, modifier = Modifier.size(42.dp))
+                    }
+                    IconButton(onClick = { showBars(); onPause() }, Modifier.size(78.dp)) {
+                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Пауза", tint = Red, modifier = Modifier.size(60.dp))
+                    }
+                    IconButton(onClick = { showBars(); onNext() }, Modifier.size(58.dp)) {
+                        Icon(Icons.Default.SkipNext, "Следующий канал", tint = Red, modifier = Modifier.size(42.dp))
+                    }
+                }
+                Text(
+                    channel.name,
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                    color = Color.White,
+                    fontSize = if (portrait) 12.sp else 14.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
-
-        if (waiting) {
-            Text(
-                "Сигнал утерян, перепроверьте подключение к сети",
-                Modifier.align(Alignment.BottomCenter).padding(12.dp),
-                color = Color.White,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-        if (error != null) {
-            Text(
-                "Возникла проблема. Обсуждаем решения в Telegram.",
-                Modifier.align(Alignment.Center).padding(24.dp),
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-private fun PlayerControls(
-    channel: StreamItem,
-    back: () -> Unit,
-    prev: () -> Unit,
-    next: () -> Unit,
-    portrait: Boolean
-) {
-    Card(
-        Modifier.fillMaxWidth().padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Panel.copy(alpha = .94f)),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red) }
-            Text(channel.name, Modifier.weight(1f), color = Color.White, fontSize = if (portrait) 15.sp else 17.sp, maxLines = 1)
-            IconButton(onClick = prev) { Icon(Icons.Default.SkipPrevious, null, tint = Red) }
-            IconButton(onClick = next) { Icon(Icons.Default.SkipNext, null, tint = Red) }
-        }
+        noticeMessage?.let { Text(it, Modifier.align(Alignment.Center).padding(horizontal = 24.dp), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center) }
+        if (waiting) Text("Сигнал утерян, перепроверьте подключение к сети", Modifier.align(Alignment.BottomCenter).padding(12.dp), color = Color.White, fontSize = 13.sp, textAlign = TextAlign.Center)
+        if (error != null && noticeMessage == null) Text("Возникла проблема. Обсуждаем решения в Telegram.", Modifier.align(Alignment.Center).padding(24.dp), color = Color.White, textAlign = TextAlign.Center)
     }
 }
 
@@ -1083,6 +1003,7 @@ private fun Settings(
     sleepRemaining: Long,
     sleepUntil: Long,
     sleepMinutes: Long,
+    onBack: () -> Unit,
     onPip: (Boolean) -> Unit,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit,
@@ -1093,26 +1014,60 @@ private fun Settings(
 ) {
     val tvUsage by store.usageFlow(Section.TV).collectAsState(0L)
     val radioUsage by store.usageFlow(Section.RADIO).collectAsState(0L)
+    val tvChannels by store.channelUsageFlow(Section.TV).collectAsState(emptyMap())
+    val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
     var source by remember { mutableIntStateOf(0) }
     var sourceDialog by remember { mutableStateOf(false) }
+
+    KeepSystemBarsVisible()
     LaunchedEffect(Unit) { source = store.sourceIndex() }
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item { Text("Настройки", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red) }
+                Text("Настройки", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Таймер сна", fontWeight = FontWeight.Bold)
+                    Text("Таймер сна", color = Red, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     SleepGrid(sleepRemaining, sleepUntil, sleepMinutes, onSleep, onCancelSleep)
                 }
             }
         }
         item { DonationCard() }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Статистика", color = Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    UsageLine("Общее время использования ТВ", tvUsage)
+                    OutlinedButton(onClick = { onResetStats(Section.TV) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик ТВ") }
+                    UsageLine("Общее время использования Радио", radioUsage)
+                    OutlinedButton(onClick = { onResetStats(Section.RADIO) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик Радио") }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Топ-3 каналов", color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("ТВ", color = Color.LightGray, fontWeight = FontWeight.SemiBold)
+                    TopStats(tvChannels)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Радио", color = Color.LightGray, fontWeight = FontWeight.SemiBold)
+                    TopStats(radioStations)
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Источник ТВ-плейлиста", color = Red, fontWeight = FontWeight.Bold)
+                    Text(TV_SOURCES.getOrNull(source)?.name.orEmpty(), color = Color.Gray, fontSize = 12.sp)
+                    Button(onClick = { sourceDialog = true }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text("Выбрать источник") }
+                }
+            }
+        }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1123,48 +1078,13 @@ private fun Settings(
                     Switch(
                         checked = pip,
                         onCheckedChange = onPip,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Red,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Gray
-                        )
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
                     )
                 }
             }
         }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Статистика", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("Общее время использования ТВ: ${formatUsage(tvUsage)}", color = Color.LightGray)
-                    OutlinedButton(onClick = { onResetStats(Section.TV) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик ТВ") }
-                    Text("Общее время использования Радио: ${formatUsage(radioUsage)}", color = Color.LightGray)
-                    OutlinedButton(onClick = { onResetStats(Section.RADIO) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик Радио") }
-                }
-            }
-        }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Источник ТВ-плейлиста", fontWeight = FontWeight.Bold)
-                    Text(TV_SOURCES.getOrNull(source)?.name.orEmpty(), color = Color.Gray, fontSize = 12.sp)
-                    Button(
-                        onClick = { sourceDialog = true },
-                        Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Red)
-                    ) { Text("Выбрать источник") }
-                }
-            }
-        }
-        item {
-            Button(onClick = onResetAll, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)) {
-                Text("Сбросить настройки до заводских")
-            }
-        }
-        item {
-            OutlinedButton(onClick = onDisclaimer, Modifier.fillMaxWidth()) { Text("Отказ от ответственности") }
-        }
+        item { Button(onClick = onResetAll, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)) { Text("Сбросить настройки до заводских") } }
+        item { OutlinedButton(onClick = onDisclaimer, Modifier.fillMaxWidth()) { Text("Отказ от ответственности") } }
     }
 
     if (sourceDialog) {
@@ -1173,22 +1093,12 @@ private fun Settings(
             title = { Text("Источник ТВ-плейлиста") },
             text = {
                 Column {
-                    TV_SOURCES.forEachIndexed { index, item ->
+                    TV_SOURCES.forEachIndexed { i, item ->
                         Row(
-                            Modifier.fillMaxWidth().combinedClickable(
-                                onClick = {
-                                    source = index
-                                    sourceDialog = false
-                                    onSource(index)
-                                }
-                            ),
+                            Modifier.fillMaxWidth().combinedClickable(onClick = { source = i; sourceDialog = false; onSource(i) }),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(selected = source == index, onClick = {
-                                source = index
-                                sourceDialog = false
-                                onSource(index)
-                            })
+                            RadioButton(selected = source == i, onClick = { source = i; sourceDialog = false; onSource(i) })
                             Text(item.name, Modifier.padding(6.dp))
                         }
                     }
@@ -1196,6 +1106,29 @@ private fun Settings(
             },
             confirmButton = { TextButton(onClick = { sourceDialog = false }) { Text("Закрыть") } }
         )
+    }
+}
+
+@Composable
+private fun UsageLine(label: String, seconds: Long) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Color.LightGray, modifier = Modifier.weight(1f), maxLines = 2)
+        Text(formatUsage(seconds), color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+@Composable
+private fun TopStats(stats: Map<String, Long>) {
+    val top = stats.entries.filter { it.value > 0L }.sortedByDescending { it.value }.take(3)
+    if (top.isEmpty()) {
+        Text("Пока нет данных", color = Color.Gray, fontSize = 12.sp)
+    } else {
+        top.forEachIndexed { i, entry ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${i + 1}. ${entry.key}", Modifier.weight(1f), color = Color.LightGray, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(formatUsage(entry.value), color = Red, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
@@ -1209,7 +1142,7 @@ private fun SleepGrid(
     onCancel: () -> Unit
 ) {
     val options = listOf(
-        15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч", 240L to "4 ч",
+        5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч", 240L to "4 ч",
         480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
     )
     FlowRow(
@@ -1253,7 +1186,7 @@ private fun DonationCard() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Favorite, null, tint = Red)
                 Spacer(Modifier.width(8.dp))
-                Text("Поддержать проект", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Поддержать проект", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Red)
             }
             Spacer(Modifier.height(8.dp))
             Text(WALLET, color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
@@ -1308,7 +1241,15 @@ private fun ChannelRow(
     offline: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
-    logoSize: Dp
+    logoSize: Dp,
+    isRadio: Boolean = false,
+    activeRadio: Boolean = false,
+    radioStatus: String? = null,
+    radioTimer: String? = null,
+    onPrev: (() -> Unit)? = null,
+    onToggle: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
+    preferRemoteLogo: Boolean = false
 ) {
     val iconColor by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
     val scale by animateFloatAsState(if (favorite) 1.14f else 1f, animationSpec = spring(), label = "favorite-scale")
@@ -1319,7 +1260,14 @@ private fun ChannelRow(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            LogoImage(item, logoSize, offline)
+            LogoImage(
+                item = item,
+                size = logoSize,
+                dimmed = offline,
+                preferRemote = preferRemoteLogo,
+                overlayText = radioTimer,
+                activeRadio = activeRadio
+            )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1327,39 +1275,64 @@ private fun ChannelRow(
                     color = if (offline) Gray else Color.White,
                     fontWeight = if (playing) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     fontSize = 14.sp
                 )
-                if (offline) Text("• offline", color = Gray, fontSize = 10.sp)
-                if (playing) Text("• играет", color = Red, fontSize = 10.sp)
+                radioStatus?.let { Text(it, color = Color(0xFFFF9800), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                if (offline && !isRadio) Text("• временно недоступен", color = Gray, fontSize = 10.sp)
+            }
+            if (isRadio && activeRadio && onPrev != null && onToggle != null && onNext != null) {
+                IconButton(onClick = onPrev, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.SkipPrevious, "Назад", tint = Red, modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Red, modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.SkipNext, "Вперёд", tint = Red, modifier = Modifier.size(20.dp)) }
             }
             IconButton(onClick = onFavorite, Modifier.graphicsLayer(scaleX = scale, scaleY = scale)) {
-                Icon(
-                    if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    "Избранное",
-                    tint = iconColor
-                )
+                Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor)
             }
         }
     }
 }
 
 @Composable
-private fun LogoImage(item: StreamItem, size: Dp, dimmed: Boolean = false) {
+private fun LogoImage(
+    item: StreamItem,
+    size: Dp,
+    dimmed: Boolean = false,
+    preferRemote: Boolean = false,
+    overlayText: String? = null,
+    activeRadio: Boolean = false
+) {
     val context = LocalContext.current
     val resourceName = localLogoName(item.name)
     val resourceId = remember(resourceName) { context.resources.getIdentifier(resourceName, "drawable", context.packageName) }
-    if (resourceId != 0) {
-        Image(
-            painter = painterResource(resourceId),
-            contentDescription = item.name,
-            modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f)
-        )
-    } else {
-        Box(
-            Modifier.size(size).background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)).alpha(if (dimmed) .4f else 1f),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+    val scale by animateFloatAsState(
+        targetValue = if (activeRadio) 1.07f else 1f,
+        animationSpec = spring(),
+        label = "active-logo-scale"
+    )
+    Box(Modifier.size(size).graphicsLayer(scaleX = scale, scaleY = scale), contentAlignment = Alignment.BottomCenter) {
+        val imageModifier = Modifier
+            .fillMaxSize()
+            .alpha(if (dimmed) .4f else 1f)
+            .then(if (activeRadio) Modifier.border(2.dp, Red.copy(alpha = .7f), RoundedCornerShape(12.dp)) else Modifier)
+        if (preferRemote && !item.logoUrl.isNullOrBlank()) {
+            coil.compose.AsyncImage(
+                model = item.logoUrl,
+                contentDescription = item.name,
+                modifier = imageModifier,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+        } else if (resourceId != 0) {
+            Image(painterResource(resourceId), item.name, imageModifier)
+        } else {
+            Box(imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+            }
+        }
+        overlayText?.let {
+            Surface(color = Color.Black.copy(alpha = .78f), shape = RoundedCornerShape(6.dp), modifier = Modifier.padding(bottom = 2.dp)) {
+                Text(it, color = Color(0xFF66BB6A), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp), maxLines = 1)
+            }
         }
     }
 }
@@ -1461,6 +1434,14 @@ private fun SkeletonList() {
 private fun fuzzyFilter(items: List<StreamItem>, query: String): List<StreamItem> =
     if (query.isBlank()) items else items.filter { it.name.contains(query.trim(), ignoreCase = true) }
 
+@Composable
+private fun KeepSystemBarsVisible() {
+    val activity = LocalContext.current as? ComponentActivity
+    LaunchedEffect(activity) {
+        activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView).show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
 private fun formatTime(seconds: Long): String {
     return if (seconds < 3600L) {
         "%02d:%02d".format(seconds / 60L, seconds % 60L)
@@ -1514,12 +1495,8 @@ private suspend fun scanAvailability(
     current: Map<String, AvailabilityStatus>
 ): Map<String, AvailabilityStatus> {
     if (items.isEmpty()) return current
-    val client = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(3, TimeUnit.SECONDS)
-        .callTimeout(3, TimeUnit.SECONDS)
-        .build()
-    val semaphore = Semaphore(2)
+    val client = OkHttpClient.Builder().connectTimeout(3, TimeUnit.SECONDS).readTimeout(2, TimeUnit.SECONDS).callTimeout(4, TimeUnit.SECONDS).build()
+    val semaphore = Semaphore(3)
     val output = ConcurrentHashMap<String, AvailabilityStatus>()
     kotlinx.coroutines.coroutineScope {
         items.map { item ->
@@ -1527,43 +1504,57 @@ private suspend fun scanAvailability(
                 semaphore.acquire()
                 try {
                     output[item.url] = runCatching {
-                        client.newCall(Request.Builder().url(item.url).head().build()).execute().use {
-                            if (it.isSuccessful || it.code in 300..399) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
+                        client.newCall(
+                            Request.Builder().url(item.url)
+                                .header("Range", "bytes=0-1")
+                                .header("User-Agent", "TV-Radio-Online/5.0")
+                                .get().build()
+                        ).execute().use {
+                            if (it.isSuccessful || it.code in 300..399 || it.code == 416) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
                         }
                     }.getOrDefault(AvailabilityStatus.OFFLINE)
-                } finally {
-                    semaphore.release()
-                }
+                } finally { semaphore.release() }
             }
         }.forEach { it.join() }
     }
     return current + output
 }
-
-private suspend fun awaitDisposeCompat(onDispose: () -> Unit) {
-    try {
-        kotlinx.coroutines.awaitCancellation()
-    } finally {
-        onDispose()
-    }
-}
-
-private class UsageTicker(private val store: SettingsStore, private val section: Section) {
+private class UsageTicker(
+    private val store: SettingsStore,
+    private val section: Section,
+    private val channelIdProvider: () -> String?,
+    private val activeProvider: () -> Boolean
+) {
     suspend fun run() {
-        var pending = 0L
+        val pending = mutableMapOf<String, Long>()
+        var totalPending = 0L
         var lastFlush = System.currentTimeMillis()
         try {
             while (true) {
                 delay(1000L)
-                pending++
+                if (activeProvider()) {
+                    val id = channelIdProvider()?.trim().orEmpty()
+                    if (id.isNotBlank()) {
+                        pending[id] = (pending[id] ?: 0L) + 1L
+                        totalPending++
+                    }
+                }
                 if (System.currentTimeMillis() - lastFlush >= 5000L) {
-                    store.addUsageSeconds(section, pending)
-                    pending = 0L
+                    if (totalPending > 0L) {
+                        store.addUsageSeconds(section, totalPending)
+                        store.addChannelUsage(section, pending.toMap())
+                    }
+                    pending.clear()
+                    totalPending = 0L
                     lastFlush = System.currentTimeMillis()
                 }
             }
         } finally {
-            if (pending > 0L) store.addUsageSeconds(section, pending)
+            if (totalPending > 0L) {
+                store.addUsageSeconds(section, totalPending)
+                store.addChannelUsage(section, pending.toMap())
+            }
         }
     }
 }
+
