@@ -1266,10 +1266,41 @@ private fun DonationCard() {
             ) { Text("Копировать") }
             Spacer(Modifier.height(10.dp))
             Surface(Modifier.size(180.dp), color = Color.White, shape = RoundedCornerShape(8.dp)) {
-                Image(painterResource(R.drawable.qr_donate), "QR-код для пожертвований", Modifier.fillMaxSize().padding(4.dp))
+                DonationQrImage(
+                    contentDescription = "QR-код для пожертвований",
+                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                )
             }
         }
     }
+}
+
+@Composable
+private fun DonationQrImage(
+    contentDescription: String,
+    modifier: Modifier
+) {
+    var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(Unit) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                LocalContext.current.assets.open("qr_donate.png").use { input ->
+                    BitmapFactory.decodeStream(input)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+    }
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+        )
+    } ?: Box(
+        modifier = modifier.background(Color.White),
+        contentAlignment = Alignment.Center
+    ) {}
 }
 
 @Composable
