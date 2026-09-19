@@ -13,7 +13,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class PlaylistRepository(private val context: Context) {
-    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(25, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).callTimeout(15, TimeUnit.SECONDS).build()
     private fun cacheFile(index: Int) = File(context.filesDir, "tv_playlist_$index.m3u")
     private fun stampFile(index: Int) = File(context.filesDir, "tv_playlist_$index.timestamp")
     private val fallbackByName = mutableMapOf<String, List<String>>()
@@ -33,9 +33,14 @@ class PlaylistRepository(private val context: Context) {
         for (i in candidates) {
             try {
                 val list = parse(download(TV_SOURCES[i].url))
-                if (list.isNotEmpty()) { writeCache(i, list); return@withContext Result.success(list) }
+                if (list.isNotEmpty()) {
+                    writeCache(i, list)
+                    return@withContext Result.success(list)
+                }
                 last = IllegalStateException("Плейлист пуст")
-            } catch (t: Throwable) { last = t }
+            } catch (t: Throwable) {
+                last = t
+            }
         }
         Result.failure(last ?: IllegalStateException("Не удалось загрузить ТВ-плейлист"))
     }
@@ -67,7 +72,7 @@ class PlaylistRepository(private val context: Context) {
 
     private fun writeCache(index: Int, items: List<StreamItem>) = runCatching { cacheFile(index).writeText(toM3u(items)); stampFile(index).writeText(System.currentTimeMillis().toString()) }
     private fun download(url: String): String {
-        val response = client.newCall(Request.Builder().url(url).header("User-Agent", "TV-Radio-Online/4.0").build()).execute()
+        val response = client.newCall(Request.Builder().url(url).header("User-Agent", "TV-Radio-Online/5.0").build()).execute()
         return response.use { r -> if (!r.isSuccessful) error("HTTP ${r.code}"); r.body?.string().orEmpty().also { if (it.isBlank()) error("Пустой ответ") } }
     }
     private fun parse(text: String): List<StreamItem> {
