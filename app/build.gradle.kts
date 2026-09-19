@@ -10,20 +10,33 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 29
         targetSdk = 34
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 5
+        versionName = "5.0"
+    }
+    signingConfigs {
+        create("v5Debug") {
+            storeFile = file("signing/radio-tv-v5-debug.keystore")
+            storePassword = "android"
+            keyAlias = "AndroidDebugKey"
+            keyPassword = "android"
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("v5Debug")
         }
-        debug { isMinifyEnabled = false }
+        debug {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("v5Debug")
+        }
     }
     packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/NOTICE") }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
+    androidResources { noCompress += "png" }
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/v4res").get().asFile)
 }
 
@@ -50,7 +63,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 }
 
-val v4Assets = mapOf(
+val v5Assets = mapOf(
     "start_tv" to "https://avatars.mds.yandex.net/i?id=124c90a0cfd3b3341d7e7592f8eda057e77081cd-4926719-images-thumbs&n=13",
     "start_radio" to "https://static.vecteezy.com/system/resources/previews/001/207/003/non_2x/music-icon-radio-png.png",
     "logo_record" to "https://sun9-58.vkuserphoto.ru/s/v1/ig2/IiddqILI9W20xtBjGASd1Wc2qaE8CtlNMcM4HP7_rOxeHWqZHsTZQrxChaHjZF90iod1cWtN-YKmKEhzRcRW4WNu.jpg?quality=96&cs=640x0",
@@ -70,7 +83,7 @@ val v4Assets = mapOf(
     "logo_autoradio" to "https://commons.wikimedia.org/wiki/Special:Redirect/file/Avtoradio4.png"
 )
 
-val downloadV4Assets by tasks.registering {
+val downloadV5Assets by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/v4res/drawable")
     outputs.dir(outDir)
     doLast {
@@ -81,7 +94,7 @@ val downloadV4Assets by tasks.registering {
             val raw = File(dir, "${name}.source")
             val png = File(dir, "${name}.png")
             if (!png.exists()) {
-                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "TV-Radio-Online/4.0", "-o", raw.absolutePath, url)
+                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "TV-Radio-Online/5.0", "-o", raw.absolutePath, url)
                 if (downloaded) run("convert", raw.absolutePath, "-resize", "512x512^", "-gravity", "center", "-extent", "512x512", png.absolutePath)
             }
             raw.delete()
