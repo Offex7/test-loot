@@ -56,7 +56,12 @@ class RadioMediaController(context: Context) {
     }
     fun pause() { controller?.pause() }
     fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
-    fun stop() { controller?.stop(); _error.value = null }
+    fun stop() {
+        controller?.stop()
+        _error.value = null
+        _currentIndex.value = -1
+        _isPlaying.value = false
+    }
     fun next() {
         controller?.let {
             val current = it.currentMediaItemIndex.coerceAtLeast(0)
