@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color as AColor
 import android.net.ConnectivityManager
 import android.net.Network
@@ -117,6 +118,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.fillMaxHeight
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.hapticfeedback.LocalHapticFeedback
@@ -139,6 +141,7 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -158,6 +161,7 @@ private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
 private val zoomByChannel = mutableMapOf<String, Float>()
+private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SettingsStore
@@ -1406,13 +1410,9 @@ private fun LogoImage(
                 } else Modifier
             )
 
-        if (preferRemote && !item.logoUrl.isNullOrBlank()) {
-            coil3.compose.AsyncImage(
-                model = item.logoUrl,
-                contentDescription = item.name,
-                modifier = imageModifier,
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
+        val remoteUrl = item.logoUrl ?: item.epgLogoUrl
+        if (preferRemote && !remoteUrl.isNullOrBlank()) {
+            RemoteLogoImage(remoteUrl, item.name, imageModifier)
         } else if (resourceId != 0) {
             Image(
                 painter = painterResource(resourceId),
@@ -1444,6 +1444,41 @@ private fun LogoImage(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun RemoteLogoImage(
+    url: String,
+    contentDescription: String,
+    modifier: Modifier
+) {
+    var bitmap by remember(url) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(url) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                logoHttpClient.newCall(
+                    Request.Builder().url(url).get().build()
+                ).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.byteStream()?.use(BitmapFactory::decodeStream)?.asImageBitmap()
+                    } else null
+                }
+            }.getOrNull()
+        }
+    }
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+        )
+    } ?: Box(
+        modifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
     }
 }
 
