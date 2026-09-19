@@ -977,6 +977,7 @@ private fun Tv(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun TvPlayer(
     player: PlayerController,
     channel: StreamItem,
