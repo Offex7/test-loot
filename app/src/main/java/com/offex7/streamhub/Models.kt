@@ -48,12 +48,9 @@ val RADIO_LOGO_URLS = mapOf(
 const val RADIO_LOGO_FALLBACK_URL = "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13"
 
 val TV_SOURCES = listOf(
-    PlaylistSource("smolnp-стабильный", "https://smolnp.github.io/IPTVru//IPTVstable.m3u8"),
-    PlaylistSource("NaggDD-основной", "https://naggdd.github.io/iptv/ru.m3u"),
-    PlaylistSource("LoganetX", "https://raw.githubusercontent.com/blackbirdstudiorus/LoganetXIPTV/main/LoganetXAll.m3u"),
-    PlaylistSource("RUSSIAiptv", "https://iptv-org.github.io/iptv/countries/ru.m3u"),
-    PlaylistSource("DropTV", "https://raw.githubusercontent.com/IPTVRU2026/IPTVMIR/main/IPTV_MEGA_PLAYLIST.m3u"),
-    PlaylistSource("Zabava", "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u")
+    PlaylistSource("Источник 1 — smolnp", "https://smolnp.github.io/IPTVru//IPTVru.m3u"),
+    PlaylistSource("Источник 2 — NaggDD", "https://naggdd.github.io/iptv/ru.m3u"),
+    PlaylistSource("Источник 3 — Zabava", "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u"),
+    PlaylistSource("Источник 4 — World IP TV", "https://romaxa55.github.io/world_ip_tv/output/index.m3u")
 )
-
 val TV_PLAYLIST_URLS = TV_SOURCES.map { it.url }
