@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout V4 source snapshot
-        run: git checkout --detach 0f3028929480f29bc1deb4d4b6da2ca2ca6d6c1
+        run: git fetch origin 0f3028929480f29bc1deb4d4b6bda2ca2ca6d6c1 && git checkout --detach 0f3028929480f29bc1deb4d4b6bda2ca2ca6d6c1
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
