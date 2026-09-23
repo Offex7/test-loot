@@ -17,7 +17,7 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 class TvLogoCache(context: Context) {
-    private val directory = File(context.applicationContext.cacheDir, "tv_logos").apply { mkdirs() }
+    private val directory = File(context.applicationContext.filesDir, "tv_logos").apply { mkdirs() }
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(7, TimeUnit.SECONDS)
@@ -35,25 +35,36 @@ class TvLogoCache(context: Context) {
         }.getOrNull()
     }
 
-    suspend fun prefetch(urls: List<String>) = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val semaphore = Semaphore(4)
-            urls.asSequence()
-                .filter { it.isNotBlank() }
-                .distinct()
-                .take(400)
-                .map { url ->
-                    launch {
-                        semaphore.withPermit {
-                            runCatching {
-                                val file = fileFor(url)
-                                if (!file.exists()) download(url, file) else touch(file)
-                            }
-                        }
+    suspend fun prefetch(priorityUrls: List<String>, secondaryUrls: List<String>) = withContext(Dispatchers.IO) {
+        val priority = priorityUrls.asSequence()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(80)
+            .toList()
+
+        val secondary = secondaryUrls.asSequence()
+            .filter { it.isNotBlank() }
+            .filterNot { priority.contains(it) }
+            .distinct()
+            .take(320)
+            .toList()
+
+        prefetchBatch(priority)
+        prefetchBatch(secondary)
+    }
+
+    private suspend fun prefetchBatch(urls: List<String>) = coroutineScope {
+        val semaphore = Semaphore(4)
+        urls.map { url ->
+            launch {
+                semaphore.withPermit {
+                    runCatching {
+                        val file = fileFor(url)
+                        if (!file.exists()) download(url, file) else touch(file)
                     }
                 }
-                .forEach { it.join() }
-        }
+            }
+        }.forEach { it.join() }
     }
 
     private fun download(url: String, file: File) {

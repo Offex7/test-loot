@@ -253,7 +253,7 @@ private fun App(
     val appContext = LocalContext.current.applicationContext
     val radioTimerStore = remember(appContext) { RadioTimerStore(appContext) }
     var notification by rememberSaveable { mutableStateOf<String?>(null) }
-    var notificationJob by remember { mutableStateOf<Job?>(null) }
+    var notificationToken by remember { mutableLongStateOf(0L) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
@@ -263,17 +263,21 @@ private fun App(
     var sleepUntil by remember { mutableLongStateOf(0L) }
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
-    val weakNetwork by tv.weakNetwork.collectAsState()
+    val tvWeakNetwork by tv.weakNetwork.collectAsState()
+    val radioWeakNetwork by radio.weakNetwork.collectAsState()
+    val weakNetwork = tvWeakNetwork || radioWeakNetwork
 
     fun notify(message: String) {
-        notificationJob?.cancel()
         notification = message
-        notificationJob = scope.launch {
-            delay(5000L)
-            notification = null
-        }
+        notificationToken += 1L
     }
 
+    LaunchedEffect(notificationToken) {
+        if (notification == null || notificationToken == 0L) return@LaunchedEffect
+        val token = notificationToken
+        delay(5000L)
+        if (token == notificationToken) notification = null
+    }
 
     LaunchedEffect(weakNetwork) {
         if (weakNetwork) notify("Слабый интернет. Проверьте соединение")
@@ -474,10 +478,7 @@ private fun App(
                             color = Color.White
                         )
                         IconButton(
-                            onClick = {
-                                notificationJob?.cancel()
-                                notification = null
-                            },
+                            onClick = { notification = null },
                             modifier = Modifier.size(40.dp)
                         ) {
                             Icon(Icons.Default.Close, "Закрыть уведомление", tint = Red)
@@ -523,7 +524,7 @@ private fun Home(
                 durationMillis = 3000
                 Color.White at 0
                 Color(0xFF42A5F5) at 1000
-                Color.Red at 2000
+                Red at 2000
                 Color.White at 3000
             },
             repeatMode = RepeatMode.Restart

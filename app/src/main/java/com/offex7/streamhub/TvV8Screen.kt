@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -216,6 +217,7 @@ fun TvV8Screen(
         if (searchOpen) {
             delay(80L)
             runCatching { focusRequester.requestFocus() }
+            delay(40L)
             keyboardController?.show()
         } else {
             keyboardController?.hide()
@@ -238,8 +240,10 @@ fun TvV8Screen(
         val favoriteUrls = favorites.mapNotNull { key ->
             channels.firstOrNull { it.key == key }?.logoUrl
         }
-        logoCache.prefetch(favoriteUrls)
-        logoCache.prefetch(channels.mapNotNull { it.logoUrl })
+        logoCache.prefetch(
+            priorityUrls = favoriteUrls,
+            secondaryUrls = channels.mapNotNull { it.logoUrl }
+        )
     }
 
     LaunchedEffect(channels) {
@@ -288,9 +292,11 @@ fun TvV8Screen(
                 val candidate = channels[cursor]
                 val result = player.playWithFallback(listOf(candidate.url))
                 if (result >= 0) {
+                    health = health + (candidate.url to AvailabilityStatus.ONLINE)
                     saveLast(candidate)
                     return@launch
                 }
+                health = health + (candidate.url to AvailabilityStatus.OFFLINE)
                 notice = "Канал временно недоступен — переключаю на следующий"
                 delay(3000L)
                 notice = null
@@ -510,7 +516,7 @@ private fun TvV9Header(
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
-            IconButton(onClick = onRefresh) { Icon(Icons.Default.Settings, "Обновить", tint = TvV9Red) }
+            IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Обновить", tint = TvV9Red) }
             IconButton(onClick = onSearchOpen) { Icon(Icons.Default.Search, "Поиск", tint = TvV9Red) }
             IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Настройки", tint = TvV9Red) }
         }
@@ -866,6 +872,9 @@ private fun TvV9Player(
             IconButton(
                 onClick = {
                     locked = false
+                    controls = false
+                    favoriteMenu = false
+                    sleepMenu = false
                     runCatching { rootFocus.requestFocus() }
                 },
                 modifier = Modifier

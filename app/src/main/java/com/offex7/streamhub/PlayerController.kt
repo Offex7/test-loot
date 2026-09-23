@@ -67,6 +67,7 @@ class PlayerController(context: Context) {
         override fun onAvailable(network: Network) {
             if (hasValidatedInternet()) {
                 _waitingForNetwork.value = false
+                _weakNetwork.value = hasLowBandwidthNetwork()
                 if (lastUrl != null && currentPlayer.playbackState == Player.STATE_IDLE) {
                     play(lastUrl!!)
                 }
@@ -173,6 +174,15 @@ class PlayerController(context: Context) {
                     hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             } == true
         }
+
+    private fun hasLowBandwidthNetwork(): Boolean =
+        connectivityManager.allNetworks.any { network ->
+            connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+                    capabilities.linkDownstreamBandwidthKbps in 1..1200
+            } == true
+        }
+
 
     fun play(url: String) {
         if (released || url.isBlank()) return

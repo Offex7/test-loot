@@ -2,6 +2,8 @@ package com.offex7.streamhub
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -27,6 +29,12 @@ class RadioMediaController(context: Context) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _weakNetwork = MutableStateFlow(false)
+    val weakNetwork: StateFlow<Boolean> = _weakNetwork.asStateFlow()
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var bufferingGeneration = 0L
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
@@ -37,10 +45,33 @@ class RadioMediaController(context: Context) {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_READY) _error.value = null
+            when (playbackState) {
+                Player.STATE_BUFFERING -> {
+                    val generation = ++bufferingGeneration
+                    handler.postDelayed({
+                        if (
+                            generation == bufferingGeneration &&
+                            controller?.playbackState == Player.STATE_BUFFERING
+                        ) {
+                            _weakNetwork.value = true
+                        }
+                    }, 4_000L)
+                }
+                Player.STATE_READY -> {
+                    bufferingGeneration++
+                    _weakNetwork.value = false
+                    _error.value = null
+                }
+                Player.STATE_IDLE, Player.STATE_ENDED -> {
+                    bufferingGeneration++
+                    _weakNetwork.value = false
+                }
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            bufferingGeneration++
+            _weakNetwork.value = false
             _error.value = "Поток недоступен"
         }
     }
@@ -154,6 +185,9 @@ class RadioMediaController(context: Context) {
         controller = null
         future = null
         _connected.value = false
+        bufferingGeneration++
+        _weakNetwork.value = false
+        handler.removeCallbacksAndMessages(null)
         executor.shutdownNow()
     }
 }
