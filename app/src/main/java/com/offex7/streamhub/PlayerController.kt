@@ -87,7 +87,7 @@ class PlayerController(private val context: Context) {
         for ((index, url) in candidates.withIndex()) {
             lastUrl = url; reconnectAttempts = 0; _error.value = null
             player.stop(); player.clearMediaItems(); player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = true
-            val until = System.currentTimeMillis() + 5_000L
+            val until = System.currentTimeMillis() + 15_000L
             while (System.currentTimeMillis() < until) {
                 if (player.playbackState == Player.STATE_READY || player.isPlaying) { _error.value = null; return index }
                 if (_error.value != null) { _error.value = null; break }
