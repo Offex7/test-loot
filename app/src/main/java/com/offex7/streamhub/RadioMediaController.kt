@@ -16,6 +16,8 @@ class RadioMediaController(context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     private var controller: MediaController? = null
     private var future: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+    @Volatile private var pendingPlayIndex: Int? = null
+
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
     private val _currentIndex = MutableStateFlow(-1)
@@ -26,10 +28,21 @@ class RadioMediaController(context: Context) {
     val error: StateFlow<String?> = _error.asStateFlow()
 
     private val listener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) { _isPlaying.value = isPlaying }
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { _currentIndex.value = controller?.currentMediaItemIndex ?: -1 }
-        override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_READY) _error.value = null }
-        override fun onPlayerError(error: PlaybackException) { _error.value = "Поток недоступен" }
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _isPlaying.value = isPlaying
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            _currentIndex.value = controller?.currentMediaItemIndex ?: -1
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) _error.value = null
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            _error.value = "Поток недоступен"
+        }
     }
 
     init {
@@ -41,58 +54,106 @@ class RadioMediaController(context: Context) {
                 controller?.addListener(listener)
                 _connected.value = controller != null
                 _isPlaying.value = controller?.isPlaying == true
-                _currentIndex.value = controller?.currentMediaItemIndex ?: -1
+                _currentIndex.value = if (controller?.isPlaying == true) {
+                    controller?.currentMediaItemIndex ?: -1
+                } else {
+                    -1
+                }
+                pendingPlayIndex?.let { index ->
+                    pendingPlayIndex = null
+                    executePlay(index)
+                }
+            }.onFailure {
+                _connected.value = false
+                _error.value = "Не удалось подключиться к плееру"
             }
         }, executor)
     }
 
-    fun play(index: Int) {
-        controller?.let {
-            _error.value = null
-            it.seekToDefaultPosition(index.coerceIn(0, RADIO_STATIONS.lastIndex))
-            it.prepare()
-            it.play()
-        }
+    private fun executePlay(index: Int) {
+        val target = controller ?: return
+        val safeIndex = index.coerceIn(0, RADIO_STATIONS.lastIndex)
+        _error.value = null
+        _currentIndex.value = safeIndex
+        target.seekToDefaultPosition(safeIndex)
+        target.prepare()
+        target.play()
     }
-    fun pause() { controller?.pause() }
+
+    fun play(index: Int) {
+        val safeIndex = index.coerceIn(0, RADIO_STATIONS.lastIndex)
+        if (controller == null) {
+            pendingPlayIndex = safeIndex
+            return
+        }
+        executePlay(safeIndex)
+    }
+
+    fun pause() {
+        pendingPlayIndex = null
+        controller?.pause()
+    }
+
     fun toggle() {
         controller?.let {
-            if (it.isPlaying) it.pause()
-            else {
+            if (it.isPlaying) {
+                it.pause()
+            } else {
                 _error.value = null
                 if (it.playbackState == Player.STATE_IDLE) it.prepare()
                 it.play()
             }
         }
     }
+
     fun stop() {
+        pendingPlayIndex = null
         controller?.stop()
         _error.value = null
         _currentIndex.value = -1
         _isPlaying.value = false
     }
+
     fun next() {
         controller?.let {
             val current = it.currentMediaItemIndex.coerceAtLeast(0)
             play((current + 1) % RADIO_STATIONS.size)
         }
     }
+
     fun previous() {
         controller?.let {
             val current = it.currentMediaItemIndex.coerceAtLeast(0)
             play((current - 1 + RADIO_STATIONS.size) % RADIO_STATIONS.size)
         }
     }
-    fun setVolume(value: Float) { controller?.volume = value.coerceIn(0f, 1f) }
+
+    fun setVolume(value: Float) {
+        controller?.volume = value.coerceIn(0f, 1f)
+    }
+
     fun fadeOut(durationMs: Long, onEnd: (() -> Unit)? = null) {
         val target = controller ?: return
         val start = target.volume.coerceIn(0f, 1f)
         android.animation.ValueAnimator.ofFloat(start, 0f).apply {
             duration = durationMs
             addUpdateListener { target.volume = it.animatedValue as Float }
-            addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(animation: android.animation.Animator) { onEnd?.invoke() } })
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    onEnd?.invoke()
+                }
+            })
             start()
         }
     }
-    fun release() { controller?.removeListener(listener); controller?.release(); future = null; executor.shutdownNow() }
+
+    fun release() {
+        pendingPlayIndex = null
+        controller?.removeListener(listener)
+        controller?.release()
+        controller = null
+        future = null
+        _connected.value = false
+        executor.shutdownNow()
+    }
 }
