@@ -381,7 +381,7 @@ private fun App(
                     },
                     settings = { settings = true }
                 )
-                section == Section.TV -> Tv(
+                section == Section.TV -> TvV8Screen(
                     player = tv,
                     store = store,
                     restore = restore,
@@ -392,7 +392,6 @@ private fun App(
                     },
                     back = ::leaveSection,
                     settings = { settings = true },
-                    fullChanged = { activity.tvViewing = it },
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
