@@ -129,6 +129,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1728,19 +1731,34 @@ private fun SleepGrid(
 @Composable
 private fun DonationCard() {
     val context = LocalContext.current
-    val infiniteTransition = rememberInfiniteTransition(label = "donation-heart-transition")
-    val pulse by infiniteTransition.animateFloat(
+    val transition = rememberInfiniteTransition(label = "donation-heart-transition")
+    val heartColor by transition.animateColor(
+        initialValue = Color.White,
+        targetValue = Color.White,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3000
+                Color.White at 0
+                Color(0xFF42A5F5) at 1000
+                Color(0xFFF06292) at 2000
+                Color.White at 3000
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "donation-heart-color"
+    )
+    val pulse by transition.animateFloat(
         initialValue = 1f,
         targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "donation-heart-pulse"
     )
     val heartScale by animateFloatAsState(
         targetValue = pulse,
-        animationSpec = tween(durationMillis = 80, easing = FastOutSlowInEasing),
+        animationSpec = tween(80, easing = FastOutSlowInEasing),
         label = "donation-heart-scale"
     )
 
@@ -1750,21 +1768,33 @@ private fun DonationCard() {
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, Red.copy(alpha = .4f))
     ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
                     Icons.Default.Favorite,
                     null,
-                    tint = Red,
-                    modifier = Modifier.graphicsLayer(scaleX = heartScale, scaleY = heartScale)
+                    tint = heartColor,
+                    modifier = Modifier.graphicsLayer(
+                        scaleX = heartScale,
+                        scaleY = heartScale
+                    )
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "ПОДДЕРЖАТЬ ПРОЕКТ USDT (TRC20)",
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = Red)) { append("ПОДДЕРЖАТЬ ПРОЕКТ ") }
+                        withStyle(SpanStyle(color = Color(0xFFA5D6A7))) { append("USDT (TRC20)") }
+                    },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Red,
-                    maxLines = 2
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f)
                 )
             }
             Spacer(Modifier.height(8.dp))
