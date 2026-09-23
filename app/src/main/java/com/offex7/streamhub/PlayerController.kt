@@ -134,9 +134,11 @@ class PlayerController(context: Context) {
                         if (internalRetryEnabled && reconnectAttempts < 2 && lastUrl != null && !released) {
                             reconnectAttempts++
                             val url = lastUrl
-                            handler.postDelayed({
-                                if (!released && url == lastUrl) play(url)
-                            }, 400L)
+                            if (url != null) {
+                                handler.postDelayed({
+                                    if (!released && url == lastUrl) play(url)
+                                }, 400L)
+                            }
                         } else {
                             _error.value = "Поток недоступен"
                             _isPlaying.value = false
