@@ -22,6 +22,8 @@ class PlaylistRepository(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     private data class ResolvedSource(val key: String, val name: String, val url: String)
@@ -131,12 +133,12 @@ class PlaylistRepository(
         val response = client.newCall(
             Request.Builder()
                 .url(url)
-                .header("User-Agent", "TV-Radio-Online/6.0")
+                .header("User-Agent", "TV-Radio-Online/7.0")
                 .build()
         ).execute()
         return response.use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code}")
-            val body = r.body?.string().orEmpty()
+            val body = r.body?.string().orEmpty().removePrefix("\uFEFF")
             if (body.isBlank()) error("Пустой ответ")
             DownloadedPlaylist(body, r.request.url.toString())
         }
@@ -148,10 +150,10 @@ class PlaylistRepository(
         var logo: String? = null
         var epg: String? = null
 
-        text.lineSequence().map(String::trim).forEach { line ->
+        text.lineSequence().map { it.trim().removePrefix("\uFEFF") }.forEach { line ->
             when {
                 line.startsWith("#EXTINF", true) -> {
-                    val fallbackName = line.substringAfter(",", "Без названия").trim().ifBlank { "Без названия" }
+                    val fallbackName = line.substringAfterLast(",", "Без названия").trim().ifBlank { "Без названия" }
                     name = attr(line, "tvg-name", baseUrl)?.trim()?.takeIf { it.isNotBlank() } ?: fallbackName
                     logo = attr(line, "tvg-logo", baseUrl)
                     epg = attr(line, "epg-logo", baseUrl) ?: attr(line, "logo", baseUrl)
