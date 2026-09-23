@@ -6,14 +6,13 @@
 
 package com.offex7.streamhub
 
-import android.graphics.BitmapFactory
+import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -25,10 +24,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,10 +34,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,16 +50,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -69,34 +70,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,50 +93,34 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
-import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import java.util.concurrent.ConcurrentHashMap
 
-private val TvV8Red = Color(0xFFE53935)
-private val TvV8Orange = Color(0xFFFF9800)
-private val TvV8Panel = Color(0xFF1A1A1A)
-private val TvV8PanelAlt = Color(0xFF232323)
-private val TvV8Gray = Color(0xFF808080)
-private val TvV8Bg = Color(0xFF121212)
+private val TvV9Red = Color(0xFFE53935)
+private val TvV9Panel = Color(0xFF1A1A1A)
+private val TvV9PanelAlt = Color(0xFF232323)
+private val TvV9Gray = Color(0xFF808080)
+private val TvV9Bg = Color(0xFF121212)
 
-private val tvV8ZoomByChannel = mutableMapOf<String, Float>()
-private val tvV8LogoClient = OkHttpClient.Builder()
-    .connectTimeout(5, TimeUnit.SECONDS)
-    .readTimeout(5, TimeUnit.SECONDS)
-    .callTimeout(7, TimeUnit.SECONDS)
-    .build()
-
-private val TvV8SleepOptions = listOf(
-    5L to "5 мин",
-    10L to "10 мин",
-    15L to "15 мин",
-    30L to "30 мин",
-    60L to "1 ч",
-    120L to "2 ч",
-    240L to "4 ч",
-    480L to "8 ч",
-    600L to "10 ч",
-    900L to "15 ч",
-    1440L to "24 ч",
-    2160L to "36 ч"
+private val TvV9SleepOptions = listOf(
+    5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин",
+    60L to "1 ч", 120L to "2 ч", 240L to "4 ч", 480L to "8 ч",
+    600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
 )
+
+private val tvV9ZoomByChannel = mutableMapOf<String, Float>()
 
 @Composable
 fun TvV8Screen(
@@ -168,87 +139,134 @@ fun TvV8Screen(
     notify: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val repo = remember(context, store) { TvPlaylistRepositoryV8(context, store) }
-    val sourceKey by store.activeSourceFlow().collectAsState(initial = builtinSourceKey(0))
-    val network by rememberTvV8NetworkState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
+    val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
-    val error by player.error.collectAsState()
-    val waiting by player.waitingForNetwork.collectAsState()
-    val isPlaying by player.isPlaying.collectAsState()
+    val network by rememberTvV9Network()
+    val error by player.error.collectAsStateWithLifecycle()
+    val waiting by player.waitingForNetwork.collectAsStateWithLifecycle()
+    val isPlaying by player.isPlaying.collectAsStateWithLifecycle()
+    val playerInstance by player.playerInstance.collectAsStateWithLifecycle()
+    val focusRequester = FocusRequester()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
 
-    var channels by remember { mutableStateOf(emptyList<StreamItem>()) }
-    var favorites by remember { mutableStateOf(emptySet<String>()) }
-    var health by remember { mutableStateOf(emptyMap<String, AvailabilityStatus>()) }
-    var loading by remember(sourceKey) { mutableStateOf(true) }
-    var refreshing by remember { mutableStateOf(false) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-    var selectedIndex by rememberSaveable { mutableIntStateOf(-1) }
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var searchStamp by remember { mutableLongStateOf(0L) }
-    var notice by remember { mutableStateOf<String?>(null) }
-    var playbackJob by remember { mutableStateOf<Job?>(null) }
+    var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
+    var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
+    var health by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, AvailabilityStatus>()) }
+    var loading by androidx.compose.runtime.remember(sourceKey) { androidx.compose.runtime.mutableStateOf(true) }
+    var loadError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var refreshing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var selectedIndex by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(-1) }
+    var fullscreen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var playbackJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
+    var showScrollUp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        favorites = store.favorites(Section.TV)
-        val saved = store.scrollPosition(Section.TV)
-        if (saved.first >= 0) {
-            runCatching { list.scrollToItem(saved.first, saved.second) }
-        }
-    }
-
-    suspend fun reloadPlaylist() {
+    suspend fun reload() {
         loading = true
         loadError = null
-        val cached = repo.cached(sourceKey)
-        if (cached != null) {
-            channels = cached.items
-            loading = false
-        }
-        val result = repo.load(sourceKey)
-        result.onSuccess {
+        runCatching { repo.cached(sourceKey) }.getOrNull()?.let {
             channels = it.items
             loading = false
-            loadError = null
-        }.onFailure {
-            loading = false
-            loadError = "Не удалось загрузить ТВ-плейлист"
         }
-    }
-
-    LaunchedEffect(sourceKey) {
-        reloadPlaylist()
-    }
-
-    LaunchedEffect(list) {
-        snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
-            .collect { (first, offset) ->
-                store.saveScrollPosition(Section.TV, first, offset)
+        repo.load(sourceKey)
+            .onSuccess {
+                channels = it.items
+                loading = false
+                loadError = null
+                health = emptyMap()
+            }
+            .onFailure {
+                loading = false
+                loadError = "Не удалось загрузить ТВ-плейлист"
             }
     }
 
-    LaunchedEffect(channels) {
-        if (channels.isEmpty()) return@LaunchedEffect
-        val pending = channels.take(12).filter { health[it.url] == null }
-        if (pending.isEmpty()) return@LaunchedEffect
-        health = health + scanTvV8(pending, repo)
+    LaunchedEffect(sourceKey) {
+        favorites = store.favorites(Section.TV)
+        reload()
     }
 
-    LaunchedEffect(list.firstVisibleItemIndex, channels) {
+    LaunchedEffect(Unit) {
+        val saved = store.scrollPosition(Section.TV)
+        runCatching { list.scrollToItem(saved.first.coerceAtLeast(0), saved.second) }
+        var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
+        androidx.compose.runtime.snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
+            .collect { current ->
+                store.saveScrollPosition(Section.TV, current.first, current.second)
+                if (current != previous) {
+                    showScrollUp = current.first < previous.first ||
+                        (current.first == previous.first && current.second < previous.second)
+                    previous = current
+                }
+            }
+    }
+
+    LaunchedEffect(searchOpen) {
+        if (searchOpen) {
+            delay(80L)
+            runCatching { focusRequester.requestFocus() }
+            keyboardController?.show()
+        } else {
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(searchOpen, query, searchStamp) {
+        if (!searchOpen) return@LaunchedEffect
+        val stamp = searchStamp
+        delay(if (query.isBlank()) 5000L else 15000L)
+        if (stamp == searchStamp) {
+            searchOpen = false
+            query = ""
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(channels, favorites) {
+        if (channels.isEmpty()) return@LaunchedEffect
+        val favoriteUrls = favorites.mapNotNull { key ->
+            channels.firstOrNull { it.key == key }?.logoUrl
+        }
+        logoCache.prefetch(favoriteUrls)
+        logoCache.prefetch(channels.mapNotNull { it.logoUrl })
+    }
+
+    LaunchedEffect(channels) {
+        if (channels.isNotEmpty()) {
+            health = scanTvV9(channels.take(18), repo)
+        }
+    }
+
+    LaunchedEffect(list.firstVisibleItemIndex, channels, health) {
         if (channels.isEmpty()) return@LaunchedEffect
         val first = list.firstVisibleItemIndex.coerceIn(0, channels.lastIndex)
-        val end = minOf(channels.size, first + 12)
+        val end = minOf(channels.size, first + 20)
         val pending = channels.subList(first, end).filter { health[it.url] == null }
-        if (pending.isNotEmpty()) health = health + scanTvV8(pending, repo)
+        if (pending.isNotEmpty()) health = health + scanTvV9(pending, repo)
     }
 
-    fun nextIndex(from: Int): Int {
-        if (channels.size <= 1) return -1
-        for (step in 1 until channels.size) {
-            val index = (from + step) % channels.size
-            if (health[channels[index].url] != AvailabilityStatus.OFFLINE) return index
+    fun previousIndex(start: Int): Int {
+        if (channels.isEmpty()) return -1
+        var cursor = start.coerceIn(0, channels.lastIndex)
+        repeat(channels.size - 1) {
+            cursor = (cursor - 1 + channels.size) % channels.size
+            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
+        }
+        return -1
+    }
+
+    fun nextIndex(start: Int): Int {
+        if (channels.isEmpty()) return -1
+        var cursor = start.coerceIn(0, channels.lastIndex)
+        repeat(channels.size - 1) {
+            cursor = (cursor + 1) % channels.size
+            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
         }
         return -1
     }
@@ -256,9 +274,8 @@ fun TvV8Screen(
     fun startPlayback(start: Int) {
         if (start !in channels.indices) return
         playbackJob?.cancel()
-        notice = null
-        selectedIndex = start
         fullscreen = true
+        notice = null
         playbackJob = scope.launch {
             var cursor = start
             repeat(channels.size) {
@@ -269,196 +286,190 @@ fun TvV8Screen(
                     saveLast(candidate)
                     return@launch
                 }
-
                 notice = "Канал временно недоступен — переключаю на следующий"
                 delay(3000L)
                 notice = null
-                val next = nextIndex(cursor)
-                if (next < 0) {
+                cursor = nextIndex(cursor)
+                if (cursor < 0) {
                     fullscreen = false
                     return@launch
                 }
-                cursor = next
             }
             fullscreen = false
         }
     }
 
-    BackHandler(enabled = fullscreen) {
+    fun closePlayer() {
         playbackJob?.cancel()
         player.stop()
         notice = null
         fullscreen = false
     }
 
-    AnimatedVisibility(
-        visible = fullscreen && selectedIndex in channels.indices,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        TvV8Player(
+    BackHandler(enabled = fullscreen) { closePlayer() }
+
+    if (fullscreen && selectedIndex in channels.indices) {
+        val favoriteChannels = channels.mapIndexedNotNull { index, channel ->
+            if (favorites.contains(channel.key)) index to channel else null
+        }
+        TvV9Player(
             player = player,
-            channel = channels.getOrNull(selectedIndex) ?: StreamItem("", ""),
-            error = error,
+            playerInstance = playerInstance,
+            channel = channels[selectedIndex],
+            favoriteChannels = favoriteChannels,
+            error = if (notice == null) error else null,
             waiting = waiting || !network,
             isPlaying = isPlaying,
             noticeMessage = notice,
             sleepRemaining = sleepRemaining,
             sleepUntil = sleepUntil,
             sleepMinutes = sleepMinutes,
-            onBack = {
-                playbackJob?.cancel()
-                player.stop()
-                notice = null
-                fullscreen = false
-            },
+            onBack = ::closePlayer,
             onPrev = {
-                val next = nextIndex(selectedIndex - 1 + channels.size)
-                if (next >= 0) startPlayback(next)
+                val i = previousIndex(selectedIndex)
+                if (i >= 0) startPlayback(i)
             },
             onNext = {
-                val next = nextIndex(selectedIndex)
-                if (next >= 0) startPlayback(next)
+                val i = nextIndex(selectedIndex)
+                if (i >= 0) startPlayback(i)
             },
             onPause = { player.toggle() },
-            onResetZoom = {
-                if (selectedIndex in channels.indices) tvV8ZoomByChannel.remove(channels[selectedIndex].key)
+            onFavoriteSelected = { index -> 
+                if (index in channels.indices) startPlayback(index)
             },
             onSleep = onSleep,
             onCancelSleep = onCancelSleep
         )
+        return
     }
 
-    AnimatedVisibility(
-        visible = !fullscreen,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Column(Modifier.fillMaxSize().background(TvV8Bg)) {
-            TvV8Header(
-                title = "ТЕЛЕВИЗОР",
-                searchOpen = searchOpen,
-                query = query,
-                onBack = back,
-                onSearchOpen = {
-                    searchOpen = true
-                    searchStamp = System.currentTimeMillis()
-                },
-                onQuery = {
-                    query = it
-                    searchStamp = System.currentTimeMillis()
-                },
-                onSearchClose = {
-                    query = ""
-                    searchOpen = false
-                    searchStamp = System.currentTimeMillis()
-                },
-                onRefresh = {
-                    scope.launch {
-                        refreshing = true
-                        reloadPlaylist()
-                        refreshing = false
-                    }
-                },
-                onSettings = settings
-            )
+    BackHandler(enabled = searchOpen) {
+        searchOpen = false
+        query = ""
+        searchStamp = System.currentTimeMillis()
+        keyboardController?.hide()
+    }
 
-            restore?.let { item ->
-                TvV8RestoreBanner(
-                    item = item,
-                    onContinue = {
-                        val i = channels.indexOfFirst {
-                            it.url == item.url || it.name.equals(item.name, ignoreCase = true)
-                        }
-                        if (i >= 0) startPlayback(i) else notify("Сохранённый канал больше не найден")
-                    },
-                    onClose = dismissRestore
-                )
-            }
+    val ordered = channels.sortedWith(
+        compareByDescending<StreamItem> { favorites.contains(it.key) }
+            .thenBy { it.name.lowercase(Locale.ROOT) }
+    )
+    val filtered = if (query.isBlank()) ordered else ordered.filter {
+        it.name.contains(query.trim(), true) ||
+            it.groupTitle.orEmpty().contains(query.trim(), true)
+    }
 
-            TvV8SearchAutoClose(searchOpen, query, searchStamp) {
-                query = ""
+    Column(Modifier.fillMaxSize().background(TvV9Bg)) {
+        TvV9Header(
+            searchOpen = searchOpen,
+            query = query,
+            focusRequester = focusRequester,
+            onBack = back,
+            onSearchOpen = {
+                searchOpen = true
+                searchStamp = System.currentTimeMillis()
+            },
+            onQuery = {
+                query = it
+                searchStamp = System.currentTimeMillis()
+            },
+            onSearchClose = {
                 searchOpen = false
-            }
+                query = ""
+                searchStamp = System.currentTimeMillis()
+                keyboardController?.hide()
+            },
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    reload()
+                    refreshing = false
+                }
+            },
+            onSettings = settings
+        )
 
+        restore?.let { item ->
+            TvV9RestoreBanner(
+                item = item,
+                onContinue = {
+                    val i = channels.indexOfFirst {
+                        it.url == item.url || it.name.equals(item.name, true)
+                    }
+                    if (i >= 0) startPlayback(i) else notify("Сохранённый канал больше не найден")
+                },
+                onClose = dismissRestore
+            )
+        }
+
+        Box(Modifier.fillMaxSize().weight(1f)) {
             when {
-                loading -> TvV8Skeleton()
-                channels.isEmpty() -> TvV8ErrorState(loadError ?: "Плейлист пуст", onRetry = {
-                    scope.launch { reloadPlaylist() }
-                })
-                else -> {
-                    val ordered = remember(channels, favorites) {
-                        channels.sortedWith(
-                            compareByDescending<StreamItem> { favorites.contains(it.key) }
-                                .thenBy { it.name.lowercase(Locale.ROOT) }
-                        )
-                    }
-                    val filtered = remember(ordered, query) {
-                        if (query.isBlank()) ordered else ordered.filter {
-                            it.name.contains(query.trim(), true) ||
-                                it.groupTitle.orEmpty().contains(query.trim(), true)
-                        }
-                    }
-
-                    PullToRefreshBox(
-                        isRefreshing = refreshing,
-                        onRefresh = {
-                            scope.launch {
-                                refreshing = true
-                                reloadPlaylist()
-                                refreshing = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        if (filtered.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Ничего не найдено", color = TvV8Gray)
-                            }
-                        } else {
-                            LazyColumn(
-                                state = list,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                items(filtered, key = { it.key }) { channel ->
-                                    val favorite = favorites.contains(channel.key)
-                                    TvV8ChannelRow(
-                                        item = channel,
-                                        favorite = favorite,
-                                        offline = health[channel.url] == AvailabilityStatus.OFFLINE,
-                                        onPlay = {
-                                            val i = channels.indexOfFirst { it.key == channel.key }
-                                            if (i >= 0) startPlayback(i)
-                                        },
-                                        onFavorite = {
-                                            scope.launch {
-                                                val newValue = !favorite
-                                                store.setFavorite(Section.TV, channel.key, newValue)
-                                                favorites = store.favorites(Section.TV)
-                                                notify(
-                                                    if (newValue) "Добавлено в избранное"
-                                                    else "Удалено из избранного"
-                                                )
-                                            }
-                                        }
-                                    )
+                loading -> TvV9Skeleton()
+                channels.isEmpty() -> TvV9ErrorState(loadError ?: "Плейлист пуст") {
+                    scope.launch { reload() }
+                }
+                filtered.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Ничего не найдено", color = TvV9Gray)
+                }
+                else -> LazyColumn(
+                    state = list,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    items(filtered, key = { it.key }) { channel ->
+                        val favorite = favorites.contains(channel.key)
+                        TvV9ChannelRow(
+                            item = channel,
+                            favorite = favorite,
+                            logoCache = logoCache,
+                            offline = health[channel.url] == AvailabilityStatus.OFFLINE,
+                            onPlay = {
+                                channels.indexOfFirst { it.key == channel.key }
+                                    .takeIf { it >= 0 }
+                                    ?.let(::startPlayback)
+                            },
+                            onFavorite = {
+                                scope.launch {
+                                    store.setFavorite(Section.TV, channel.key, !favorite)
+                                    favorites = store.favorites(Section.TV)
                                 }
                             }
-                        }
+                        )
                     }
                 }
+            }
+
+            TvV9ScrollUpButton(
+                visible = showScrollUp,
+                onClick = {
+                    scope.launch {
+                        showScrollUp = false
+                        list.animateScrollToItem(0)
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+            )
+
+            if (refreshing) {
+                Text(
+                    "Обновление…",
+                    color = TvV9Red,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .background(Color.Black.copy(alpha = .45f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TvV8Header(
-    title: String,
+private fun TvV9Header(
     searchOpen: Boolean,
     query: String,
+    focusRequester: FocusRequester,
     onBack: () -> Unit,
     onSearchOpen: () -> Unit,
     onQuery: (String) -> Unit,
@@ -471,100 +482,78 @@ private fun TvV8Header(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, "Назад", tint = TvV8Red)
+            Icon(Icons.Default.ArrowBack, "Назад", tint = TvV9Red)
         }
         if (searchOpen) {
             OutlinedTextField(
                 value = query,
                 onValueChange = onQuery,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).focusRequester(focusRequester),
                 singleLine = true,
                 placeholder = { Text("Поиск…") },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = TvV8Red) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = TvV9Red) },
                 trailingIcon = {
                     IconButton(onClick = onSearchClose) {
-                        Icon(Icons.Default.Close, null, tint = TvV8Red)
+                        Icon(Icons.Default.Close, null, tint = TvV9Red)
                     }
                 }
             )
         } else {
             Text(
-                title,
+                "ТЕЛЕВИЗОР",
                 Modifier.weight(1f),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Default.Refresh, "Обновить", tint = TvV8Red)
-            }
-            IconButton(onClick = onSearchOpen) {
-                Icon(Icons.Default.Search, "Поиск", tint = TvV8Red)
-            }
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Default.Settings, "Настройки", tint = TvV8Red)
-            }
+            IconButton(onClick = onRefresh) { Icon(Icons.Default.Settings, "Обновить", tint = TvV9Red) }
+            IconButton(onClick = onSearchOpen) { Icon(Icons.Default.Search, "Поиск", tint = TvV9Red) }
+            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Настройки", tint = TvV9Red) }
         }
     }
 }
 
 @Composable
-private fun TvV8ChannelRow(
+private fun TvV9ChannelRow(
     item: StreamItem,
     favorite: Boolean,
+    logoCache: TvLogoCache,
     offline: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit
 ) {
     val iconColor by animateColorAsState(
-        if (favorite) TvV8Red else Color.White,
-        label = "tv-v8-favorite-color"
+        if (favorite) TvV9Red else Color.White,
+        label = "tv-v9-favorite-color"
     )
-    val scale by animateFloatAsState(
-        if (favorite) 1.12f else 1f,
-        animationSpec = spring(),
-        label = "tv-v8-favorite-scale"
-    )
-
     Card(
         onClick = onPlay,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (favorite) TvV8Red.copy(alpha = 0.08f) else TvV8Panel
+            containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TvV8RemoteLogo(
-                url = item.logoUrl,
-                size = 60.dp,
-                dimmed = offline
-            )
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     item.name.uppercase(Locale.ROOT),
-                    color = if (offline) TvV8Gray else Color.White,
+                    color = if (offline) TvV9Gray else Color.White,
                     fontWeight = FontWeight.Medium,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 14.sp
+                    overflow = TextOverflow.Ellipsis
                 )
                 item.groupTitle?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = TvV8Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                if (offline) {
-                    Text("• временно недоступен", color = TvV8Gray, fontSize = 10.sp)
-                }
+                if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
             }
             IconButton(onClick = onFavorite) {
                 Icon(
                     if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     "Избранное",
-                    tint = iconColor,
-                    modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+                    tint = iconColor
                 )
             }
         }
@@ -572,56 +561,118 @@ private fun TvV8ChannelRow(
 }
 
 @Composable
-private fun TvV8RemoteLogo(url: String?, size: Dp, dimmed: Boolean) {
-    val context = LocalContext.current
-    var bitmap by remember(url) {
-        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+private fun TvV9Logo(
+    cache: TvLogoCache,
+    url: String?,
+    size: Dp,
+    dimmed: Boolean
+) {
+    var bitmap by androidx.compose.runtime.remember(url) {
+        androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
     }
-    LaunchedEffect(url) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                if (url.isNullOrBlank()) return@runCatching null
-                tvV8LogoClient.newCall(
-                    Request.Builder()
-                        .url(url)
-                        .header("User-Agent", "Radio.TV/8.0")
-                        .build()
-                ).execute().use { response ->
-                    if (!response.isSuccessful) null
-                    else response.body?.byteStream()?.use(BitmapFactory::decodeStream)?.asImageBitmap()
-                }
-            }.getOrNull()
-        }
+    androidx.compose.runtime.LaunchedEffect(url) {
+        bitmap = cache.loadImageBitmap(url)
     }
-
     if (bitmap != null) {
         androidx.compose.foundation.Image(
             bitmap = bitmap!!,
             contentDescription = null,
-            modifier = Modifier.size(size).alpha(if (dimmed) 0.4f else 1f),
+            modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
             contentScale = ContentScale.Fit
         )
     } else {
         Box(
-            Modifier.size(size)
-                .background(TvV8PanelAlt, RoundedCornerShape(10.dp))
-                .alpha(if (dimmed) 0.5f else 1f),
+            Modifier.size(size).background(TvV9PanelAlt, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text("NO\nImage", color = TvV8Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+            Text("NO\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
         }
     }
 }
 
 @Composable
-private fun TvV8RestoreBanner(
+private fun TvV9ScrollUpButton(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "tv-v9-scroll-up")
+    val scale by transition.animateFloat(
+        initialValue = .92f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tv-v9-scroll-scale"
+    )
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+        exit = fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 })
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(52.dp)
+                .graphicsLayer(scaleX = scale, scaleY = scale)
+                .background(Color.Black.copy(alpha = .55f), CircleShape)
+                .border(1.5.dp, TvV9Red, CircleShape)
+                .focusable()
+        ) {
+            Icon(
+                Icons.Default.SkipPrevious,
+                "Вверх",
+                tint = Color.White,
+                modifier = Modifier.graphicsLayer(rotationZ = -90f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvV9Skeleton() {
+    LazyColumn(
+        contentPadding = PaddingValues(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        items(10) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(78.dp)
+                    .background(TvV9PanelAlt, RoundedCornerShape(12.dp))
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvV9ErrorState(message: String, retry: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(message, color = TvV9Gray, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = retry,
+            colors = ButtonDefaults.buttonColors(containerColor = TvV9Red)
+        ) { Text("Повторить") }
+    }
+}
+
+@Composable
+private fun TvV9RestoreBanner(
     item: StreamItem,
     onContinue: () -> Unit,
     onClose: () -> Unit
 ) {
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = TvV8PanelAlt),
+        colors = CardDefaults.cardColors(containerColor = TvV9PanelAlt),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -638,65 +689,23 @@ private fun TvV8RestoreBanner(
                 Button(
                     onClick = onContinue,
                     Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = TvV8Red)
-                ) { Text("Продолжить", maxLines = 1) }
-                OutlinedButton(onClick = onClose, Modifier.weight(1f)) {
-                    Text("Закрыть", maxLines = 1)
-                }
+                    colors = ButtonDefaults.buttonColors(containerColor = TvV9Red)
+                ) { Text("Продолжить") }
+                OutlinedButton(
+                    onClick = onClose,
+                    Modifier.weight(1f)
+                ) { Text("Закрыть") }
             }
         }
     }
 }
 
 @Composable
-private fun TvV8ErrorState(message: String, onRetry: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(message, color = TvV8Gray, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = TvV8Red)) {
-            Text("Повторить")
-        }
-    }
-}
-
-@Composable
-private fun TvV8Skeleton() {
-    LazyColumn(
-        contentPadding = PaddingValues(10.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
-    ) {
-        items(10) {
-            Box(
-                Modifier.fillMaxWidth().height(78.dp)
-                    .background(TvV8PanelAlt, RoundedCornerShape(12.dp))
-            )
-        }
-    }
-}
-
-@Composable
-private fun TvV8SearchAutoClose(
-    open: Boolean,
-    query: String,
-    stamp: Long,
-    close: () -> Unit
-) {
-    LaunchedEffect(open, query, stamp) {
-        if (!open) return@LaunchedEffect
-        val current = stamp
-        delay(if (query.isBlank()) 5000L else 15000L)
-        if (current == stamp) close()
-    }
-}
-
-@Composable
-private fun TvV8Player(
+private fun TvV9Player(
     player: PlayerController,
+    playerInstance: androidx.media3.exoplayer.ExoPlayer,
     channel: StreamItem,
+    favoriteChannels: List<Pair<Int, StreamItem>>,
     error: String?,
     waiting: Boolean,
     isPlaying: Boolean,
@@ -708,200 +717,329 @@ private fun TvV8Player(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPause: () -> Unit,
-    onResetZoom: () -> Unit,
+    onFavoriteSelected: (Int) -> Unit,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.activity.ComponentActivity
-    val controller = remember(activity) {
+    val insets = androidx.compose.runtime.remember(activity) {
         activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) }
     }
+    val rootFocus = FocusRequester()
 
-    var controls by remember(channel.key) { mutableStateOf(true) }
-    var zoom by remember(channel.key) { mutableFloatStateOf(tvV8ZoomByChannel[channel.key] ?: 1f) }
-    var sleepMenu by remember(channel.key) { mutableStateOf(false) }
-    var sleepMenuToken by remember(channel.key) { mutableIntStateOf(0) }
-
-    DisposableEffect(Unit) {
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
+    var locked by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var zoom by androidx.compose.runtime.remember(channel.key) {
+        androidx.compose.runtime.mutableFloatStateOf(tvV9ZoomByChannel[channel.key] ?: 1f)
     }
 
-    LaunchedEffect(controls) {
-        if (controls) {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-            delay(5000L)
-            controls = false
-        } else {
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-        }
+    val formatLabel = when (formatMode) {
+        1 -> "РАСТЯНУТЬ"
+        2 -> "ZOOM"
+        else -> "ОРИГИНАЛ"
     }
 
-    LaunchedEffect(sleepMenu, sleepMenuToken) {
-        if (!sleepMenu) return@LaunchedEffect
-        delay(5000L)
-        sleepMenu = false
-    }
-
-    val playerView = remember(channel.key) {
+    val playerView = androidx.compose.runtime.remember {
         PlayerView(context).apply {
             useController = false
             setShutterBackgroundColor(android.graphics.Color.BLACK)
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
     }
 
-    DisposableEffect(playerView, player) {
-        playerView.player = player.player
-        onDispose { playerView.player = null }
+    androidx.compose.runtime.DisposableEffect(playerView, playerInstance) {
+        playerView.player = playerInstance
+        onDispose {
+            if (playerView.player === playerInstance) playerView.player = null
+        }
     }
 
+    androidx.compose.runtime.LaunchedEffect(formatMode) {
+        playerView.resizeMode = when (formatMode) {
+            1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        insets?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(controls, locked) {
+        if (locked || !controls) insets?.hide(WindowInsetsCompat.Type.systemBars())
+        else insets?.show(WindowInsetsCompat.Type.systemBars())
+        if (controls && !locked) {
+            delay(5000L)
+            controls = false
+            favoriteMenu = false
+            sleepMenu = false
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(sleepMenu, sleepToken) {
+        if (sleepMenu) {
+            delay(5000L)
+            sleepMenu = false
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        runCatching { rootFocus.requestFocus() }
+    }
+
+    BackHandler(enabled = locked) { locked = false }
+
     Box(
-        Modifier.fillMaxSize().background(Color.Black),
-        contentAlignment = Alignment.Center
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .focusRequester(rootFocus)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+                when (event.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (!locked) onPrev()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (!locked) onNext()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_SPACE -> {
+                        if (!locked) onPause()
+                        true
+                    }
+                    KeyEvent.KEYCODE_BACK -> {
+                        if (!locked) {
+                            onBack()
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            }
     ) {
         AndroidView(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(scaleX = zoom, scaleY = zoom)
-                .pointerInput(channel.key) {
-                    detectTapGestures(
-                        onTap = { controls = !controls },
-                        onDoubleTap = {
-                            zoom = 1f
-                            tvV8ZoomByChannel.remove(channel.key)
-                            onResetZoom()
-                        }
-                    )
+                .pointerInput(locked, controls, channel.key) {
+                    if (!locked) {
+                        detectTapGestures(
+                            onTap = { controls = !controls },
+                            onDoubleTap = {
+                                zoom = 1f
+                                tvV9ZoomByChannel.remove(channel.key)
+                            }
+                        )
+                    } else {
+                        detectTapGestures(onTap = {})
+                    }
                 }
-                .pointerInput(channel.key) {
-                    detectTransformGestures { _, _, gestureZoom, _ ->
-                        zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
-                        tvV8ZoomByChannel[channel.key] = zoom
+                .pointerInput(locked, channel.key) {
+                    if (!locked) {
+                        detectTransformGestures { _, _, gestureZoom, _ ->
+                            zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
+                            tvV9ZoomByChannel[channel.key] = zoom
+                        }
+                    } else {
+                        detectTransformGestures { _, _, _, _ -> }
                     }
                 }
         )
 
-        if (!controls) {
-            if (waiting || error != null || !isPlaying) {
-                Text(
-                    when {
-                        error != null -> "Поток недоступен"
-                        waiting -> "Ожидание сети…"
-                        else -> "Загрузка…"
-                    },
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                )
+        if (locked) {
+            IconButton(
+                onClick = {
+                    locked = false
+                    runCatching { rootFocus.requestFocus() }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .size(54.dp)
+                    .background(Color.Black.copy(alpha = .35f), CircleShape)
+                    .border(2.dp, TvV9Red, CircleShape)
+                    .focusable()
+            ) {
+                Icon(Icons.Default.LockOpen, "Разблокировать", tint = Color.White)
             }
-        }
-
-        AnimatedVisibility(
-            visible = controls,
-            modifier = Modifier.fillMaxSize(),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
-                ) {
-                    Icon(Icons.Default.ArrowBack, "Назад", tint = Color.White)
-                }
-
-                IconButton(
-                    onClick = {
-                        sleepMenu = !sleepMenu
-                        sleepMenuToken++
-                    },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                ) {
-                    Icon(Icons.Default.AccessTime, "Таймер сна", tint = Color.White)
-                }
-
-                Row(
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onPrev, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Default.ArrowBack, "Предыдущий", tint = Color.White, modifier = Modifier.size(34.dp))
+        } else {
+            AnimatedVisibility(
+                visible = controls,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.align(Alignment.TopStart).padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", onBack)
+                        TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна") {
+                            sleepMenu = !sleepMenu
+                            sleepToken++
+                        }
+                        TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
+                            formatMode = (formatMode + 1) % 3
+                        }
+                        TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
+                            favoriteMenu = false
+                            sleepMenu = false
+                            locked = true
+                        }
+                        TvV9PlayerButton(
+                            if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
+                            "Избранное"
+                        ) {
+                            favoriteMenu = !favoriteMenu
+                            if (favoriteMenu) sleepMenu = false
+                        }
                     }
-                    IconButton(onClick = onPause, modifier = Modifier.size(72.dp)) {
-                        Icon(
-                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+
+                    Text(
+                        formatLabel,
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp)
+                            .background(Color.Black.copy(alpha = .35f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", onPrev)
+                        TvV9PlayerButtonLarge(
+                            if (isPlaying) androidx.compose.material.icons.Icons.Default.AccessTime else androidx.compose.material.icons.Icons.Default.PlayArrow,
                             "Пауза / Старт",
-                            tint = Color.White,
-                            modifier = Modifier.size(48.dp)
+                            onPause
+                        )
+                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", onNext)
+                    }
+
+                    noticeMessage?.let {
+                        Text(
+                            it,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .background(TvV9Red.copy(alpha = .92f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            textAlign = TextAlign.Center
                         )
                     }
-                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Default.PlayArrow, "Следующий", tint = Color.White, modifier = Modifier.size(34.dp))
+
+                    if (waiting || error != null || !isPlaying) {
+                        Text(
+                            when {
+                                error != null -> "Поток недоступен"
+                                waiting -> "Ожидание сети…"
+                                else -> "Загрузка…"
+                            },
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .background(Color.Black.copy(alpha = .4f), RoundedCornerShape(10.dp))
+                                .padding(8.dp)
+                        )
                     }
-                }
 
-                noticeMessage?.let {
-                    Text(
-                        it,
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .background(TvV8Red.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                if (sleepMenu) {
-                    Popup(
-                        alignment = Alignment.TopEnd,
-                        properties = PopupProperties(focusable = false)
-                    ) {
-                        Card(
-                            Modifier
-                                .padding(top = 56.dp, end = 8.dp)
-                                .heightIn(max = 330.dp),
-                            colors = CardDefaults.cardColors(containerColor = TvV8Panel.copy(alpha = 0.92f)),
-                            shape = RoundedCornerShape(16.dp)
+                    if (favoriteMenu) {
+                        Popup(
+                            alignment = Alignment.TopStart,
+                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
                         ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text("ТАЙМЕР СНА", color = TvV8Red, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(8.dp))
+                            Column(
+                                Modifier
+                                    .padding(start = 68.dp, top = 64.dp)
+                                    .width(290.dp)
+                                    .background(Color.Transparent)
+                                    .border(1.dp, TvV9Red.copy(alpha = .65f), RoundedCornerShape(14.dp))
+                                    .padding(8.dp)
+                            ) {
+                                Text("ИЗБРАННЫЕ КАНАЛЫ", color = TvV9Red, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                if (favoriteChannels.isEmpty()) {
+                                    Text("Пока нет избранных каналов", color = TvV9Gray, fontSize = 12.sp)
+                                } else {
+                                    favoriteChannels.forEach { (index, item) ->
+                                        TextButton(
+                                            onClick = {
+                                                favoriteMenu = false
+                                                onFavoriteSelected(index)
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                item.name,
+                                                Modifier.fillMaxWidth(),
+                                                color = Color.White,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Start
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (sleepMenu) {
+                        Popup(
+                            alignment = Alignment.TopStart,
+                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
+                        ) {
+                            Column(
+                                Modifier
+                                    .padding(start = 68.dp, top = 64.dp)
+                                    .background(Color.Transparent)
+                                    .padding(8.dp)
+                            ) {
+                                Text("ТАЙМЕР СНА", color = TvV9Red, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
                                 FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
                                     maxItemsInEachRow = 4
                                 ) {
-                                    TvV8SleepOptions.forEach { (minutes, label) ->
+                                    TvV9SleepOptions.forEach { (minutes, label) ->
                                         val active = sleepMinutes == minutes && sleepUntil > System.currentTimeMillis()
-                                        val background by animateColorAsState(
-                                            if (active) TvV8Red else TvV8PanelAlt,
-                                            label = "tv-v8-sleep-" + minutes
+                                        val bg by animateColorAsState(
+                                            if (active) TvV9Red else Color.Transparent,
+                                            label = "tv-v9-sleep-" + minutes
                                         )
                                         Card(
                                             onClick = {
-                                                if (active) {
-                                                    onCancelSleep()
-                                                } else {
-                                                    onSleep(minutes)
-                                                }
+                                                if (active) onCancelSleep() else onSleep(minutes)
                                                 sleepMenu = false
                                             },
-                                            Modifier.size(66.dp),
-                                            colors = CardDefaults.cardColors(containerColor = background),
+                                            modifier = Modifier.size(62.dp),
+                                            colors = CardDefaults.cardColors(containerColor = bg),
                                             shape = CircleShape,
-                                            border = BorderStroke(1.dp, if (active) TvV8Red else TvV8Gray)
+                                            border = BorderStroke(1.dp, TvV9Red)
                                         ) {
                                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 Text(
-                                                    if (active) formatTvV8SleepTime(sleepRemaining) else label,
-                                                    color = if (active) Color(0xFFFFD6D6) else Color.White,
-                                                    fontSize = if (active) 10.sp else 12.sp,
+                                                    if (active) formatTvV9Sleep(sleepRemaining) else label,
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
                                                     textAlign = TextAlign.Center
                                                 )
                                             }
@@ -917,46 +1055,78 @@ private fun TvV8Player(
     }
 }
 
-private fun formatTvV8SleepTime(milliseconds: Long): String {
-    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
-    return if (seconds >= 3600L) {
-        "%02d:%02d".format(seconds / 3600L, (seconds / 60L) % 60L)
-    } else {
-        "%02d:%02d".format(seconds / 60L, seconds % 60L)
+@Composable
+private fun TvV9PlayerButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color.Black.copy(alpha = .28f), CircleShape)
+            .border(1.5.dp, TvV9Red, CircleShape)
+            .focusable()
+    ) {
+        Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(26.dp))
     }
 }
 
-private suspend fun scanTvV8(
+@Composable
+private fun TvV9PlayerButtonLarge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(60.dp)
+            .background(Color.Black.copy(alpha = .28f), CircleShape)
+            .border(1.5.dp, TvV9Red, CircleShape)
+            .focusable()
+    ) {
+        Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(34.dp))
+    }
+}
+
+private fun formatTvV9Sleep(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return if (totalSeconds >= 3600L) {
+        "%02d:%02d".format(totalSeconds / 3600L, (totalSeconds / 60L) % 60L)
+    } else {
+        "%02d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+    }
+}
+
+private suspend fun scanTvV9(
     items: List<StreamItem>,
     repo: TvPlaylistRepositoryV8
 ): Map<String, AvailabilityStatus> = coroutineScope {
-    val output = mutableMapOf<String, AvailabilityStatus>()
+    val result = ConcurrentHashMap<String, AvailabilityStatus>()
     val semaphore = Semaphore(4)
     items.map { item ->
         launch(Dispatchers.IO) {
-            semaphore.acquire()
-            try {
-                output[item.url] = repo.checkAvailability(item.url)
-            } finally {
-                semaphore.release()
+            semaphore.withPermit {
+                result[item.url] = repo.checkAvailability(item.url)
             }
         }
     }.forEach { it.join() }
-    output
+    result
 }
 
 @Composable
-private fun rememberTvV8NetworkState(): androidx.compose.runtime.State<Boolean> {
-    val context = LocalContext.current
-    return androidx.compose.runtime.produceState(initialValue = true) {
+private fun rememberTvV9Network(): androidx.compose.runtime.State<Boolean> =
+    androidx.compose.runtime.produceState(true) {
+        val context = LocalContext.current
         val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-        fun online(): Boolean {
-            return cm.allNetworks.any { network ->
-                cm.getNetworkCapabilities(network)?.hasCapability(
+        fun online(): Boolean =
+            cm.allNetworks.any { n ->
+                cm.getNetworkCapabilities(n)?.hasCapability(
                     android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
                 ) == true
             }
-        }
         value = online()
         val callback = object : android.net.ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: android.net.Network) { value = online() }
@@ -965,4 +1135,3 @@ private fun rememberTvV8NetworkState(): androidx.compose.runtime.State<Boolean> 
         runCatching { cm.registerDefaultNetworkCallback(callback) }
         awaitDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
     }
-}

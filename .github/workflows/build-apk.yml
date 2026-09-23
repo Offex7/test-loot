@@ -38,11 +38,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate V8 project
+      - name: Validate V9 project
         run: |
           set -e
-          grep -q 'versionCode = 8' app/build.gradle.kts
-          grep -q 'versionName = "8.0"' app/build.gradle.kts
+          grep -q 'versionCode = 9' app/build.gradle.kts
+          grep -q 'versionName = "9.0"' app/build.gradle.kts
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'minSdk = 29' app/build.gradle.kts
@@ -55,9 +55,9 @@ jobs:
           test -f app/src/main/java/com/offex7/streamhub/RadioMediaController.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioPlaybackService.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioTimerStore.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV8.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q "TvV8Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV9.kt
+          test -f app/src/main/java/com/offex7/streamhub/TvV9Screen.kt
+          grep -q "TvV9Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q "https://smolnp.github.io/IPTVru//IPTVru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://naggdd.github.io/iptv/ru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
@@ -74,6 +74,7 @@ jobs:
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$KEY_CERT"
           echo "Signing certificate SHA-256: $KEY_CERT"
+          test "$KEY_CERT" = "b848a1f2857ef5d4fd4a2d89be61fd0d6804729f263e4816e6fce2857d91c15a"
 
       - name: Build signed release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
@@ -83,23 +84,23 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" tv-radio-online-v8.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v8.0.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v8.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" tv-radio-online-v9.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v9.0.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v9.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging tv-radio-online-v8.0.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging tv-radio-online-v9.0.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='8'"
-          echo "$APK_PACKAGE" | grep -q "versionName='8.0'"
-          sha256sum tv-radio-online-v8.0.apk
-          ls -lh tv-radio-online-v8.0.apk
+          echo "$APK_PACKAGE" | grep -q "versionCode='9'"
+          echo "$APK_PACKAGE" | grep -q "versionName='9.0'"
+          sha256sum tv-radio-online-v9.0.apk
+          ls -lh tv-radio-online-v9.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-Radio-Online-v8.0-APK
-          path: tv-radio-online-v8.0.apk
+          name: TV-Radio-Online-v9.0-APK
+          path: tv-radio-online-v9.0.apk
           if-no-files-found: error

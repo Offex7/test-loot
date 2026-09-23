@@ -26,7 +26,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -39,8 +38,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -101,14 +98,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -128,17 +124,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.hapticfeedback.LocalHapticFeedback
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -158,6 +151,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
@@ -166,9 +160,7 @@ import okhttp3.Request
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.sin
 
 private val Red = Color(0xFFE53935)
 private val Orange = Color(0xFFFF9800)
@@ -182,6 +174,7 @@ private const val TELEGRAM = "https://t.me/TvRadioOnline"
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
+private const val APP_VERSION = "9.0"
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
 private val SleepOptions = listOf(
@@ -253,7 +246,8 @@ private fun App(
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val radioTimerStore = remember(appContext) { RadioTimerStore(appContext) }
-    val snack = remember { SnackbarHostState() }
+    var notification by rememberSaveable { mutableStateOf<String?>(null) }
+    var notificationJob by remember { mutableStateOf<Job?>(null) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
@@ -264,7 +258,19 @@ private fun App(
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
 
-    fun notify(message: String) { scope.launch { snack.showSnackbar(message, duration = SnackbarDuration.Short) } }
+    fun notify(message: String) {
+        notificationJob?.cancel()
+        notification = message
+        notificationJob = scope.launch {
+            delay(5000L)
+            notification = null
+        }
+    }
+
+
+    LaunchedEffect(weakNetwork) {
+        if (weakNetwork) notify("Слабый интернет. Проверьте соединение")
+    }
 
     LaunchedEffect(Unit) {
         pip = store.pipEnabled()
@@ -319,7 +325,7 @@ private fun App(
         }
     }
 
-    Scaffold(snackbarHost = {}, containerColor = Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    Scaffold(containerColor = Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         Box(
             Modifier.fillMaxSize().padding(padding).windowInsetsPadding(
                 WindowInsets.systemBars.union(WindowInsets.displayCutout)
@@ -386,6 +392,7 @@ private fun App(
                     }
                 )
                 section == null -> Home(
+                    activity = activity,
                     open = {
                         section = it
                         scope.launch { store.setSection(it) }
@@ -435,7 +442,7 @@ private fun App(
             }
 
             AnimatedVisibility(
-                visible = snack.currentSnackbarData != null,
+                visible = notification != null,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
@@ -444,7 +451,6 @@ private fun App(
                 enter = slideInVertically(initialOffsetY = { -it }, animationSpec = spring()) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = spring()) + fadeOut()
             ) {
-                val data = snack.currentSnackbarData
                 Card(
                     Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = PanelAlt),
@@ -455,16 +461,19 @@ private fun App(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            data?.visuals?.message.orEmpty(),
+                            notification.orEmpty(),
                             Modifier.weight(1f),
                             fontSize = 13.sp,
                             color = Color.White
                         )
                         IconButton(
-                            onClick = { data?.dismiss() },
-                            modifier = Modifier.size(38.dp)
+                            onClick = {
+                                notificationJob?.cancel()
+                                notification = null
+                            },
+                            modifier = Modifier.size(40.dp)
                         ) {
-                            Icon(Icons.Default.Close, "Закрыть уведомление", tint = Color.White)
+                            Icon(Icons.Default.Close, "Закрыть уведомление", tint = Red)
                         }
                     }
                 }
@@ -483,47 +492,58 @@ private fun App(
 }
 
 @Composable
-private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
+private fun Home(
+    activity: MainActivity,
+    open: (Section) -> Unit,
+    settings: () -> Unit
+) {
     val context = LocalContext.current
+    val transition = rememberInfiniteTransition(label = "home-gear")
+    val gearPulse by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "home-gear-pulse"
+    )
+    val gearColor by transition.animateColor(
+        initialValue = Color.White,
+        targetValue = Color.White,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3000
+                Color.White at 0
+                Color(0xFF42A5F5) at 1000
+                Color.Red at 2000
+                Color.White at 3000
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "home-gear-color"
+    )
     var gearTurns by remember { mutableIntStateOf(0) }
     val gearRotation by animateFloatAsState(
         targetValue = gearTurns * 90f,
         animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "home-settings-rotation"
+        label = "home-gear-rotation"
     )
-
-    val bannerTransition = rememberInfiniteTransition(label = "recommend-banner-transition")
-    val bannerPulse by bannerTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "recommend-banner-pulse"
-    )
-    val borderAngle by bannerTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "recommend-banner-border"
-    )
-    val bannerScale = 1f + 0.03f * bannerPulse
-    val angle = Math.toRadians(borderAngle.toDouble()).toFloat()
-    val borderBrush = Brush.linearGradient(
-        colors = listOf(Red, Color.White, Orange, Red),
-        start = Offset(cos(angle) * 500f, sin(angle) * 500f),
-        end = Offset(-cos(angle) * 500f, -sin(angle) * 500f)
-    )
+    val widthClass = calculateWindowSizeClass(activity).widthSizeClass
 
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                Text("TV / Radio. Online", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = Color.White)) { append("Radio.TV ") }
+                        withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append(APP_VERSION) }
+                    },
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
                 IconButton(
                     onClick = {
                         gearTurns += 1
@@ -533,37 +553,41 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
                     Icon(
                         Icons.Default.Settings,
                         "Настройки",
-                        tint = Red,
-                        modifier = Modifier.graphicsLayer(rotationZ = gearRotation)
+                        tint = gearColor,
+                        modifier = Modifier.graphicsLayer(
+                            rotationZ = gearRotation,
+                            scaleX = gearPulse,
+                            scaleY = gearPulse
+                        )
                     )
                 }
             }
 
-            if (LocalConfiguration.current.screenWidthDp >= 560) {
-                Row(
-                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
+            when (widthClass) {
+                WindowWidthSizeClass.Compact -> {
+                    Column(
+                        Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
+                    }
                 }
-            } else {
-                Column(
-                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
+                else -> {
+                    Row(
+                        Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.weight(1f)) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.weight(1f)) { open(Section.RADIO) }
+                    }
                 }
             }
 
+            Spacer(Modifier.height(18.dp))
             Card(
                 onClick = { openUrl(context, TELEGRAM) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .graphicsLayer(scaleX = bannerScale, scaleY = bannerScale)
-                    .border(1.5.dp, borderBrush, RoundedCornerShape(16.dp)),
+                modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -577,7 +601,7 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
                     Text(
                         "ПОРЕКОМЕНДОВАТЬ ПРОЕКТ ДРУЗЬЯМ",
                         color = Red,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -588,33 +612,13 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
     }
 }
 
-private enum class HomeArtworkKind { TV, RADIO }
-
 @Composable
 private fun HomeCard(
     title: String,
     logo: Int,
     modifier: Modifier,
-    kind: HomeArtworkKind,
     onClick: () -> Unit
 ) {
-    val transition = rememberInfiniteTransition(label = "home-artwork-" + kind.name)
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (kind == HomeArtworkKind.RADIO) 1400 else 1800,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "home-artwork-phase-" + kind.name
-    )
-
-    val rotation = if (kind == HomeArtworkKind.RADIO) -1.5f + 3f * phase else 0f
-    val artworkScale = if (kind == HomeArtworkKind.TV) 1f + 0.012f * phase else 1f
-
     Card(
         onClick = onClick,
         modifier = modifier,
@@ -632,15 +636,7 @@ private fun HomeCard(
                 Image(
                     painter = painterResource(logo),
                     contentDescription = title,
-                    modifier = Modifier
-                        .fillMaxHeight(0.82f)
-                        .aspectRatio(1f)
-                        .graphicsLayer(
-                            rotationZ = rotation,
-                            scaleX = artworkScale,
-                            scaleY = artworkScale,
-                            alpha = if (kind == HomeArtworkKind.TV) 0.96f + 0.04f * phase else 1f
-                        )
+                    modifier = Modifier.fillMaxHeight(0.82f).aspectRatio(1f)
                 )
             }
             Spacer(Modifier.height(2.dp))
@@ -653,6 +649,41 @@ private fun HomeCard(
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+@Composable
+private fun ScrollUpButton(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "scroll-up-button")
+    val scale by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scroll-up-scale"
+    )
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(52.dp)
+                .graphicsLayer(scaleX = scale, scaleY = scale)
+                .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                .border(1.5.dp, Red, CircleShape)
+        ) {
+            Icon(Icons.Default.SkipPrevious, "Вверх", tint = Color.White, modifier = Modifier.graphicsLayer(rotationZ = -90f))
         }
     }
 }
@@ -732,6 +763,7 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var showScrollUp by remember { mutableStateOf(false) }
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
 
@@ -785,8 +817,16 @@ private fun Radio(
     }
 
     LaunchedEffect(list) {
+        var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
-            .collect { (first, offset) -> store.saveScrollPosition(Section.RADIO, first, offset) }
+            .collect { current ->
+                store.saveScrollPosition(Section.RADIO, current.first, current.second)
+                if (current != previous) {
+                    showScrollUp = current.first < previous.first ||
+                        (current.first == previous.first && current.second < previous.second)
+                    previous = current
+                }
+            }
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -885,66 +925,79 @@ private fun Radio(
                 )
             }
 
-            LazyColumn(
-                state = list,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                items(orderedStations, key = { it.key }) { station ->
-                    val favorite = favorites.contains(station.key)
-                    val active = station.url == current?.url
-                    ChannelRow(
-                        item = station,
-                        favorite = favorite,
-                        playing = active && playing,
-                        offline = false,
-                        onPlay = {
-                            val i = RADIO_STATIONS.indexOf(station)
-                            if (i >= 0) {
-                                scope.launch {
-                                    if (active) {
-                                        toggleActiveStation(i, station)
-                                    } else {
-                                        if (index >= 0 && player.isPlaying.value) {
-                                            timerStore.pause(System.currentTimeMillis())
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = list,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    items(orderedStations, key = { it.key }) { station ->
+                        val favorite = favorites.contains(station.key)
+                        val active = station.url == current?.url
+                        ChannelRow(
+                            item = station,
+                            favorite = favorite,
+                            playing = active && playing,
+                            offline = false,
+                            onPlay = {
+                                val i = RADIO_STATIONS.indexOf(station)
+                                if (i >= 0) {
+                                    scope.launch {
+                                        if (active) {
+                                            toggleActiveStation(i, station)
+                                        } else {
+                                            if (index >= 0 && player.isPlaying.value) {
+                                                timerStore.pause(System.currentTimeMillis())
+                                            }
+                                            playNewStation(i, station)
                                         }
-                                        playNewStation(i, station)
                                     }
                                 }
-                            }
-                        },
-                        onFavorite = {
-                            scope.launch {
-                                runCatching {
-                                    store.setFavorite(Section.RADIO, station.key, !favorite)
-                                    favorites = store.favorites(Section.RADIO)
-                                    notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
-                                }.onFailure {
-                                    notify("Не удалось обновить избранное")
+                            },
+                            onFavorite = {
+                                scope.launch {
+                                    runCatching {
+                                        store.setFavorite(Section.RADIO, station.key, !favorite)
+                                        favorites = store.favorites(Section.RADIO)
+                                        notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
+                                    }.onFailure {
+                                        notify("Не удалось обновить избранное")
+                                    }
                                 }
-                            }
-                        },
-                        logoSize = 72.dp,
-                        isRadio = true,
-                        activeRadio = active,
-                        radioStatus = if (active) {
-                            when {
-                                error != null -> "ошибка"
-                                playing -> "играет"
-                                else -> "пауза"
-                            }
-                        } else null,
-                        radioTimer = if (active) formatTime(displayedTimerMs / 1000L) else null,
-                        onToggle = if (active) {
-                            {
-                                val activeIndex = RADIO_STATIONS.indexOf(station)
-                                if (activeIndex >= 0) scope.launch { toggleActiveStation(activeIndex, station) }
-                            }
-                        } else null
-                    )
+                            },
+                            logoSize = 72.dp,
+                            isRadio = true,
+                            activeRadio = active,
+                            radioStatus = if (active) {
+                                when {
+                                    error != null -> "ошибка"
+                                    playing -> "играет"
+                                    else -> "пауза"
+                                }
+                            } else null,
+                            radioTimer = if (active) formatTime(displayedTimerMs / 1000L) else null,
+                            onToggle = if (active) {
+                                {
+                                    val activeIndex = RADIO_STATIONS.indexOf(station)
+                                    if (activeIndex >= 0) scope.launch { toggleActiveStation(activeIndex, station) }
+                                }
+                            } else null
+                        )
+                    }
                 }
+                ScrollUpButton(
+                    visible = showScrollUp,
+                    onClick = {
+                        scope.launch {
+                            showScrollUp = false
+                            list.animateScrollToItem(0)
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+                )
             }
+
         }
     }
 }

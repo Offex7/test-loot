@@ -10,8 +10,8 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 29
         targetSdk = 34
-        versionCode = 8
-        versionName = "8.0"
+        versionCode = 9
+        versionName = "9.0"
     }
     signingConfigs {
         create("v5Debug") {
@@ -51,6 +51,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.3.1")
+    implementation("androidx.compose.material3:material3-window-size-class:1.3.1")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
@@ -92,7 +93,7 @@ val downloadV5Assets by tasks.registering {
             val raw = File(dir, "${name}.source")
             val png = File(dir, "${name}.png")
             if (!png.exists()) {
-                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "Radio.TV/8.0", "-o", raw.absolutePath, url)
+                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "Radio.TV/9.0", "-o", raw.absolutePath, url)
                 if (downloaded) run("convert", raw.absolutePath, "-resize", "512x512^", "-gravity", "center", "-extent", "512x512", png.absolutePath)
             }
             raw.delete()

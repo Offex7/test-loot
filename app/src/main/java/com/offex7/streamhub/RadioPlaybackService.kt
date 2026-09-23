@@ -21,7 +21,7 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 50_000, 1_500, 3_000)
+            .setBufferDurationsMs(10_000, 30_000, 2_000, 5_000)
             .build()
         val player = ExoPlayer.Builder(this)
             .setLoadControl(loadControl)

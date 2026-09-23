@@ -62,9 +62,9 @@ val RADIO_LOGO_URLS = mapOf(
 const val RADIO_LOGO_FALLBACK_URL = "https://avatars.mds.yandex.net/i?id=0a9808b1a359810ad95a4407bb71fa8b_l-5146492-images-thumbs&n=13"
 
 val TV_SOURCES = listOf(
-    PlaylistSource("Источник 1 — smolnp", "https://smolnp.github.io/IPTVru//IPTVru.m3u"),
-    PlaylistSource("Источник 2 — NaggDD", "https://naggdd.github.io/iptv/ru.m3u"),
-    PlaylistSource("Источник 3 — Zabava", "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u"),
-    PlaylistSource("Источник 4 — World IP TV", "https://romaxa55.github.io/world_ip_tv/output/index.m3u")
+    PlaylistSource("Источник 1 - default", "https://smolnp.github.io/IPTVru//IPTVru.m3u"),
+    PlaylistSource("Источник 2 - rezerv1", "https://naggdd.github.io/iptv/ru.m3u"),
+    PlaylistSource("Источник 3 - rezerv2", "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u"),
+    PlaylistSource("Источник 4 - WORLD", "https://romaxa55.github.io/world_ip_tv/output/index.m3u")
 )
 val TV_PLAYLIST_URLS = TV_SOURCES.map { it.url }
