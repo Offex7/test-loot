@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -84,6 +85,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -493,7 +495,7 @@ private fun TvV8Header(
                 Icon(Icons.Default.Search, "Поиск", tint = TvV8Red)
             }
             IconButton(onClick = onSettings) {
-                Icon(Icons.Default.AccessTime, "Настройки", tint = TvV8Red)
+                Icon(Icons.Default.Settings, "Настройки", tint = TvV8Red)
             }
         }
     }
