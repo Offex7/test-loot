@@ -170,7 +170,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
                 }
 
                 !line.startsWith("#") && currentName != null -> {
-                    val candidate = line.trim().trim("\"")
+                    val candidate = line.trim().trim('"')
                     val streamUrl = resolveUrl(baseUrl, candidate)
                     if (streamUrl.startsWith("http://", true) || streamUrl.startsWith("https://", true)) {
                         result += StreamItem(
