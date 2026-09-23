@@ -594,7 +594,8 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
-    val timerStore = remember { RadioTimerStore(LocalContext.current.applicationContext) }
+    val radioTimerContext = LocalContext.current.applicationContext
+    val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
 
     KeepSystemBarsVisible()
 
@@ -1674,6 +1675,35 @@ private fun DonationCard() {
             }
         }
     }
+}
+
+@Composable
+private fun DonationQrImage(
+    contentDescription: String,
+    modifier: Modifier
+) {
+    val context = LocalContext.current
+    var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(Unit) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open("qr_donate.png").use { input ->
+                    BitmapFactory.decodeStream(input)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+    }
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+        )
+    } ?: Box(
+        modifier = modifier.background(Color.White),
+        contentAlignment = Alignment.Center
+    ) {}
 }
 
 @Composable
