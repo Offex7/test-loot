@@ -66,7 +66,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.PulledRefreshIndicator
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -102,7 +101,6 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -164,12 +162,12 @@ fun TvV8Screen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repo = remember(context, store) { TvPlaylistRepositoryV8(context, store) }
-    val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
+    val sourceKey by store.activeSourceFlow().collectAsState(initial = builtinSourceKey(0))
     val network by rememberTvV8NetworkState()
     val list = rememberLazyListState()
-    val error by player.error.collectAsStateWithLifecycle()
-    val waiting by player.waitingForNetwork.collectAsStateWithLifecycle()
-    val isPlaying by player.isPlaying.collectAsStateWithLifecycle()
+    val error by player.error.collectAsState()
+    val waiting by player.waitingForNetwork.collectAsState()
+    val isPlaying by player.isPlaying.collectAsState()
 
     var channels by remember { mutableStateOf(emptyList<StreamItem>()) }
     var favorites by remember { mutableStateOf(emptySet<String>()) }
