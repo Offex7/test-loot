@@ -55,9 +55,9 @@ jobs:
           test -f app/src/main/java/com/offex7/streamhub/RadioMediaController.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioPlaybackService.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioTimerStore.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV9.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvV9Screen.kt
-          grep -q "TvV9Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV8.kt
+          test -f app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
+          grep -q "TvV8Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q "https://smolnp.github.io/IPTVru//IPTVru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://naggdd.github.io/iptv/ru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
