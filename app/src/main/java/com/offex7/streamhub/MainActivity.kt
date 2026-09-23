@@ -279,6 +279,7 @@ private fun App(
                 sleepMinutes = 0L
                 tv.stop()
                 radio.stop()
+                radioTimerStore.pause(System.currentTimeMillis())
                 notify("Таймер сна — отключён")
                 break
             }
@@ -354,8 +355,10 @@ private fun App(
                     onDisclaimer = { disclaimer = true },
                     onResetAll = {
                         scope.launch {
-                            runCatching { store.resetAll() }
-                                .onSuccess {
+                            runCatching {
+                                store.resetAll()
+                                radioTimerStore.reset()
+                            }.onSuccess {
                                     sleepUntil = 0L
                                     sleepRemaining = 0L
                                     sleepMinutes = 0L
