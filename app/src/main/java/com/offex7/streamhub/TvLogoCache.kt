@@ -64,7 +64,8 @@ class TvLogoCache(context: Context) {
                 .build()
         ).execute().use { response ->
             if (!response.isSuccessful) error("HTTP " + response.code)
-            val bytes = response.body?.bytes().orEmpty()
+            val body = response.body ?: error("Empty logo response")
+            val bytes = body.bytes()
             if (bytes.isEmpty() || bytes.size > 1_500_000) error("Logo is too large")
             file.outputStream().use { it.write(bytes) }
             trim()
