@@ -24,6 +24,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateColor
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -81,6 +84,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -124,6 +128,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -157,7 +163,9 @@ import okhttp3.Request
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 
 private val Red = Color(0xFFE53935)
 private val Orange = Color(0xFFFF9800)
@@ -449,41 +457,136 @@ private fun App(
 @Composable
 private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
     val context = LocalContext.current
+    var gearTurns by remember { mutableIntStateOf(0) }
+    val gearRotation by animateFloatAsState(
+        targetValue = gearTurns * 90f,
+        animationSpec = tween(500, easing = FastOutSlowInEasing),
+        label = "home-settings-rotation"
+    )
+
+    val bannerTransition = rememberInfiniteTransition(label = "recommend-banner-transition")
+    val bannerPulse by bannerTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "recommend-banner-pulse"
+    )
+    val borderAngle by bannerTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "recommend-banner-border"
+    )
+    val bannerScale = 1f + 0.03f * bannerPulse
+    val angle = Math.toRadians(borderAngle.toDouble()).toFloat()
+    val borderBrush = Brush.linearGradient(
+        colors = listOf(Red, Color.White, Orange, Red),
+        start = Offset(cos(angle) * 500f, sin(angle) * 500f),
+        end = Offset(-cos(angle) * 500f, -sin(angle) * 500f)
+    )
+
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 Text("TV / Radio. Online", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
-                IconButton(onClick = settings) { Icon(Icons.Default.Settings, "Настройки", tint = Red) }
+                IconButton(
+                    onClick = {
+                        gearTurns += 1
+                        settings()
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        "Настройки",
+                        tint = Red,
+                        modifier = Modifier.graphicsLayer(rotationZ = gearRotation)
+                    )
+                }
             }
+
             if (LocalConfiguration.current.screenWidthDp >= 560) {
-                Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v7, Modifier.weight(1f)) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio_v7, Modifier.weight(1f)) { open(Section.RADIO) }
+                Row(
+                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
+                    HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
                 }
             } else {
-                Column(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v7, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio_v7, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
+                Column(
+                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
+                    HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
                 }
             }
-            Spacer(Modifier.height(18.dp))
+
             Card(
                 onClick = { openUrl(context, TELEGRAM) },
-                Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .graphicsLayer(scaleX = bannerScale, scaleY = bannerScale)
+                    .border(1.5.dp, borderBrush, RoundedCornerShape(16.dp)),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Порекомендовать проект друзьям", color = Red, fontSize = 13.sp, maxLines = 1)
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Send, "Telegram", tint = Red, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "ПОРЕКОМЕНДОВАТЬ ПРОЕКТ ДРУЗЬЯМ",
+                        color = Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
             }
         }
     }
 }
 
+private enum class HomeArtworkKind { TV, RADIO }
+
 @Composable
-private fun HomeCard(title: String, logo: Int, modifier: Modifier, onClick: () -> Unit) {
+private fun HomeCard(
+    title: String,
+    logo: Int,
+    modifier: Modifier,
+    kind: HomeArtworkKind,
+    onClick: () -> Unit
+) {
+    val transition = rememberInfiniteTransition(label = "home-artwork-" + kind.name)
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (kind == HomeArtworkKind.RADIO) 1400 else 1800,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "home-artwork-phase-" + kind.name
+    )
+
+    val rotation = if (kind == HomeArtworkKind.RADIO) -1.5f + 3f * phase else 0f
+    val artworkScale = if (kind == HomeArtworkKind.TV) 1f + 0.012f * phase else 1f
+
     Card(
         onClick = onClick,
         modifier = modifier,
@@ -491,7 +594,7 @@ private fun HomeCard(title: String, logo: Int, modifier: Modifier, onClick: () -
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(
-            Modifier.fillMaxSize().padding(12.dp),
+            Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -501,14 +604,22 @@ private fun HomeCard(title: String, logo: Int, modifier: Modifier, onClick: () -
                 Image(
                     painter = painterResource(logo),
                     contentDescription = title,
-                    modifier = Modifier.fillMaxHeight(0.82f).aspectRatio(1f)
+                    modifier = Modifier
+                        .fillMaxHeight(0.82f)
+                        .aspectRatio(1f)
+                        .graphicsLayer(
+                            rotationZ = rotation,
+                            scaleX = artworkScale,
+                            scaleY = artworkScale,
+                            alpha = if (kind == HomeArtworkKind.TV) 0.96f + 0.04f * phase else 1f
+                        )
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = title,
                 color = Color.White,
-                fontSize = 22.sp,
+                fontSize = 21.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 softWrap = false,
