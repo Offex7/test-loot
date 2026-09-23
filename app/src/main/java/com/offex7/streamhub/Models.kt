@@ -5,6 +5,7 @@ data class StreamItem(
     val url: String,
     val logoUrl: String? = null,
     val epgLogoUrl: String? = null,
+    val groupTitle: String? = null,
     val isOffline: Boolean = false,
     val sourceUrls: List<String> = emptyList()
 ) { val key: String get() = url }
