@@ -443,7 +443,32 @@ private fun App(
                     .fillMaxWidth(),
                 enter = slideInVertically(initialOffsetY = { -it }, animationSpec = spring()) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = spring()) + fadeOut()
-            ) { SnackbarHost(hostState = snack, modifier = Modifier.fillMaxWidth()) }
+            ) {
+                val data = snack.currentSnackbarData
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = PanelAlt),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            data?.visuals?.message.orEmpty(),
+                            Modifier.weight(1f),
+                            fontSize = 13.sp,
+                            color = Color.White
+                        )
+                        IconButton(
+                            onClick = { data?.dismiss() },
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(Icons.Default.Close, "Закрыть уведомление", tint = Color.White)
+                        }
+                    }
+                }
+            }
         }
     }
 
