@@ -53,6 +53,11 @@ class SettingsStore(private val context: Context) {
         return prefs[activeSourceKeyStorage] ?: builtinSourceKey(prefs[sourceKey] ?: 0)
     }
 
+    fun activeSourceFlow(): Flow<String> =
+        context.dataStore.data.map { prefs ->
+            prefs[activeSourceKeyStorage] ?: builtinSourceKey(prefs[sourceKey] ?: 0)
+        }
+
     suspend fun setActiveSourceKey(key: String) {
         val normalized = key.trim()
         if (normalized.isBlank()) return
