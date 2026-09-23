@@ -76,7 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.alpha
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -929,7 +929,7 @@ private fun TvV9Player(
                     ) {
                         TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", onPrev)
                         TvV9PlayerButtonLarge(
-                            if (isPlaying) androidx.compose.material.icons.Icons.Default.AccessTime else androidx.compose.material.icons.Icons.Default.PlayArrow,
+                            if (isPlaying) androidx.compose.material.icons.Icons.Default.Pause else androidx.compose.material.icons.Icons.Default.PlayArrow,
                             "Пауза / Старт",
                             onPause
                         )
@@ -1120,9 +1120,11 @@ private suspend fun scanTvV9(
 }
 
 @Composable
-private fun rememberTvV9Network(): androidx.compose.runtime.State<Boolean> =
-    androidx.compose.runtime.produceState(true) {
-        val context = LocalContext.current
+private fun rememberTvV9Network(): androidx.compose.runtime.State<Boolean> {
+    val context = LocalContext.current
+    val state = remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
         val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
         fun online(): Boolean =
             cm.allNetworks.any { n ->
@@ -1130,11 +1132,16 @@ private fun rememberTvV9Network(): androidx.compose.runtime.State<Boolean> =
                     android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
                 ) == true
             }
-        value = online()
+
+        state.value = online()
         val callback = object : android.net.ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: android.net.Network) { value = online() }
-            override fun onLost(network: android.net.Network) { value = online() }
+            override fun onAvailable(network: android.net.Network) { state.value = online() }
+            override fun onLost(network: android.net.Network) { state.value = online() }
         }
+
         runCatching { cm.registerDefaultNetworkCallback(callback) }
-        awaitDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
+        onDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
     }
+
+    return state
+}
