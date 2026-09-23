@@ -10,8 +10,8 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 29
         targetSdk = 34
-        versionCode = 6
-        versionName = "6.0"
+        versionCode = 7
+        versionName = "7.0"
     }
     signingConfigs {
         create("v5Debug") {
@@ -92,7 +92,7 @@ val downloadV5Assets by tasks.registering {
             val raw = File(dir, "${name}.source")
             val png = File(dir, "${name}.png")
             if (!png.exists()) {
-                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "TV-Radio-Online/6.0", "-o", raw.absolutePath, url)
+                val downloaded = run("curl", "-L", "--fail", "--silent", "--show-error", "--retry", "2", "--max-time", "30", "-A", "TV-Radio-Online/7.0", "-o", raw.absolutePath, url)
                 if (downloaded) run("convert", raw.absolutePath, "-resize", "512x512^", "-gravity", "center", "-extent", "512x512", png.absolutePath)
             }
             raw.delete()
