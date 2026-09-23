@@ -20,6 +20,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -239,6 +240,8 @@ private fun App(
     activity: MainActivity
 ) {
     val scope = rememberCoroutineScope()
+    val appContext = LocalContext.current.applicationContext
+    val radioTimerStore = remember(appContext) { RadioTimerStore(appContext) }
     val snack = remember { SnackbarHostState() }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
@@ -292,7 +295,7 @@ private fun App(
         activity.tvViewing = false
         tv.stop()
         radio.stop()
-        scope.launch { store.clearSection() }
+        scope.launch { store.clearSection(); radioTimerStore.reset() }
     }
 
     BackHandler {
@@ -435,7 +438,6 @@ private fun App(
         AlertDialog(
             onDismissRequest = { exit = false },
             title = { Text("Выйти из приложения?") },
-            text = { Text("Закрыть Radio.TV") },
             confirmButton = { TextButton(onClick = { activity.finishAndRemoveTask() }) { Text("Выйти", color = Red) } },
             dismissButton = { TextButton(onClick = { exit = false }) { Text("Отмена") } }
         )
@@ -454,13 +456,13 @@ private fun Home(open: (Section) -> Unit, settings: () -> Unit) {
             }
             if (LocalConfiguration.current.screenWidthDp >= 560) {
                 Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv, Modifier.weight(1f)) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio, Modifier.weight(1f)) { open(Section.RADIO) }
+                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v7, Modifier.weight(1f)) { open(Section.TV) }
+                    HomeCard("РАДИО", R.drawable.start_radio_v7, Modifier.weight(1f)) { open(Section.RADIO) }
                 }
             } else {
                 Column(Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
-                    HomeCard("РАДИО", R.drawable.start_radio, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
+                    HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v7, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
+                    HomeCard("РАДИО", R.drawable.start_radio_v7, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -582,11 +584,14 @@ private fun Radio(
     val index by player.currentIndex.collectAsState()
     val playing by player.isPlaying.collectAsState()
     val error by player.error.collectAsState()
+    val connected by player.connected.collectAsState()
     val network by rememberNetworkState()
     val list = rememberLazyListState()
     var favorites by remember { mutableStateOf(emptySet<String>()) }
-    var listenedSeconds by rememberSaveable { mutableLongStateOf(0L) }
-    var previousIndex by remember { mutableIntStateOf(index) }
+    var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
+    var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
+    var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    val timerStore = remember { RadioTimerStore(LocalContext.current.applicationContext) }
 
     KeepSystemBarsVisible()
 
@@ -594,19 +599,37 @@ private fun Radio(
         favorites = store.favorites(Section.RADIO)
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
+        val timer = timerStore.state()
+        timerElapsedMs = timer.elapsedMs
+        timerStartedAtMs = timer.startedAtMs
+        timerNowMs = System.currentTimeMillis()
     }
 
-    LaunchedEffect(index) {
-        if (index != previousIndex) listenedSeconds = 0L
-        previousIndex = index
+    LaunchedEffect(connected) {
+        if (connected) {
+            val timer = timerStore.state()
+            timerElapsedMs = timer.elapsedMs
+            timerStartedAtMs = timer.startedAtMs
+            timerNowMs = System.currentTimeMillis()
+        }
     }
 
-    LaunchedEffect(playing, index) {
-        while (playing && index >= 0) {
+    LaunchedEffect(playing, timerStartedAtMs) {
+        while (playing && timerStartedAtMs > 0L) {
+            timerNowMs = System.currentTimeMillis()
             delay(1000L)
-            if (player.isPlaying.value && player.currentIndex.value == index) {
-                listenedSeconds++
-            }
+        }
+        timerNowMs = System.currentTimeMillis()
+    }
+
+    LaunchedEffect(error) {
+        if (error != null && index >= 0) {
+            val now = System.currentTimeMillis()
+            val state = timerStore.pause(now)
+            timerElapsedMs = state.elapsedMs
+            timerStartedAtMs = state.startedAtMs
+            timerNowMs = now
+            notify("Возникла проблема. Обсуждаем решения в Telegram.")
         }
     }
 
@@ -624,8 +647,45 @@ private fun Radio(
             .collect { (first, offset) -> store.saveScrollPosition(Section.RADIO, first, offset) }
     }
 
-    LaunchedEffect(error) {
-        if (error != null) notify("Возникла проблема. Обсуждаем решения в Telegram.")
+    fun updateTimerState(state: RadioTimerState, now: Long) {
+        timerElapsedMs = state.elapsedMs
+        timerStartedAtMs = state.startedAtMs
+        timerNowMs = now
+    }
+
+    suspend fun startNewStationTimer() {
+        val now = System.currentTimeMillis()
+        updateTimerState(timerStore.start(now), now)
+    }
+
+    suspend fun pauseCurrentTimer() {
+        val now = System.currentTimeMillis()
+        updateTimerState(timerStore.pause(now), now)
+    }
+
+    suspend fun resumeCurrentTimer() {
+        val now = System.currentTimeMillis()
+        val cutoff = store.lastExitTime()
+        updateTimerState(timerStore.resume(now, cutoff), now)
+    }
+
+    suspend fun playNewStation(i: Int, station: StreamItem) {
+        if (i !in RADIO_STATIONS.indices) return
+        startNewStationTimer()
+        player.play(i)
+        saveLast(station)
+    }
+
+    suspend fun toggleActiveStation(i: Int, station: StreamItem) {
+        if (i !in RADIO_STATIONS.indices) return
+        if (player.isPlaying.value) {
+            pauseCurrentTimer()
+            player.pause()
+        } else {
+            resumeCurrentTimer()
+            player.play(i)
+            saveLast(station)
+        }
     }
 
     val current = RADIO_STATIONS.getOrNull(index)
@@ -635,6 +695,13 @@ private fun Radio(
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
     }
+
+    val displayedTimerMs = (
+        timerElapsedMs +
+            if (playing && timerStartedAtMs > 0L) {
+                (timerNowMs - timerStartedAtMs).coerceAtLeast(0L)
+            } else 0L
+        ).coerceAtLeast(0L)
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         Column(Modifier.fillMaxSize()) {
@@ -658,10 +725,18 @@ private fun Radio(
                 RestoreBanner(
                     item = item,
                     onContinue = {
-                        val i = RADIO_STATIONS.indexOfFirst { station -> station.url == item.url }
-                        if (i >= 0) {
-                            player.play(i)
-                            saveLast(RADIO_STATIONS[i])
+                        scope.launch {
+                            val i = RADIO_STATIONS.indexOfFirst { station ->
+                                station.url == item.url || station.name.equals(item.name, ignoreCase = true)
+                            }
+                            if (i >= 0) {
+                                val now = System.currentTimeMillis()
+                                updateTimerState(timerStore.resume(now, store.lastExitTime()), now)
+                                player.play(i)
+                                saveLast(RADIO_STATIONS[i])
+                            } else {
+                                notify("Сохранённая станция больше не найдена")
+                            }
                         }
                     },
                     onClose = dismissRestore
@@ -685,8 +760,16 @@ private fun Radio(
                         onPlay = {
                             val i = RADIO_STATIONS.indexOf(station)
                             if (i >= 0) {
-                                player.play(i)
-                                saveLast(station)
+                                scope.launch {
+                                    if (active) {
+                                        toggleActiveStation(i, station)
+                                    } else {
+                                        if (index >= 0 && player.isPlaying.value) {
+                                            timerStore.pause(System.currentTimeMillis())
+                                        }
+                                        playNewStation(i, station)
+                                    }
+                                }
                             }
                         },
                         onFavorite = {
@@ -710,8 +793,13 @@ private fun Radio(
                                 else -> "пауза"
                             }
                         } else null,
-                        radioTimer = if (active) formatTime(listenedSeconds) else null,
-                        onToggle = if (active) ({ player.toggle() }) else null
+                        radioTimer = if (active) formatTime(displayedTimerMs / 1000L) else null,
+                        onToggle = if (active) {
+                            {
+                                val activeIndex = RADIO_STATIONS.indexOf(station)
+                                if (activeIndex >= 0) scope.launch { toggleActiveStation(activeIndex, station) }
+                            }
+                        } else null
                     )
                 }
             }
@@ -1215,17 +1303,21 @@ private fun Settings(
         else -> TV_SOURCES.firstOrNull()?.name.orEmpty()
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад", tint = Red) }
-                Text("Настройки", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text("НАСТРОЙКИ", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Таймер сна", color = Red, fontWeight = FontWeight.Bold)
+                    Text("ТАЙМЕР СНА", color = Red, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     SleepGrid(sleepRemaining, sleepUntil, sleepMinutes, onSleep, onCancelSleep)
                 }
@@ -1235,31 +1327,46 @@ private fun Settings(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Статистика", color = Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("СТАТИСТИКА", color = Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+
+                    Spacer(Modifier.height(8.dp))
+                    Text("ТЕЛЕВИЗОР", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    UsageLine("Общее время использования ТВ", tvUsage)
-                    OutlinedButton(onClick = { onResetStats(Section.TV) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик ТВ") }
-                    UsageLine("Общее время использования Радио", radioUsage)
-                    OutlinedButton(onClick = { onResetStats(Section.RADIO) }, Modifier.fillMaxWidth()) { Text("Сбросить счётчик Радио") }
-                    Spacer(Modifier.height(6.dp))
-                    Text("ТОП каналов:", color = Orange, fontWeight = FontWeight.Bold)
+                    UsageLine("Общее время просмотра Телевизора", tvUsage)
                     Spacer(Modifier.height(4.dp))
-                    Text("Телевизор", color = Pink, fontWeight = FontWeight.SemiBold)
+                    Text("ТОП-3 ТЕЛЕВИЗОРА", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(tvChannels)
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = { onResetStats(Section.TV) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Сбросить счётчик просмотров") }
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("РАДИО", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    Text("Радио", color = Pink, fontWeight = FontWeight.SemiBold)
+                    UsageLine("Общее время прослушивания Радио", radioUsage)
+                    Spacer(Modifier.height(4.dp))
+                    Text("ТОП-3 РАДИО", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(radioStations)
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = { onResetStats(Section.RADIO) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Сбросить счётчик прослушивания") }
                 }
             }
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Источник ТВ-плейлиста", color = Red, fontWeight = FontWeight.Bold)
-                    Text(selectedSourceName, color = if (activeSourceKey.startsWith(USER_SOURCE_PREFIX)) Red else Color.Gray, fontSize = 12.sp, maxLines = 2)
-                    Button(onClick = { sourceDialog = true }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) {
-                        Text("Выбрать источник")
-                    }
+                    Text("ИСТОЧНИК ТВ-ПЛЕЙЛИСТА", color = Red, fontWeight = FontWeight.Bold)
+                    Text(selectedSourceName, color = Orange, fontSize = 12.sp, maxLines = 2)
+                    Button(
+                        onClick = { sourceDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Red)
+                    ) { Text("ВЫБРАТЬ ИСТОЧНИК") }
                 }
             }
         }
@@ -1267,65 +1374,98 @@ private fun Settings(
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Картинка в картинке", fontSize = 16.sp)
+                        Text("КАРТИНКА В КАРТИНКЕ", fontSize = 16.sp)
                         Text("Сохраняется после перезапуска", fontSize = 11.sp, color = Color.Gray)
                     }
                     Switch(
                         checked = pip,
                         onCheckedChange = onPip,
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Red,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Gray
+                        )
                     )
                 }
             }
         }
-        item { Button(onClick = onResetAll, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)) { Text("Сбросить настройки до заводских") } }
-        item { OutlinedButton(onClick = onDisclaimer, Modifier.fillMaxWidth()) { Text("Отказ от ответственности") } }
+        item {
+            Button(
+                onClick = onResetAll,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
+            ) { Text("СБРОСИТЬ НАСТРОЙКИ ДО ЗАВОДСКИХ") }
+        }
+        item {
+            OutlinedButton(onClick = onDisclaimer, modifier = Modifier.fillMaxWidth()) {
+                Text("ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ")
+            }
+        }
     }
 
     if (sourceDialog) {
         AlertDialog(
             onDismissRequest = { sourceDialog = false },
-            title = { Text("Источник ТВ-плейлиста") },
+            title = { Text("ИСТОЧНИК ТВ-ПЛЕЙЛИСТА") },
             text = {
                 Column(Modifier.fillMaxWidth()) {
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                        item { Text("Встроенные источники", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp)) }
+                        item {
+                            Text("ВСТРОЕННЫЕ ИСТОЧНИКИ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                        }
                         items(TV_SOURCES) { source ->
                             val i = TV_SOURCES.indexOf(source)
                             val key = builtinSourceKey(i)
-                            Row(Modifier.fillMaxWidth().combinedClickable(onClick = {
-                                activeSourceKey = key
-                                sourceDialog = false
-                                onSource(key)
-                            }), verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = activeSourceKey == key, onClick = {
+                            Row(
+                                Modifier.fillMaxWidth().combinedClickable(onClick = {
                                     activeSourceKey = key
                                     sourceDialog = false
                                     onSource(key)
-                                })
-                                Text(source.name, Modifier.padding(6.dp).weight(1f), color = if (activeSourceKey == key) Red else Color.White)
+                                }),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = activeSourceKey == key,
+                                    onClick = {
+                                        activeSourceKey = key
+                                        sourceDialog = false
+                                        onSource(key)
+                                    }
+                                )
+                                Text(
+                                    source.name,
+                                    Modifier.padding(6.dp).weight(1f),
+                                    color = if (activeSourceKey == key) Orange else Color.White
+                                )
                             }
                         }
                         if (userPlaylists.isNotEmpty()) {
                             item {
                                 Spacer(Modifier.height(8.dp))
-                                Text("Мои плейлисты", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                                Text("МОИ ПЛЕЙЛИСТЫ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                             }
                             items(userPlaylists, key = { it.key }) { playlist ->
-                                Row(Modifier.fillMaxWidth().combinedClickable(onClick = {
-                                    activeSourceKey = playlist.key
-                                    sourceDialog = false
-                                    onSource(playlist.key)
-                                }), verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(selected = activeSourceKey == playlist.key, onClick = {
+                                Row(
+                                    Modifier.fillMaxWidth().combinedClickable(onClick = {
                                         activeSourceKey = playlist.key
                                         sourceDialog = false
                                         onSource(playlist.key)
-                                    })
+                                    }),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = activeSourceKey == playlist.key,
+                                        onClick = {
+                                            activeSourceKey = playlist.key
+                                            sourceDialog = false
+                                            onSource(playlist.key)
+                                        }
+                                    )
                                     Text(
                                         playlist.name,
                                         Modifier.padding(6.dp).weight(1f),
-                                        color = if (activeSourceKey == playlist.key) Red else Color.White,
+                                        color = if (activeSourceKey == playlist.key) Orange else Color.White,
                                         maxLines = 2,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
@@ -1346,10 +1486,10 @@ private fun Settings(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Red)
-                    ) { Text("Добавить свой плейлист") }
+                    ) { Text("ДОБАВИТЬ СВОЙ ПЛЕЙЛИСТ") }
                 }
             },
-            confirmButton = { TextButton(onClick = { sourceDialog = false }) { Text("Закрыть") } }
+            confirmButton = { TextButton(onClick = { sourceDialog = false }) { Text("ЗАКРЫТЬ") } }
         )
     }
 
@@ -1357,7 +1497,7 @@ private fun Settings(
         val urlOk = newUrl.trim().startsWith("http://", true) || newUrl.trim().startsWith("https://", true)
         AlertDialog(
             onDismissRequest = { addDialog = false },
-            title = { Text("Добавить свой плейлист") },
+            title = { Text("ДОБАВИТЬ СВОЙ ПЛЕЙЛИСТ") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = newName, onValueChange = { newName = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Название плейлиста") })
@@ -1380,9 +1520,9 @@ private fun Settings(
                         }
                     },
                     enabled = newName.isNotBlank() && urlOk
-                ) { Text("Добавить", color = Red) }
+                ) { Text("ДОБАВИТЬ", color = Red) }
             },
-            dismissButton = { TextButton(onClick = { addDialog = false }) { Text("Отмена") } }
+            dismissButton = { TextButton(onClick = { addDialog = false }) { Text("ОТМЕНА") } }
         )
     }
 
@@ -1474,6 +1614,22 @@ private fun SleepGrid(
 @Composable
 private fun DonationCard() {
     val context = LocalContext.current
+    val infiniteTransition = rememberInfiniteTransition(label = "donation-heart-transition")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "donation-heart-pulse"
+    )
+    val heartScale by animateFloatAsState(
+        targetValue = pulse,
+        animationSpec = tween(durationMillis = 80, easing = FastOutSlowInEasing),
+        label = "donation-heart-scale"
+    )
+
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Panel),
@@ -1482,9 +1638,20 @@ private fun DonationCard() {
     ) {
         Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Favorite, null, tint = Red)
+                Icon(
+                    Icons.Default.Favorite,
+                    null,
+                    tint = Red,
+                    modifier = Modifier.graphicsLayer(scaleX = heartScale, scaleY = heartScale)
+                )
                 Spacer(Modifier.width(8.dp))
-                Text("Поддержать проект", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Red)
+                Text(
+                    "ПОДДЕРЖАТЬ ПРОЕКТ USDT (TRC20)",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Red,
+                    maxLines = 2
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text(WALLET, color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
@@ -1504,35 +1671,6 @@ private fun DonationCard() {
             }
         }
     }
-}
-
-@Composable
-private fun DonationQrImage(
-    contentDescription: String,
-    modifier: Modifier
-) {
-    val context = LocalContext.current
-    var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    LaunchedEffect(Unit) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                context.assets.open("qr_donate.png").use { input ->
-                    BitmapFactory.decodeStream(input)?.asImageBitmap()
-                }
-            }.getOrNull()
-        }
-    }
-    bitmap?.let {
-        Image(
-            bitmap = it,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = androidx.compose.ui.layout.ContentScale.Fit
-        )
-    } ?: Box(
-        modifier = modifier.background(Color.White),
-        contentAlignment = Alignment.Center
-    ) {}
 }
 
 @Composable
