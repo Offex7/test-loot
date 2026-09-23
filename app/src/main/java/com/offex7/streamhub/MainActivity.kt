@@ -125,6 +125,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.SpanStyle
@@ -260,6 +263,7 @@ private fun App(
     var sleepUntil by remember { mutableLongStateOf(0L) }
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
+    val weakNetwork by tv.weakNetwork.collectAsState()
 
     fun notify(message: String) {
         notificationJob?.cancel()
