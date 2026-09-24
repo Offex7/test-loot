@@ -48,7 +48,8 @@ val RADIO_STATIONS = listOf(
     StreamItem("РЕТРО FM", "https://hls-01-sanremo.emgsound.ru/5/112/playlist.m3u8"),
     StreamItem("ХИТ FM", "https://hls-01-hitfm.hostingradio.ru/hitfm/playlist.m3u8"),
     StreamItem("НАШЕ РАДИО", "https://nashe1.hostingradio.ru:80/nashe-128.mp3"),
-    StreamItem("DATASET [AI]", "https://region-ru4.tunio.ai/datasetradio.aac")
+    StreamItem("DATASET [AI]", "https://region-ru4.tunio.ai/datasetradio.aac"),
+    StreamItem("ГАМАЮН", "https://gamaun.online:8025/radio")
 )
 
 val RADIO_LOGO_URLS = mapOf(
