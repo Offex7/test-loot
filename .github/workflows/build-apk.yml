@@ -38,11 +38,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate final release 1.0 project
+      - name: Validate final release 2.0 project
         run: |
           set -e
-          grep -q 'versionCode = 1' app/build.gradle.kts
-          grep -q 'versionName = "1.0"' app/build.gradle.kts
+          grep -q 'versionCode = 2' app/build.gradle.kts
+          grep -q 'versionName = "2.0"' app/build.gradle.kts
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'minSdk = 29' app/build.gradle.kts
@@ -76,6 +76,13 @@ jobs:
           echo "Signing certificate SHA-256: $KEY_CERT"
           test "$KEY_CERT" = "b848a1f2857ef5d4fd4a2d89be61fd0d6804729f263e4816e6fce2857d91c15a"
 
+      - name: Build debug with requested command
+        run: |
+          set -e
+          printf '%s\n' '#!/usr/bin/env sh' 'exec gradle "$@"' > gradlew
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
       - name: Build signed release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
@@ -84,23 +91,40 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" radio-tv-release-1.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-1.0.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-1.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" radio-tv-release-2.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-2.0.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-2.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-1.0.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-2.0.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='1'"
-          echo "$APK_PACKAGE" | grep -q "versionName='1.0'"
-          sha256sum radio-tv-release-1.0.apk
-          ls -lh radio-tv-release-1.0.apk
+          echo "$APK_PACKAGE" | grep -q "versionCode='2'"
+          echo "$APK_PACKAGE" | grep -q "versionName='2.0'"
+          sha256sum radio-tv-release-2.0.apk
+          ls -lh radio-tv-release-2.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-Release-1.0-APK
-          path: radio-tv-release-1.0.apk
+          name: Radio-TV-Release-2.0-APK
+          path: radio-tv-release-2.0.apk
           if-no-files-found: error
+
+      - name: Package complete Android Studio source ZIP
+        run: |
+          set -e
+          zip -r radio-tv-release-2.0-source.zip . \
+            -x '.git/*' '.gradle/*' 'app/build/*' 'radio-tv-release-2.0.apk' 'key.txt' 'radio-tv-release-2.0-source.zip'
+          test -s radio-tv-release-2.0-source.zip
+          unzip -t radio-tv-release-2.0-source.zip >/dev/null
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio-TV-Release-2.0-Source
+          path: radio-tv-release-2.0-source.zip
+          if-no-files-found: error
+
+# v2.0 release validation
