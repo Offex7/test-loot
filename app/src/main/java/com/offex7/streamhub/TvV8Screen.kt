@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -132,8 +133,6 @@ private val TvV9SleepOptions = listOf(
     600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
 )
 
-private val tvV9ZoomByChannel = mutableMapOf<String, Float>()
-
 @Composable
 fun TvV8Screen(
     player: PlayerController,
@@ -149,7 +148,8 @@ fun TvV8Screen(
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit,
     notify: (String) -> Unit,
-    onViewingChanged: (Boolean) -> Unit
+    onViewingChanged: (Boolean) -> Unit,
+    pipMode: Boolean
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -164,6 +164,7 @@ fun TvV8Screen(
     val focusRequester = FocusRequester()
     val keyboardController = LocalSoftwareKeyboardController.current
     val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
+    var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Float>()) }
 
     var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
     var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
@@ -202,6 +203,7 @@ fun TvV8Screen(
 
     LaunchedEffect(sourceKey) {
         favorites = store.favorites(Section.TV)
+        savedZooms = store.channelZooms()
         reload()
     }
 
@@ -255,6 +257,26 @@ fun TvV8Screen(
 
     LaunchedEffect(fullscreen) {
         onViewingChanged(fullscreen)
+    }
+
+    LaunchedEffect(fullscreen) {
+        val activity = context as? androidx.activity.ComponentActivity
+        if (fullscreen) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    LaunchedEffect(pipMode) {
+        // PiP must contain only the video; when returning, restore the normal controls.
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            val activity = context as? androidx.activity.ComponentActivity
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     DisposableEffect(Unit) {
@@ -373,7 +395,23 @@ fun TvV8Screen(
                 }
             },
             onSleep = onSleep,
-            onCancelSleep = onCancelSleep
+            onCancelSleep = onCancelSleep,
+            initialZoom = savedZooms[channels[selectedIndex].key],
+            onZoomChanged = { value ->
+                val key = channels[selectedIndex].key
+                scope.launch {
+                    store.setChannelZoom(key, value)
+                    savedZooms = savedZooms + (key to value)
+                }
+            },
+            onZoomReset = {
+                val key = channels[selectedIndex].key
+                scope.launch {
+                    store.removeChannelZoom(key)
+                    savedZooms = savedZooms - key
+                }
+            },
+            pipMode = pipMode
         )
         return
     }
@@ -688,10 +726,10 @@ private fun TvV9ScrollUpButton(
                 .focusable()
         ) {
             Icon(
-                Icons.Default.SkipPrevious,
+                Icons.Default.KeyboardArrowUp,
                 "Вверх",
                 tint = Color.White,
-                modifier = Modifier.graphicsLayer(rotationZ = -90f)
+                modifier = Modifier.size(30.dp)
             )
         }
     }
@@ -786,7 +824,11 @@ private fun TvV9Player(
     onFavoriteSelected: (Int) -> Unit,
     onEnterPip: () -> Unit,
     onSleep: (Long) -> Unit,
-    onCancelSleep: () -> Unit
+    onCancelSleep: () -> Unit,
+    initialZoom: Float?,
+    onZoomChanged: (Float) -> Unit,
+    onZoomReset: () -> Unit,
+    pipMode: Boolean
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.activity.ComponentActivity
@@ -807,19 +849,22 @@ private fun TvV9Player(
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
-    var zoom by androidx.compose.runtime.remember(channel.key) {
-        androidx.compose.runtime.mutableFloatStateOf(tvV9ZoomByChannel[channel.key] ?: 1f)
+    var zoom by androidx.compose.runtime.remember(channel.key, initialZoom) {
+        androidx.compose.runtime.mutableFloatStateOf(initialZoom?.coerceIn(1f, 3f) ?: 1f)
     }
     var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
     val playerScope = androidx.compose.runtime.rememberCoroutineScope()
+    val playerWindow = activity?.window
     val favoriteListState = rememberLazyListState()
     val favoriteFocusers = remember(favoriteChannels.map { it.first }) {
         favoriteChannels.map { FocusRequester() }
     }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
-    val favoritePopupHeight = minOf(420, (screenHeightDp * 0.60f).toInt()).coerceAtLeast(220).dp
+    val favoritePopupMaxHeight = (screenHeightDp * 0.70f).coerceAtLeast(220f).dp
+    val favoriteVisibleItems = favoriteChannels.size.coerceAtMost(8)
+    val favoritePopupHeight = minOf(favoritePopupMaxHeight, (58 + favoriteVisibleItems * 48).dp)
 
     fun showPlayerToast(message: String, durationMs: Long) {
         playerToast = message
@@ -880,6 +925,13 @@ private fun TvV9Player(
         if (token == playerToastToken) playerToast = null
     }
 
+    androidx.compose.runtime.LaunchedEffect(favoriteMenu) {
+        if (favoriteMenu && favoriteFocusers.isNotEmpty()) {
+            runCatching { favoriteFocusers.first().requestFocus() }
+            runCatching { favoriteListState.scrollToItem(0) }
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(sleepMenu, sleepToken) {
         if (sleepMenu) {
             delay(5000L)
@@ -935,7 +987,7 @@ private fun TvV9Player(
                             onTap = { controls = !controls },
                             onDoubleTap = {
                                 zoom = 1f
-                                tvV9ZoomByChannel.remove(channel.key)
+                                onZoomReset()
                             }
                         )
                     } else {
@@ -946,7 +998,7 @@ private fun TvV9Player(
                     if (!locked) {
                         detectTransformGestures { _, _, gestureZoom, _ ->
                             zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
-                            tvV9ZoomByChannel[channel.key] = zoom
+                            onZoomChanged(zoom)
                             showPlayerToast("Масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
                         }
                     } else {
@@ -955,7 +1007,7 @@ private fun TvV9Player(
                 }
         )
 
-        if (locked) {
+        if (locked && !pipMode) {
             IconButton(
                 onClick = {
                     locked = false
@@ -976,7 +1028,7 @@ private fun TvV9Player(
             }
         } else {
             AnimatedVisibility(
-                visible = controls,
+                visible = controls && !pipMode,
                 modifier = Modifier.fillMaxSize(),
                 enter = fadeIn(),
                 exit = fadeOut()
@@ -1045,7 +1097,7 @@ private fun TvV9Player(
                         TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", onNext)
                     }
 
-                    noticeMessage?.let {
+                    if (!pipMode) noticeMessage?.let {
                         Text(
                             it,
                             color = Color.White,
@@ -1057,7 +1109,7 @@ private fun TvV9Player(
                         )
                     }
 
-                    if (waiting || error != null || !isPlaying) {
+                    if (!pipMode && (waiting || error != null || !isPlaying)) {
                         Text(
                             when {
                                 error != null -> "Поток недоступен"
@@ -1081,7 +1133,7 @@ private fun TvV9Player(
                                 Modifier
                                     .padding(start = 68.dp, top = 64.dp)
                                     .width(300.dp)
-                                    .height(favoritePopupHeight)
+                                    .heightIn(min = 58.dp, max = favoritePopupHeight)
                                     .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(14.dp))
                                     .border(1.dp, TvV9Red, RoundedCornerShape(14.dp))
                                     .padding(8.dp)
@@ -1097,7 +1149,10 @@ private fun TvV9Player(
                                         Box(Modifier.fillMaxSize()) {
                                             LazyColumn(
                                                 state = favoriteListState,
-                                                modifier = Modifier.fillMaxSize().padding(end = 5.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = favoritePopupHeight - 58.dp)
+                                                    .padding(end = 5.dp),
                                                 contentPadding = PaddingValues(vertical = 2.dp)
                                             ) {
                                                 items(
@@ -1157,23 +1212,6 @@ private fun TvV9Player(
                                                 }
                                             }
 
-                                            val total = favoriteChannels.size.coerceAtLeast(1)
-                                            val visibleCount = favoriteListState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
-                                            val progress = favoriteListState.firstVisibleItemIndex.toFloat() /
-                                                (total - visibleCount).coerceAtLeast(1).toFloat()
-                                            val thumbHeight = favoritePopupHeight *
-                                                (visibleCount.toFloat() / total.toFloat()).coerceIn(.08f, 1f)
-                                            val thumbY = (favoritePopupHeight - thumbHeight) *
-                                                progress.coerceIn(0f, 1f)
-                                            Box(
-                                                Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .padding(vertical = 4.dp)
-                                                    .width(2.dp)
-                                                    .height(thumbHeight.coerceAtLeast(14.dp))
-                                                    .offset(y = thumbY)
-                                                    .background(Color.White.copy(alpha = .35f), RoundedCornerShape(2.dp))
-                                            )
                                         }
                                     }
                                 }
