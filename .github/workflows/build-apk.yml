@@ -126,3 +126,5 @@ jobs:
           name: Radio-TV-Release-2.0-Source
           path: radio-tv-release-2.0-source.zip
           if-no-files-found: error
+
+# v2.0 release validation
