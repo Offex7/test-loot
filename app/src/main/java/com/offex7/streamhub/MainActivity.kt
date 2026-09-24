@@ -135,6 +135,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -2265,6 +2266,7 @@ private fun LogoImage(
     ) {
         val imageModifier = Modifier
             .fillMaxSize()
+            .clip(RoundedCornerShape(12.dp))
             .alpha(if (dimmed) .4f else 1f)
             .then(
                 if (activeRadio) {
@@ -2273,7 +2275,15 @@ private fun LogoImage(
             )
 
         val remoteUrl = item.logoUrl ?: item.epgLogoUrl
-        if (preferRemote && !remoteUrl.isNullOrBlank()) {
+        val localBitmap = remember(item.name) { localRadioLogo(item.name) }
+        if (localBitmap != null) {
+            Image(
+                bitmap = localBitmap,
+                contentDescription = item.name,
+                modifier = imageModifier,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        } else if (preferRemote && !remoteUrl.isNullOrBlank()) {
             RemoteLogoImage(remoteUrl, item.name, imageModifier)
         } else if (resourceId != 0) {
             Image(
