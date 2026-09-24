@@ -29,6 +29,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -475,26 +476,6 @@ fun TvV8Screen(
         return
     }
 
-    hideCandidate?.let { item ->
-        AlertDialog(
-            onDismissRequest = { hideCandidate = null },
-            title = { Text("Скрыть ${item.name}?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            store.setHidden(Section.TV, item.key, true)
-                            hidden = store.hidden(Section.TV)
-                            hideCandidate = null
-                            notify("Канал скрыт")
-                        }
-                    }
-                ) { Text("Скрыть", color = TvV9Red) }
-            },
-            dismissButton = { TextButton(onClick = { hideCandidate = null }) { Text("Отмена") } }
-        )
-    }
-
     BackHandler(enabled = searchOpen) {
         searchOpen = false
         query = ""
@@ -618,7 +599,15 @@ fun TvV8Screen(
                                         favorites = store.favorites(Section.TV)
                                     }
                                 },
-                                onLongPress = { hideCandidate = channel }
+                                onLongPress = {
+                                    if (health[channel.url] != AvailabilityStatus.OFFLINE) {
+                                        scope.launch {
+                                            store.setHidden(Section.TV, channel.key, true)
+                                            hidden = store.hidden(Section.TV)
+                                            notify("Канал скрыт")
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
@@ -712,6 +701,7 @@ private fun TvV9ChannelRow(
         if (favorite) TvV9Red else Color.White,
         label = "tv-v9-favorite-color"
     )
+    val hideAction = if (offline) ({ -> }) else onLongPress
     Card(
         onClick = onPlay,
         modifier = Modifier.fillMaxWidth(),
@@ -722,7 +712,23 @@ private fun TvV9ChannelRow(
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(
-                Modifier.weight(1f).threeSecondLongPressTv(onLongPress)
+                Modifier
+                    .weight(1f)
+                    .threeSecondLongPressTv(hideAction)
+                    .hideSwipeTv(hideAction)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyUp || offline) return@onPreviewKeyEvent false
+                        when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DEL,
+                            KeyEvent.KEYCODE_FORWARD_DEL,
+                            KeyEvent.KEYCODE_MENU -> {
+                                hideAction()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
             ) {
                 TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
                 Spacer(Modifier.width(10.dp))
@@ -751,6 +757,20 @@ private fun TvV9ChannelRow(
     }
 }
 
+
+private fun Modifier.hideSwipeTv(onTriggered: () -> Unit): Modifier =
+    pointerInput(onTriggered) {
+        var totalDrag = 0f
+        detectHorizontalDragGestures(
+            onDragEnd = {
+                if (totalDrag <= -72f) onTriggered()
+                totalDrag = 0f
+            },
+            onDragCancel = { totalDrag = 0f }
+        ) { _, dragAmount ->
+            totalDrag += dragAmount
+        }
+    }
 
 private fun Modifier.threeSecondLongPressTv(onTriggered: () -> Unit): Modifier =
     pointerInput(onTriggered) {
