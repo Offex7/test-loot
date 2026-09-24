@@ -2461,7 +2461,7 @@ private fun LogoImage(
             )
 
         val remoteUrl = item.logoUrl ?: item.epgLogoUrl
-        val localBitmap = remember(item.name) { localRadioLogo(item.name) }
+        val localBitmap = localRadioLogo(item.name)
         if (localBitmap != null) {
             Image(
                 bitmap = localBitmap,
