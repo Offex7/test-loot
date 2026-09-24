@@ -43,7 +43,12 @@ val RADIO_STATIONS = listOf(
     StreamItem("RELAX", "https://srv01.gpmradio.ru/stream/trust/mp3/128/267", RELAX_LOGO),
     StreamItem("COMEDY CLUB", "https://hls-01-gpm.hostingradio.ru/comedyradio495/playlist.m3u8"),
     StreamItem("АВТОРАДИО", "https://hls-01-gpm.hostingradio.ru/avtoradio7/playlist.m3u8"),
-    StreamItem("ЮГ МОЛОДОЙ", "https://listen7.myradio24.com/18718")
+    StreamItem("ЮГ МОЛОДОЙ", "https://listen7.myradio24.com/18718"),
+    StreamItem("ЕВРОПА ПЛЮС", "https://hls-01-regions.emgsound.ru/11_msk/112/playlist.m3u8"),
+    StreamItem("РЕТРО FM", "https://hls-01-sanremo.emgsound.ru/5/112/playlist.m3u8"),
+    StreamItem("ХИТ FM", "https://hls-01-hitfm.hostingradio.ru/hitfm/playlist.m3u8"),
+    StreamItem("НАШЕ РАДИО", "https://nashe1.hostingradio.ru:80/nashe-128.mp3"),
+    StreamItem("DATASET [AI]", "https://region-ru4.tunio.ai/datasetradio.aac")
 )
 
 val RADIO_LOGO_URLS = mapOf(
