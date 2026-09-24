@@ -63,6 +63,10 @@ jobs:
           grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
+          test -s app/src/main/res/raw/radio_logos_payload_b64
+          base64 -d app/src/main/res/raw/radio_logos_payload_b64 > /tmp/radio-logos.zip
+          test "$(unzip -Z1 /tmp/radio-logos.zip | wc -l)" -eq 20
+          unzip -t /tmp/radio-logos.zip >/dev/null
           test -f app/signing/radio-tv-v5-debug.keystore
 
       - name: Validate signing keystore
