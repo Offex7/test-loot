@@ -7,6 +7,7 @@
 package com.offex7.streamhub
 
 import android.view.KeyEvent
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -14,6 +15,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -39,6 +41,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +66,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
@@ -88,6 +92,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -142,7 +147,8 @@ fun TvV8Screen(
     sleepMinutes: Long,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit,
-    notify: (String) -> Unit
+    notify: (String) -> Unit,
+    onViewingChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -246,6 +252,14 @@ fun TvV8Screen(
         )
     }
 
+    LaunchedEffect(fullscreen) {
+        onViewingChanged(fullscreen)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { onViewingChanged(false) }
+    }
+
     LaunchedEffect(channels) {
         if (channels.isNotEmpty()) {
             health = scanTvV9(channels.take(18), repo)
@@ -345,8 +359,17 @@ fun TvV8Screen(
                 if (i >= 0) startPlayback(i)
             },
             onPause = { player.toggle() },
-            onFavoriteSelected = { index -> 
+            onFavoriteSelected = { index ->
                 if (index in channels.indices) startPlayback(index)
+            },
+            onEnterPip = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    (context as? androidx.activity.ComponentActivity)?.enterPictureInPictureMode(
+                        android.app.PictureInPictureParams.Builder()
+                            .setAspectRatio(android.util.Rational(16, 9))
+                            .build()
+                    )
+                }
             },
             onSleep = onSleep,
             onCancelSleep = onCancelSleep
@@ -414,7 +437,27 @@ fun TvV8Screen(
         }
 
         Box(Modifier.fillMaxSize().weight(1f)) {
-            when {
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    scope.launch {
+                        refreshing = true
+                        runCatching { repo.load(sourceKey) }
+                            .onSuccess {
+                                channels = it.items
+                                health = emptyMap()
+                                loading = false
+                                notify("Список обновлён")
+                            }
+                            .onFailure {
+                                loadError = "Не удалось обновить список"
+                            }
+                        refreshing = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when {
                 loading -> TvV9Skeleton()
                 channels.isEmpty() -> TvV9ErrorState(loadError ?: "Плейлист пуст") {
                     scope.launch { reload() }
@@ -474,6 +517,8 @@ fun TvV8Screen(
             }
         }
     }
+            }
+        }
 }
 
 @Composable
@@ -729,6 +774,7 @@ private fun TvV9Player(
     onNext: () -> Unit,
     onPause: () -> Unit,
     onFavoriteSelected: (Int) -> Unit,
+    onEnterPip: () -> Unit,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit
 ) {
@@ -748,10 +794,26 @@ private fun TvV9Player(
     var zoom by androidx.compose.runtime.remember(channel.key) {
         androidx.compose.runtime.mutableFloatStateOf(tvV9ZoomByChannel[channel.key] ?: 1f)
     }
+    var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
+    val playerScope = androidx.compose.runtime.rememberCoroutineScope()
+    val favoriteListState = rememberLazyListState()
+    val favoriteFocusers = remember(favoriteChannels.map { it.first }) {
+        favoriteChannels.map { FocusRequester() }
+    }
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    val favoritePopupHeight = minOf(420, (screenHeightDp * 0.60f).toInt()).coerceAtLeast(220).dp
+
+    fun showPlayerToast(message: String, durationMs: Long) {
+        playerToast = message
+        playerToastDuration = durationMs
+        playerToastToken += 1L
+    }
 
     val formatLabel = when (formatMode) {
-        1 -> "РАСТЯНУТЬ"
-        2 -> "ZOOM"
+        1 -> "РАСТЯНУТЬ 25%"
+        2 -> "ЗАПОЛНИТЬ / ZOOM"
         else -> "ОРИГИНАЛ"
     }
 
@@ -784,6 +846,7 @@ private fun TvV9Player(
     }
 
     androidx.compose.runtime.LaunchedEffect(controls, locked) {
+        insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (locked || !controls) insets?.hide(WindowInsetsCompat.Type.systemBars())
         else insets?.show(WindowInsetsCompat.Type.systemBars())
         if (controls && !locked) {
@@ -792,6 +855,13 @@ private fun TvV9Player(
             favoriteMenu = false
             sleepMenu = false
         }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(playerToastToken) {
+        if (playerToast == null || playerToastToken == 0L) return@LaunchedEffect
+        val token = playerToastToken
+        delay(playerToastDuration)
+        if (token == playerToastToken) playerToast = null
     }
 
     androidx.compose.runtime.LaunchedEffect(sleepMenu, sleepToken) {
@@ -805,7 +875,7 @@ private fun TvV9Player(
         runCatching { rootFocus.requestFocus() }
     }
 
-    BackHandler(enabled = locked) { locked = false }
+    BackHandler(enabled = locked) { /* unlock only through the on-screen lock icon */ }
 
     Box(
         Modifier
@@ -861,6 +931,7 @@ private fun TvV9Player(
                         detectTransformGestures { _, _, gestureZoom, _ ->
                             zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
                             tvV9ZoomByChannel[channel.key] = zoom
+                            showPlayerToast("Масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
                         }
                     } else {
                         detectTransformGestures { _, _, _, _ -> }
@@ -906,11 +977,13 @@ private fun TvV9Player(
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
                             formatMode = (formatMode + 1) % 3
+                            showPlayerToast("Формат: " + formatLabel, 5000L)
                         }
                         TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
                             favoriteMenu = false
                             sleepMenu = false
                             locked = true
+                            hideSystemBars()
                         }
                         TvV9PlayerButton(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
@@ -919,19 +992,28 @@ private fun TvV9Player(
                             favoriteMenu = !favoriteMenu
                             if (favoriteMenu) sleepMenu = false
                         }
+                        TvV9PlayerButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip)
                     }
 
-                    Text(
-                        formatLabel,
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 12.dp)
-                            .background(Color.Black.copy(alpha = .35f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    AnimatedVisibility(
+                        visible = playerToast != null,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 64.dp, end = 12.dp),
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        Text(
+                            playerToast.orEmpty(),
+                            Modifier
+                                .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(8.dp))
+                                .border(1.dp, TvV9Red, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Row(
                         Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
@@ -979,34 +1061,102 @@ private fun TvV9Player(
                             alignment = Alignment.TopStart,
                             properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
                         ) {
-                            Column(
+                            Box(
                                 Modifier
                                     .padding(start = 68.dp, top = 64.dp)
-                                    .width(290.dp)
-                                    .background(Color.Transparent)
-                                    .border(1.dp, TvV9Red.copy(alpha = .65f), RoundedCornerShape(14.dp))
+                                    .width(300.dp)
+                                    .height(favoritePopupHeight)
+                                    .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(14.dp))
+                                    .border(1.dp, TvV9Red, RoundedCornerShape(14.dp))
                                     .padding(8.dp)
                             ) {
-                                Text("ИЗБРАННЫЕ КАНАЛЫ", color = TvV9Red, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(5.dp))
-                                if (favoriteChannels.isEmpty()) {
-                                    Text("Пока нет избранных каналов", color = TvV9Gray, fontSize = 12.sp)
-                                } else {
-                                    favoriteChannels.forEach { (index, item) ->
-                                        TextButton(
-                                            onClick = {
-                                                favoriteMenu = false
-                                                onFavoriteSelected(index)
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(
-                                                item.name,
-                                                Modifier.fillMaxWidth(),
-                                                color = Color.White,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                                textAlign = TextAlign.Start
+                                Column(Modifier.fillMaxSize()) {
+                                    Text("ИЗБРАННЫЕ КАНАЛЫ", color = TvV9Red, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.height(5.dp))
+                                    if (favoriteChannels.isEmpty()) {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text("Пока нет избранных каналов", color = TvV9Gray, fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        Box(Modifier.fillMaxSize()) {
+                                            LazyColumn(
+                                                state = favoriteListState,
+                                                modifier = Modifier.fillMaxSize().padding(end = 5.dp),
+                                                contentPadding = PaddingValues(vertical = 2.dp)
+                                            ) {
+                                                items(
+                                                    items = favoriteChannels,
+                                                    key = { it.second.key }
+                                                ) { (index, item) ->
+                                                    val focusIndex = favoriteChannels.indexOfFirst { it.first == index }
+                                                    TextButton(
+                                                        onClick = {
+                                                            favoriteMenu = false
+                                                            onFavoriteSelected(index)
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .focusRequester(favoriteFocusers[focusIndex])
+                                                            .focusable()
+                                                            .onPreviewKeyEvent { event ->
+                                                                if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+                                                                when (event.nativeKeyEvent.keyCode) {
+                                                                    KeyEvent.KEYCODE_DPAD_UP -> {
+                                                                        if (focusIndex > 0) {
+                                                                            favoriteFocusers[focusIndex - 1].requestFocus()
+                                                                            playerScope.launch { favoriteListState.animateScrollToItem(focusIndex - 1) }
+                                                                        }
+                                                                        true
+                                                                    }
+                                                                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                                        if (focusIndex + 1 < favoriteFocusers.size) {
+                                                                            favoriteFocusers[focusIndex + 1].requestFocus()
+                                                                            playerScope.launch { favoriteListState.animateScrollToItem(focusIndex + 1) }
+                                                                        }
+                                                                        true
+                                                                    }
+                                                                    KeyEvent.KEYCODE_DPAD_CENTER,
+                                                                    KeyEvent.KEYCODE_ENTER -> {
+                                                                        favoriteMenu = false
+                                                                        onFavoriteSelected(index)
+                                                                        true
+                                                                    }
+                                                                    KeyEvent.KEYCODE_BACK -> {
+                                                                        favoriteMenu = false
+                                                                        true
+                                                                    }
+                                                                    else -> false
+                                                                }
+                                                            }
+                                                    ) {
+                                                        Text(
+                                                            item.name,
+                                                            Modifier.fillMaxWidth(),
+                                                            color = Color.White,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            textAlign = TextAlign.Start
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            val total = favoriteChannels.size.coerceAtLeast(1)
+                                            val visibleCount = favoriteListState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+                                            val progress = favoriteListState.firstVisibleItemIndex.toFloat() /
+                                                (total - visibleCount).coerceAtLeast(1).toFloat()
+                                            val thumbHeight = favoritePopupHeight *
+                                                (visibleCount.toFloat() / total.toFloat()).coerceIn(.08f, 1f)
+                                            val thumbY = (favoritePopupHeight - thumbHeight) *
+                                                progress.coerceIn(0f, 1f)
+                                            Box(
+                                                Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(vertical = 4.dp)
+                                                    .width(2.dp)
+                                                    .height(thumbHeight.coerceAtLeast(14.dp))
+                                                    .offset(y = thumbY)
+                                                    .background(Color.White.copy(alpha = .35f), RoundedCornerShape(2.dp))
                                             )
                                         }
                                     }
@@ -1023,7 +1173,8 @@ private fun TvV9Player(
                             Column(
                                 Modifier
                                     .padding(start = 68.dp, top = 64.dp)
-                                    .background(Color.Transparent)
+                                    .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(14.dp))
+                                    .border(1.dp, TvV9Red, RoundedCornerShape(14.dp))
                                     .padding(8.dp)
                             ) {
                                 Text("ТАЙМЕР СНА", color = TvV9Red, fontWeight = FontWeight.Bold)
@@ -1079,7 +1230,7 @@ private fun TvV9PlayerButton(
         onClick = onClick,
         modifier = Modifier
             .size(48.dp)
-            .background(Color.Black.copy(alpha = .28f), CircleShape)
+            .background(Color.Black.copy(alpha = .48f), CircleShape)
             .border(1.5.dp, TvV9Red, CircleShape)
             .focusable()
     ) {
@@ -1097,7 +1248,7 @@ private fun TvV9PlayerButtonLarge(
         onClick = onClick,
         modifier = Modifier
             .size(60.dp)
-            .background(Color.Black.copy(alpha = .28f), CircleShape)
+            .background(Color.Black.copy(alpha = .48f), CircleShape)
             .border(1.5.dp, TvV9Red, CircleShape)
             .focusable()
     ) {
