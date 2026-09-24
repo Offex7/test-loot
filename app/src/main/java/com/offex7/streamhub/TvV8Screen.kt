@@ -268,10 +268,6 @@ fun TvV8Screen(
         }
     }
 
-    LaunchedEffect(pipMode) {
-        // PiP must contain only the video; when returning, restore the normal controls.
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             val activity = context as? androidx.activity.ComponentActivity
@@ -915,6 +911,18 @@ private fun TvV9Player(
             controls = false
             favoriteMenu = false
             sleepMenu = false
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(pipMode) {
+        if (pipMode) {
+            controls = false
+            favoriteMenu = false
+            sleepMenu = false
+            playerToast = null
+            hideSystemBars()
+        } else {
+            controls = true
         }
     }
 
