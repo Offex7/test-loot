@@ -206,6 +206,13 @@ class MainActivity : ComponentActivity() {
     internal var pipEnabled = true
     internal var tvViewing = false
     internal var pipMode by mutableStateOf(false)
+    internal var widgetSection by mutableStateOf<Section?>(null)
+    internal var widgetRadioToggle by mutableStateOf(false)
+
+    private fun handleWidgetIntent(intent: Intent?) {
+        widgetSection = intent?.getStringExtra(EXTRA_WIDGET_SECTION)?.let { runCatching { Section.valueOf(it) }.getOrNull() }
+        widgetRadioToggle = intent?.getBooleanExtra(EXTRA_WIDGET_RADIO_TOGGLE, false) == true
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -216,7 +223,14 @@ class MainActivity : ComponentActivity() {
         store = SettingsStore(applicationContext)
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
+        handleWidgetIntent(intent)
         setContent { AppTheme { App(store, tv, radio, this) } }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetIntent(intent)
     }
 
     override fun onStop() {
@@ -286,7 +300,41 @@ private fun App(
     var sleepMinutes by remember { mutableLongStateOf(0L) }
     val tvWeakNetwork by tv.weakNetwork.collectAsState()
     val radioWeakNetwork by radio.weakNetwork.collectAsState()
+    val radioWidgetIndex by radio.currentIndex.collectAsState()
+    val radioWidgetPlaying by radio.isPlaying.collectAsState()
     val weakNetwork = tvWeakNetwork || radioWeakNetwork
+
+    LaunchedEffect(radioWidgetIndex, radioWidgetPlaying) {
+        radioWidgetIndex.takeIf { it in RADIO_STATIONS.indices }?.let {
+            WidgetStateStore.setLastRadio(appContext, RADIO_STATIONS[it].name)
+        }
+        WidgetStateStore.setRadioPlaying(appContext, radioWidgetPlaying)
+        LastRadioWidgetProvider.updateAll(appContext)
+    }
+
+    LaunchedEffect(Unit) {
+        QuickAccessWidgetProvider.updateAll(appContext)
+    }
+
+    LaunchedEffect(activity.widgetSection, activity.widgetRadioToggle) {
+        val requestedSection = activity.widgetSection
+        val toggleRadio = activity.widgetRadioToggle
+        if (requestedSection != null) {
+            section = requestedSection
+            scope.launch { store.setSection(requestedSection) }
+        }
+        if (toggleRadio) {
+            repeat(10) {
+                if (radio.connected.value) {
+                    radio.toggle()
+                    return@repeat
+                }
+                delay(200L)
+            }
+        }
+        activity.widgetSection = null
+        activity.widgetRadioToggle = false
+    }
 
     fun notify(message: String) {
         notification = message
@@ -487,7 +535,9 @@ private fun App(
                     dismissRestore = { restore = null },
                     saveLast = {
                         restore = null
+                        WidgetStateStore.setLastRadio(appContext, it.name)
                         scope.launch { store.saveLastStream(Section.RADIO, it) }
+                        LastRadioWidgetProvider.updateAll(appContext)
                     },
                     back = ::leaveSection,
                     settings = { settings = true },
