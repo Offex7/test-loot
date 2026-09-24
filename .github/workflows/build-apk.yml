@@ -130,3 +130,4 @@ jobs:
 # v2.0 release validation
 
 # v2.0 clean stable-base validation
+# trigger via GitHub merge
