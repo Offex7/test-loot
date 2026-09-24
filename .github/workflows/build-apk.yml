@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v1.0
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v1.0
         with:
           distribution: temurin
           java-version: "17"
@@ -38,10 +38,10 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate V10 project
+      - name: Validate release 1.0 project
         run: |
           set -e
-          grep -q 'versionCode = 10' app/build.gradle.kts
+          grep -q 'versionCode = 1' app/build.gradle.kts
           grep -q 'versionName = "1.0"' app/build.gradle.kts
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
@@ -63,12 +63,12 @@ jobs:
           grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
-          test -f app/signing/radio-tv-v5-debug.keystore
+          test -f app/signing/radio-tv-v1.0-debug.keystore
 
       - name: Validate signing keystore
         run: |
           set -e
-          keytool -list -v -keystore app/signing/radio-tv-v5-debug.keystore -storepass android -alias AndroidDebugKey > key.txt
+          keytool -list -v -keystore app/signing/radio-tv-v1.0-debug.keystore -storepass android -alias AndroidDebugKey > key.txt
           grep -q 'Alias name: AndroidDebugKey' key.txt
           grep -q 'Entry type: PrivateKeyEntry' key.txt
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
@@ -84,23 +84,23 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" tv-radio-online-v10.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v10.0.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v10.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" tv-radio-online-v1.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose tv-radio-online-v1.0.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs tv-radio-online-v1.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging tv-radio-online-v10.0.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging tv-radio-online-v1.0.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='10'"
+          echo "$APK_PACKAGE" | grep -q "versionCode='1'"
           echo "$APK_PACKAGE" | grep -q "versionName='1.0'"
-          sha256sum tv-radio-online-v10.0.apk
-          ls -lh tv-radio-online-v10.0.apk
+          sha256sum tv-radio-online-v1.0.apk
+          ls -lh tv-radio-online-v1.0.apk
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v1.0
         with:
-          name: TV-Radio-Online-v10.0-APK
-          path: tv-radio-online-v10.0.apk
+          name: TV-Radio-Online-v1.0-APK
+          path: tv-radio-online-v1.0.apk
           if-no-files-found: error
