@@ -37,6 +37,7 @@ class SettingsStore(private val context: Context) {
     private val tvScrollOffsetKey = intPreferencesKey("tv_scroll_offset")
     private val radioScrollIndexKey = intPreferencesKey("radio_scroll_index")
     private val radioScrollOffsetKey = intPreferencesKey("radio_scroll_offset")
+    private val channelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v1")
 
     suspend fun lastSection(): Section? = context.dataStore.data.first()[sectionKey]?.let { runCatching { Section.valueOf(it) }.getOrNull() }
     suspend fun setSection(section: Section) { context.dataStore.edit { it[sectionKey] = section.name } }
@@ -228,6 +229,51 @@ class SettingsStore(private val context: Context) {
             else { it[radioScrollIndexKey] = index; it[radioScrollOffsetKey] = offset }
         }
     }
+
+    suspend fun channelZooms(): Map<String, Float> {
+        val raw = context.dataStore.data.first()[channelZoomsStorage].orEmpty()
+        return decodeZoomMap(raw)
+    }
+
+    suspend fun setChannelZoom(channelId: String, zoom: Float) {
+        val id = channelId.trim()
+        if (id.isBlank()) return
+        val safeZoom = zoom.coerceIn(1f, 3f)
+        context.dataStore.edit { prefs ->
+            val current = decodeZoomMap(prefs[channelZoomsStorage]).toMutableMap()
+            current[id] = safeZoom
+            // Keep the store bounded in case the user watches many channels.
+            while (current.size > 500) {
+                current.remove(current.keys.first())
+            }
+            prefs[channelZoomsStorage] = encodeZoomMap(current)
+        }
+    }
+
+    suspend fun removeChannelZoom(channelId: String) {
+        val id = channelId.trim()
+        if (id.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val current = decodeZoomMap(prefs[channelZoomsStorage]).toMutableMap()
+            current.remove(id)
+            prefs[channelZoomsStorage] = encodeZoomMap(current)
+        }
+    }
+
+    private fun decodeZoomMap(raw: String?): Map<String, Float> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val json = org.json.JSONObject(raw)
+            json.keys().asSequence().associateWith { key ->
+                json.optDouble(key, 1.0).toFloat().coerceIn(1f, 3f)
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeZoomMap(map: Map<String, Float>): String =
+        org.json.JSONObject().apply {
+            map.forEach { (id, zoom) -> put(id, zoom.toDouble()) }
+        }.toString()
 
     suspend fun resetAll() { context.dataStore.edit { it.clear() } }
 }
