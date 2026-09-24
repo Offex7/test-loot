@@ -2192,10 +2192,10 @@ private fun DonationCard() {
                 targetValue = Color.White,
                 animationSpec = infiniteRepeatable(
                     animation = keyframes {
-                        durationMillis = 6000
+                        durationMillis = 2000
                         Color.White at 0
-                        Color.Black at 3000
-                        Color.White at 6000
+                        Color.Black at 1000
+                        Color.White at 2000
                     },
                     repeatMode = RepeatMode.Restart
                 ),
