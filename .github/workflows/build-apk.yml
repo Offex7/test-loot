@@ -76,6 +76,13 @@ jobs:
           echo "Signing certificate SHA-256: $KEY_CERT"
           test "$KEY_CERT" = "b848a1f2857ef5d4fd4a2d89be61fd0d6804729f263e4816e6fce2857d91c15a"
 
+      - name: Build debug with requested command
+        run: |
+          set -e
+          printf '%s\n' '#!/usr/bin/env sh' 'exec gradle "$@"' > gradlew
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
       - name: Build signed release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
@@ -103,4 +110,19 @@ jobs:
         with:
           name: Radio-TV-Release-2.0-APK
           path: radio-tv-release-2.0.apk
+          if-no-files-found: error
+
+      - name: Package complete Android Studio source ZIP
+        run: |
+          set -e
+          zip -r radio-tv-release-2.0-source.zip . \
+            -x '.git/*' '.gradle/*' 'app/build/*' 'radio-tv-release-2.0.apk' 'key.txt' 'radio-tv-release-2.0-source.zip'
+          test -s radio-tv-release-2.0-source.zip
+          unzip -t radio-tv-release-2.0-source.zip >/dev/null
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio-TV-Release-2.0-Source
+          path: radio-tv-release-2.0-source.zip
           if-no-files-found: error
