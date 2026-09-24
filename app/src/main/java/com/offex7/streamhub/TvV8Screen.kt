@@ -714,7 +714,6 @@ private fun TvV9ChannelRow(
             Row(
                 Modifier
                     .weight(1f)
-                    .threeSecondLongPressTv(hideAction)
                     .hideSwipeTv(hideAction)
                     .focusable()
                     .onPreviewKeyEvent { event ->
