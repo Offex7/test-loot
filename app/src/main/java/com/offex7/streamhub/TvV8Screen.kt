@@ -79,6 +79,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -458,38 +459,42 @@ fun TvV8Screen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 when {
-                loading -> TvV9Skeleton()
-                channels.isEmpty() -> TvV9ErrorState(loadError ?: "Плейлист пуст") {
-                    scope.launch { reload() }
-                }
-                filtered.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Ничего не найдено", color = TvV9Gray)
-                }
-                else -> LazyColumn(
-                    state = list,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    items(filtered, key = { it.key }) { channel ->
-                        val favorite = favorites.contains(channel.key)
-                        TvV9ChannelRow(
-                            item = channel,
-                            favorite = favorite,
-                            logoCache = logoCache,
-                            offline = health[channel.url] == AvailabilityStatus.OFFLINE,
-                            onPlay = {
-                                channels.indexOfFirst { it.key == channel.key }
-                                    .takeIf { it >= 0 }
-                                    ?.let(::startPlayback)
-                            },
-                            onFavorite = {
-                                scope.launch {
-                                    store.setFavorite(Section.TV, channel.key, !favorite)
-                                    favorites = store.favorites(Section.TV)
+                    loading -> TvV9Skeleton()
+                    channels.isEmpty() -> TvV9ErrorState(loadError ?: "Плейлист пуст") {
+                        scope.launch { reload() }
+                    }
+                    filtered.isEmpty() -> Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Ничего не найдено", color = TvV9Gray)
+                    }
+                    else -> LazyColumn(
+                        state = list,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        items(filtered, key = { it.key }) { channel ->
+                            val favorite = favorites.contains(channel.key)
+                            TvV9ChannelRow(
+                                item = channel,
+                                favorite = favorite,
+                                logoCache = logoCache,
+                                offline = health[channel.url] == AvailabilityStatus.OFFLINE,
+                                onPlay = {
+                                    channels.indexOfFirst { it.key == channel.key }
+                                        .takeIf { it >= 0 }
+                                        ?.let(::startPlayback)
+                                },
+                                onFavorite = {
+                                    scope.launch {
+                                        store.setFavorite(Section.TV, channel.key, !favorite)
+                                        favorites = store.favorites(Section.TV)
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -517,12 +522,9 @@ fun TvV8Screen(
             }
         }
     }
-            }
-        }
 }
 
-@Composable
-private fun TvV9Header(
+
     searchOpen: Boolean,
     query: String,
     focusRequester: FocusRequester,
@@ -784,6 +786,12 @@ private fun TvV9Player(
         activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) }
     }
     val rootFocus = FocusRequester()
+
+    fun hideSystemBars() {
+        insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insets?.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
 
     var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     var locked by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
