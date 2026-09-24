@@ -10,8 +10,8 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
     signingConfigs {
         create("v5Debug") {
@@ -19,6 +19,9 @@ android {
             storePassword = "android"
             keyAlias = "AndroidDebugKey"
             keyPassword = "android"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     buildTypes {

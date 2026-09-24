@@ -15,6 +15,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,6 +55,7 @@ class PlayerController(context: Context) {
     private var released = false
     private var fadeAnimator: ValueAnimator? = null
     private var internalRetryEnabled = true
+    private var currentTrackSelector: DefaultTrackSelector? = null
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onLost(network: Network) {
@@ -84,8 +86,11 @@ class PlayerController(context: Context) {
             .setBufferDurationsMs(10_000, 30_000, 2_000, 5_000)
             .setBackBuffer(0, false)
             .build()
+        val trackSelector = DefaultTrackSelector(appContext)
+        currentTrackSelector = trackSelector
 
         return ExoPlayer.Builder(appContext)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -260,6 +265,18 @@ class PlayerController(context: Context) {
             runCatching { currentPlayer.pause() }
         }
         return -1
+    }
+
+    fun reduceVideoQuality() {
+        runCatching {
+            currentTrackSelector?.setParameters(
+                currentTrackSelector?.buildUponParameters()
+                    ?.setMaxVideoBitrate(1_000_000)
+                    ?.setMaxVideoSize(1280, 720)
+                    ?.build()
+                    ?: return
+            )
+        }
     }
 
     fun toggle() {

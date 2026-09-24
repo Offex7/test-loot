@@ -29,6 +29,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +75,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -153,6 +158,7 @@ fun TvV8Screen(
     pipMode: Boolean
 ) {
     val context = LocalContext.current
+    val isPortrait = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
@@ -165,10 +171,14 @@ fun TvV8Screen(
     val focusRequester = FocusRequester()
     val keyboardController = LocalSoftwareKeyboardController.current
     val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
-    var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Float>()) }
+    var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, ChannelZoomPair>()) }
 
     var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
     var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
+    var hidden by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
+    var hideCandidate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<StreamItem?>(null) }
+    var scrollActivityToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var channelSwitchToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var health by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, AvailabilityStatus>()) }
     var loading by androidx.compose.runtime.remember(sourceKey) { androidx.compose.runtime.mutableStateOf(true) }
     var loadError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -204,6 +214,7 @@ fun TvV8Screen(
 
     LaunchedEffect(sourceKey) {
         favorites = store.favorites(Section.TV)
+        hidden = store.hidden(Section.TV)
         savedZooms = store.channelZooms()
         reload()
     }
@@ -215,12 +226,21 @@ fun TvV8Screen(
         androidx.compose.runtime.snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { current ->
                 store.saveScrollPosition(Section.TV, current.first, current.second)
+                scrollActivityToken += 1L
                 if (current != previous) {
                     showScrollUp = current.first < previous.first ||
                         (current.first == previous.first && current.second < previous.second)
                     previous = current
                 }
             }
+    }
+
+    LaunchedEffect(scrollActivityToken, showScrollUp) {
+        if (showScrollUp) {
+            val token = scrollActivityToken
+            delay(5000L)
+            if (token == scrollActivityToken) showScrollUp = false
+        }
     }
 
     LaunchedEffect(searchOpen) {
@@ -285,6 +305,27 @@ fun TvV8Screen(
             health = scanTvV9(channels.take(18), repo)
         }
     }
+    LaunchedEffect(channels, hidden) {
+        if (channels.isEmpty()) return@LaunchedEffect
+        while (true) {
+            delay(30 * 60 * 1000L)
+            val targets = channels
+                .filterNot { hidden.contains(it.key) }
+                .filter { health[it.url] == AvailabilityStatus.OFFLINE }
+                .ifEmpty { channels.filterNot { hidden.contains(it.key) }.take(24) }
+                .take(60)
+            if (targets.isNotEmpty()) health = health + scanTvV9(targets, repo)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        UsageTicker(
+            store = store,
+            section = Section.TV,
+            channelIdProvider = { channels.getOrNull(selectedIndex)?.name },
+            activeProvider = { player.isPlaying.value && selectedIndex >= 0 }
+        ).run()
+    }
 
     LaunchedEffect(list.firstVisibleItemIndex, channels, health) {
         if (channels.isEmpty()) return@LaunchedEffect
@@ -294,22 +335,28 @@ fun TvV8Screen(
         if (pending.isNotEmpty()) health = health + scanTvV9(pending, repo)
     }
 
+    val navigationOrder = androidx.compose.runtime.remember(channels, favorites, hidden) {
+        val visible = channels.indices.filterNot { hidden.contains(channels[it].key) }
+        visible.filter { favorites.contains(channels[it].key) } +
+            visible.filterNot { favorites.contains(channels[it].key) }
+    }
+
     fun previousIndex(start: Int): Int {
-        if (channels.isEmpty()) return -1
-        var cursor = start.coerceIn(0, channels.lastIndex)
-        repeat(channels.size - 1) {
-            cursor = (cursor - 1 + channels.size) % channels.size
-            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
+        if (navigationOrder.isEmpty()) return -1
+        val pos = navigationOrder.indexOf(start).let { if (it >= 0) it else 0 }
+        repeat(navigationOrder.size - 1) { step ->
+            val candidate = navigationOrder[(pos - step - 1 + navigationOrder.size) % navigationOrder.size]
+            if (health[channels[candidate].url] != AvailabilityStatus.OFFLINE) return candidate
         }
         return -1
     }
 
     fun nextIndex(start: Int): Int {
-        if (channels.isEmpty()) return -1
-        var cursor = start.coerceIn(0, channels.lastIndex)
-        repeat(channels.size - 1) {
-            cursor = (cursor + 1) % channels.size
-            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
+        if (navigationOrder.isEmpty()) return -1
+        val pos = navigationOrder.indexOf(start).let { if (it >= 0) it else -1 }
+        repeat(navigationOrder.size - 1) { step ->
+            val candidate = navigationOrder[(pos + step + 1) % navigationOrder.size]
+            if (health[channels[candidate].url] != AvailabilityStatus.OFFLINE) return candidate
         }
         return -1
     }
@@ -322,18 +369,20 @@ fun TvV8Screen(
         playbackJob = scope.launch {
             var cursor = start
             repeat(channels.size) {
+                if (cursor !in channels.indices || hidden.contains(channels[cursor].key)) {
+                    cursor = nextIndex(cursor)
+                    if (cursor < 0) return@launch
+                }
                 selectedIndex = cursor
                 val candidate = channels[cursor]
                 val result = player.playWithFallback(listOf(candidate.url))
                 if (result >= 0) {
                     health = health + (candidate.url to AvailabilityStatus.ONLINE)
+                    channelSwitchToken += 1L
                     saveLast(candidate)
                     return@launch
                 }
                 health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                notice = "Канал временно недоступен — переключаю на следующий"
-                delay(3000L)
-                notice = null
                 cursor = nextIndex(cursor)
                 if (cursor < 0) {
                     fullscreen = false
@@ -355,13 +404,25 @@ fun TvV8Screen(
 
     if (fullscreen && selectedIndex in channels.indices) {
         val favoriteChannels = channels.mapIndexedNotNull { index, channel ->
-            if (favorites.contains(channel.key)) index to channel else null
+            if (!hidden.contains(channel.key) && favorites.contains(channel.key)) index to channel else null
         }
         TvV9Player(
             player = player,
             playerInstance = playerInstance,
             channel = channels[selectedIndex],
             favoriteChannels = favoriteChannels,
+            channelHealth = health,
+            logoCache = logoCache,
+            channelNoticeToken = channelSwitchToken,
+            isFavorite = favorites.contains(channels[selectedIndex].key),
+            onToggleFavorite = {
+                val key = channels[selectedIndex].key
+                scope.launch {
+                    val newValue = !favorites.contains(key)
+                    store.setFavorite(Section.TV, key, newValue)
+                    favorites = store.favorites(Section.TV)
+                }
+            },
             error = if (notice == null) error else null,
             waiting = waiting || !network,
             isPlaying = isPlaying,
@@ -393,19 +454,21 @@ fun TvV8Screen(
             },
             onSleep = onSleep,
             onCancelSleep = onCancelSleep,
-            initialZoom = savedZooms[channels[selectedIndex].key],
+            initialZoom = savedZooms[channels[selectedIndex].key]?.let {
+                if (isPortrait) it.portrait else it.landscape
+            },
             onZoomChanged = { value ->
                 val key = channels[selectedIndex].key
                 scope.launch {
-                    store.setChannelZoom(key, value)
-                    savedZooms = savedZooms + (key to value)
+                    store.setChannelZoom(key, isPortrait, value)
+                    savedZooms = store.channelZooms()
                 }
             },
             onZoomReset = {
                 val key = channels[selectedIndex].key
                 scope.launch {
-                    store.removeChannelZoom(key)
-                    savedZooms = savedZooms - key
+                    store.removeChannelZoom(key, isPortrait)
+                    savedZooms = store.channelZooms()
                 }
             },
             pipMode = pipMode
@@ -420,10 +483,12 @@ fun TvV8Screen(
         keyboardController?.hide()
     }
 
-    val ordered = channels.sortedWith(
-        compareByDescending<StreamItem> { favorites.contains(it.key) }
-            .thenBy { it.name.lowercase(Locale.ROOT) }
-    )
+    val ordered = channels
+        .filterNot { hidden.contains(it.key) }
+        .sortedWith(
+            compareByDescending<StreamItem> { favorites.contains(it.key) }
+                .thenBy { it.name.lowercase(Locale.ROOT) }
+        )
     val filtered = if (query.isBlank()) ordered else ordered.filter {
         it.name.contains(query.trim(), true) ||
             it.groupTitle.orEmpty().contains(query.trim(), true)
@@ -533,6 +598,15 @@ fun TvV8Screen(
                                         store.setFavorite(Section.TV, channel.key, !favorite)
                                         favorites = store.favorites(Section.TV)
                                     }
+                                },
+                                onLongPress = {
+                                    if (health[channel.url] != AvailabilityStatus.OFFLINE) {
+                                        scope.launch {
+                                            store.setHidden(Section.TV, channel.key, true)
+                                            hidden = store.hidden(Section.TV)
+                                            notify("Канал скрыт")
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -620,12 +694,14 @@ private fun TvV9ChannelRow(
     logoCache: TvLogoCache,
     offline: Boolean,
     onPlay: () -> Unit,
-    onFavorite: () -> Unit
+    onFavorite: () -> Unit,
+    onLongPress: () -> Unit = {}
 ) {
     val iconColor by animateColorAsState(
         if (favorite) TvV9Red else Color.White,
         label = "tv-v9-favorite-color"
     )
+    val hideAction = if (offline) ({ -> }) else onLongPress
     Card(
         onClick = onPlay,
         modifier = Modifier.fillMaxWidth(),
@@ -635,9 +711,27 @@ private fun TvV9ChannelRow(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .hideSwipeTv(hideAction)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyUp || offline) return@onPreviewKeyEvent false
+                        when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DEL,
+                            KeyEvent.KEYCODE_FORWARD_DEL,
+                            KeyEvent.KEYCODE_MENU -> {
+                                hideAction()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+            ) {
+                TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
                 Text(
                     item.name.uppercase(Locale.ROOT),
                     color = if (offline) TvV9Gray else Color.White,
@@ -649,6 +743,7 @@ private fun TvV9ChannelRow(
                     Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
+                }
             }
             IconButton(onClick = onFavorite) {
                 Icon(
@@ -660,6 +755,40 @@ private fun TvV9ChannelRow(
         }
     }
 }
+
+
+private fun Modifier.hideSwipeTv(onTriggered: () -> Unit): Modifier =
+    pointerInput(onTriggered) {
+        var totalDrag = 0f
+        detectHorizontalDragGestures(
+            onDragEnd = {
+                if (totalDrag <= -72f) onTriggered()
+                totalDrag = 0f
+            },
+            onDragCancel = { totalDrag = 0f }
+        ) { _, dragAmount ->
+            totalDrag += dragAmount
+        }
+    }
+
+private fun Modifier.threeSecondLongPressTv(onTriggered: () -> Unit): Modifier =
+    pointerInput(onTriggered) {
+        var longTriggered = false
+        detectTapGestures(
+            onTap = { if (!longTriggered) Unit },
+            onPress = {
+                longTriggered = false
+                val released = kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                    tryAwaitRelease()
+                    true
+                } ?: false
+                if (!released) {
+                    longTriggered = true
+                    onTriggered()
+                }
+            }
+        )
+    }
 
 @Composable
 private fun TvV9Logo(
@@ -807,6 +936,11 @@ private fun TvV9Player(
     playerInstance: androidx.media3.exoplayer.ExoPlayer,
     channel: StreamItem,
     favoriteChannels: List<Pair<Int, StreamItem>>,
+    channelHealth: Map<String, AvailabilityStatus>,
+    logoCache: TvLogoCache,
+    channelNoticeToken: Long,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     error: String?,
     waiting: Boolean,
     isPlaying: Boolean,
@@ -845,10 +979,15 @@ private fun TvV9Player(
     var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
-    var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var sizeMode by androidx.compose.runtime.remember(channel.key, initialZoom) {
+        androidx.compose.runtime.mutableIntStateOf(if ((initialZoom ?: 1f) > 1.001f) 5 else 0)
+    }
     var zoom by androidx.compose.runtime.remember(channel.key, initialZoom) {
         androidx.compose.runtime.mutableFloatStateOf(initialZoom?.coerceIn(1f, 3f) ?: 1f)
     }
+    var interactionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var channelToastVisible by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    val isPortrait = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
     var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
@@ -869,9 +1008,12 @@ private fun TvV9Player(
         playerToastToken += 1L
     }
 
-    val formatLabel = when (formatMode) {
+    val formatLabel = when (sizeMode) {
         1 -> "РАСТЯНУТЬ 25%"
-        2 -> "ЗАПОЛНИТЬ / ZOOM"
+        2 -> "РАСТЯНУТЬ 150%"
+        3 -> "РАСТЯНУТЬ 200%"
+        4 -> "ЗАПОЛНИТЬ"
+        5 -> "ПОЛЬЗОВАТЕЛЬСКИЙ"
         else -> "ОРИГИНАЛ"
     }
 
@@ -890,12 +1032,10 @@ private fun TvV9Player(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(formatMode) {
-        playerView.resizeMode = when (formatMode) {
-            1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-            2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-        }
+    androidx.compose.runtime.LaunchedEffect(sizeMode) {
+        playerView.resizeMode =
+            if (sizeMode == 4) AspectRatioFrameLayout.RESIZE_MODE_FILL
+            else AspectRatioFrameLayout.RESIZE_MODE_FIT
     }
 
     androidx.compose.runtime.DisposableEffect(Unit) {
@@ -903,15 +1043,22 @@ private fun TvV9Player(
         onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
-    androidx.compose.runtime.LaunchedEffect(controls, locked) {
-        insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    androidx.compose.runtime.LaunchedEffect(controls, locked, interactionToken) {
+        insets?.systemBarsBehavior = if (locked) {
+            WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+        } else {
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         if (locked || !controls) insets?.hide(WindowInsetsCompat.Type.systemBars())
         else insets?.show(WindowInsetsCompat.Type.systemBars())
-        if (controls && !locked) {
-            delay(5000L)
-            controls = false
-            favoriteMenu = false
-            sleepMenu = false
+        if (controls && !locked && !pipMode) {
+            val token = interactionToken
+            delay(10_000L)
+            if (token == interactionToken) {
+                controls = false
+                favoriteMenu = false
+                sleepMenu = false
+            }
         }
     }
 
@@ -921,10 +1068,19 @@ private fun TvV9Player(
             favoriteMenu = false
             sleepMenu = false
             playerToast = null
+            channelToastVisible = false
             hideSystemBars()
         } else {
             controls = true
+            interactionToken += 1L
         }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(channelNoticeToken) {
+        if (channelNoticeToken <= 0L || pipMode) return@LaunchedEffect
+        channelToastVisible = true
+        delay(3000L)
+        channelToastVisible = false
     }
 
     androidx.compose.runtime.LaunchedEffect(playerToastToken) {
@@ -935,11 +1091,18 @@ private fun TvV9Player(
     }
 
     androidx.compose.runtime.LaunchedEffect(favoriteMenu) {
-        if (favoriteMenu && favoriteFocusers.isNotEmpty()) {
-            runCatching { favoriteFocusers.first().requestFocus() }
-            runCatching { favoriteListState.scrollToItem(0) }
+        if (favoriteMenu) {
+            if (favoriteFocusers.isNotEmpty()) {
+                runCatching { favoriteFocusers.first().requestFocus() }
+                runCatching { favoriteListState.scrollToItem(0) }
+            }
+            interactionToken += 1L
+            val token = interactionToken
+            delay(5000L)
+            if (token == interactionToken) favoriteMenu = false
         }
     }
+
 
     androidx.compose.runtime.LaunchedEffect(sleepMenu, sleepToken) {
         if (sleepMenu) {
@@ -950,6 +1113,17 @@ private fun TvV9Player(
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         runCatching { rootFocus.requestFocus() }
+    }
+
+    var lastPortrait by remember(channel.key) { mutableStateOf(isPortrait) }
+    LaunchedEffect(isPortrait) {
+        if (isPortrait != lastPortrait) {
+            controls = false
+            favoriteMenu = false
+            sleepMenu = false
+            interactionToken += 1L
+            lastPortrait = isPortrait
+        }
     }
 
     BackHandler(enabled = locked) { /* unlock only through the on-screen lock icon */ }
@@ -964,15 +1138,30 @@ private fun TvV9Player(
                 if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
-                        if (!locked) onPrev()
+                        if (!locked) {
+                            favoriteMenu = false
+                            sleepMenu = false
+                            interactionToken += 1L
+                            onPrev()
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        if (!locked) onNext()
+                        if (!locked) {
+                            favoriteMenu = false
+                            sleepMenu = false
+                            interactionToken += 1L
+                            onNext()
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_SPACE -> {
-                        if (!locked) onPause()
+                        if (!locked) {
+                            favoriteMenu = false
+                            sleepMenu = false
+                            interactionToken += 1L
+                            onPause()
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_BACK -> {
@@ -989,14 +1178,40 @@ private fun TvV9Player(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(scaleX = zoom, scaleY = zoom)
+                .graphicsLayer(
+                    scaleX = when (sizeMode) {
+                        1 -> 1.25f
+                        2 -> 1.50f
+                        3 -> 2.00f
+                        5 -> zoom
+                        else -> 1f
+                    },
+                    scaleY = when (sizeMode) {
+                        1 -> 1.25f
+                        2 -> 1.50f
+                        3 -> 2.00f
+                        5 -> zoom
+                        else -> 1f
+                    }
+                )
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
                         detectTapGestures(
-                            onTap = { controls = !controls },
+                            onTap = {
+                                if (favoriteMenu || sleepMenu) {
+                                    favoriteMenu = false
+                                    sleepMenu = false
+                                    controls = true
+                                } else {
+                                    controls = !controls
+                                }
+                                interactionToken += 1L
+                            },
                             onDoubleTap = {
                                 zoom = 1f
+                                sizeMode = 0
                                 onZoomReset()
+                                interactionToken += 1L
                             }
                         )
                     } else {
@@ -1007,7 +1222,9 @@ private fun TvV9Player(
                     if (!locked) {
                         detectTransformGestures { _, _, gestureZoom, _ ->
                             zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
+                            sizeMode = 5
                             onZoomChanged(zoom)
+                            interactionToken += 1L
                             showPlayerToast("Масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
                         }
                     } else {
@@ -1047,16 +1264,26 @@ private fun TvV9Player(
                         Modifier.align(Alignment.TopStart).padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", onBack)
+                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад") { favoriteMenu = false; sleepMenu = false; interactionToken += 1L; onBack() }
                         TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна") {
+                            favoriteMenu = false
                             sleepMenu = !sleepMenu
                             sleepToken++
+                            interactionToken += 1L
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
-                            formatMode = (formatMode + 1) % 3
-                            showPlayerToast("Формат: " + formatLabel, 5000L)
+                            interactionToken += 1L
+                            sizeMode = (sizeMode + 1) % 5
+                            showPlayerToast("Размер: " + when ((sizeMode)) {
+                                1 -> "РАСТЯНУТЬ 25%"
+                                2 -> "РАСТЯНУТЬ 150%"
+                                3 -> "РАСТЯНУТЬ 200%"
+                                4 -> "ЗАПОЛНИТЬ"
+                                else -> "ОРИГИНАЛ"
+                            }, 5000L)
                         }
                         TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
+                            interactionToken += 1L
                             favoriteMenu = false
                             sleepMenu = false
                             locked = true
@@ -1066,8 +1293,9 @@ private fun TvV9Player(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
                             "Избранное"
                         ) {
+                            sleepMenu = false
                             favoriteMenu = !favoriteMenu
-                            if (favoriteMenu) sleepMenu = false
+                            interactionToken += 1L
                         }
                         TvV9PlayerButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip)
                     }
@@ -1092,18 +1320,44 @@ private fun TvV9Player(
                         )
                     }
 
+                    AnimatedVisibility(
+                        visible = channelToastVisible && !pipMode,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 100.dp),
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        Row(
+                            Modifier
+                                .background(TvV9Panel.copy(alpha = .92f), RoundedCornerShape(10.dp))
+                                .border(1.dp, TvV9Red, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TvV9Logo(logoCache, channel.logoUrl, 28.dp, false)
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                cleanTvChannelName(channel.name),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
                     Row(
                         Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", onPrev)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий") { favoriteMenu = false; sleepMenu = false; interactionToken += 1L; onPrev() }
                         TvV9PlayerButtonLarge(
                             if (isPlaying) androidx.compose.material.icons.Icons.Default.Pause else androidx.compose.material.icons.Icons.Default.PlayArrow,
                             "Пауза / Старт",
-                            onPause
+                            { favoriteMenu = false; sleepMenu = false; interactionToken += 1L; onPause() }
                         )
-                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", onNext)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий") { favoriteMenu = false; sleepMenu = false; interactionToken += 1L; onNext() }
                     }
 
                     if (!pipMode) noticeMessage?.let {
@@ -1212,7 +1466,7 @@ private fun TvV9Player(
                                                         Text(
                                                             item.name,
                                                             Modifier.fillMaxWidth(),
-                                                            color = Color.White,
+                                                            color = if (channelHealth[item.url] == AvailabilityStatus.OFFLINE) TvV9Gray else Color.White,
                                                             maxLines = 2,
                                                             overflow = TextOverflow.Ellipsis,
                                                             textAlign = TextAlign.Start
@@ -1317,6 +1571,17 @@ private fun TvV9PlayerButtonLarge(
     ) {
         Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(34.dp))
     }
+}
+
+private fun cleanTvChannelName(raw: String): String {
+    val cleaned = raw
+        .replace(Regex("<[^>]*>"), " ")
+        .replace(Regex("\\([^)]*\\)"), " ")
+        .replace(Regex("\\[[^]]*\\]"), " ")
+        .replace(Regex("\\{[^}]*\\}"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    return if (cleaned.length <= 15) cleaned else cleaned.take(12) + "..."
 }
 
 private fun formatTvV9Sleep(milliseconds: Long): String {

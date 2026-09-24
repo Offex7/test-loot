@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("streamhub_settings")
 
+data class ChannelZoomPair(val portrait: Float? = null, val landscape: Float? = null)
+
 class SettingsStore(private val context: Context) {
     private val sectionKey = stringPreferencesKey("last_section")
     private val sourceKey = intPreferencesKey("tv_source_index")
@@ -37,7 +39,11 @@ class SettingsStore(private val context: Context) {
     private val tvScrollOffsetKey = intPreferencesKey("tv_scroll_offset")
     private val radioScrollIndexKey = intPreferencesKey("radio_scroll_index")
     private val radioScrollOffsetKey = intPreferencesKey("radio_scroll_offset")
-    private val channelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v1")
+    private val hiddenTvKey = stringSetPreferencesKey("hidden_tv_items")
+    private val hiddenRadioKey = stringSetPreferencesKey("hidden_radio_items")
+    private val channelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v2")
+    private val legacyChannelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v1")
+    private val firstLaunchKey = booleanPreferencesKey("first_launch_pending")
 
     suspend fun lastSection(): Section? = context.dataStore.data.first()[sectionKey]?.let { runCatching { Section.valueOf(it) }.getOrNull() }
     suspend fun setSection(section: Section) { context.dataStore.edit { it[sectionKey] = section.name } }
@@ -216,6 +222,29 @@ class SettingsStore(private val context: Context) {
     private fun encodeUsageMap(map: Map<String, Long>): String =
         org.json.JSONObject().apply { map.forEach { (key, value) -> put(key, value.coerceAtLeast(0L)) } }.toString()
 
+    suspend fun hidden(section: Section): Set<String> =
+        context.dataStore.data.first()[if (section == Section.TV) hiddenTvKey else hiddenRadioKey] ?: emptySet()
+
+    suspend fun setHidden(section: Section, itemId: String, hidden: Boolean) {
+        val id = itemId.trim()
+        if (id.isBlank()) return
+        context.dataStore.edit {
+            val key = if (section == Section.TV) hiddenTvKey else hiddenRadioKey
+            val current = (it[key] ?: emptySet()).toMutableSet()
+            if (hidden) current.add(id) else current.remove(id)
+            it[key] = current
+        }
+    }
+
+    suspend fun firstLaunchPending(): Boolean {
+        val prefs = context.dataStore.data.first()
+        return prefs[firstLaunchKey] ?: true
+    }
+
+    suspend fun markFirstLaunchSeen() {
+        context.dataStore.edit { it[firstLaunchKey] = false }
+    }
+
     suspend fun scrollPosition(section: Section): Pair<Int, Int> {
         val p = context.dataStore.data.first()
         val i = p[if (section == Section.TV) tvScrollIndexKey else radioScrollIndexKey] ?: 0
@@ -230,37 +259,73 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    suspend fun channelZooms(): Map<String, Float> {
-        val raw = context.dataStore.data.first()[channelZoomsStorage].orEmpty()
-        return decodeZoomMap(raw)
+    suspend fun channelZooms(): Map<String, ChannelZoomPair> {
+        val prefs = context.dataStore.data.first()
+        val current = decodeChannelZoomPairs(prefs[channelZoomsStorage])
+        if (current.isNotEmpty()) return current
+
+        // Migrate the previous v1 format (one zoom per channel) into both orientations.
+        val legacy = decodeLegacyZooms(prefs[legacyChannelZoomsStorage])
+        if (legacy.isEmpty()) return emptyMap()
+
+        val migrated = legacy.mapValues { (_, zoom) ->
+            ChannelZoomPair(portrait = zoom, landscape = zoom)
+        }
+        context.dataStore.edit { it[channelZoomsStorage] = encodeChannelZoomPairs(migrated) }
+        return migrated
     }
 
-    suspend fun setChannelZoom(channelId: String, zoom: Float) {
+    suspend fun setChannelZoom(channelId: String, portrait: Boolean, zoom: Float) {
         val id = channelId.trim()
         if (id.isBlank()) return
         val safeZoom = zoom.coerceIn(1f, 3f)
         context.dataStore.edit { prefs ->
-            val current = decodeZoomMap(prefs[channelZoomsStorage]).toMutableMap()
-            current[id] = safeZoom
-            // Keep the store bounded in case the user watches many channels.
-            while (current.size > 500) {
-                current.remove(current.keys.first())
+            val current = decodeChannelZoomPairs(prefs[channelZoomsStorage]).toMutableMap()
+            val old = current[id] ?: ChannelZoomPair()
+            current[id] = if (portrait) {
+                old.copy(portrait = safeZoom)
+            } else {
+                old.copy(landscape = safeZoom)
             }
-            prefs[channelZoomsStorage] = encodeZoomMap(current)
+            while (current.size > 500) current.remove(current.keys.first())
+            prefs[channelZoomsStorage] = encodeChannelZoomPairs(current)
         }
     }
 
-    suspend fun removeChannelZoom(channelId: String) {
+    suspend fun removeChannelZoom(channelId: String, portrait: Boolean) {
         val id = channelId.trim()
         if (id.isBlank()) return
         context.dataStore.edit { prefs ->
-            val current = decodeZoomMap(prefs[channelZoomsStorage]).toMutableMap()
-            current.remove(id)
-            prefs[channelZoomsStorage] = encodeZoomMap(current)
+            val current = decodeChannelZoomPairs(prefs[channelZoomsStorage]).toMutableMap()
+            val old = current[id]
+            if (old != null) {
+                val updated = if (portrait) {
+                    old.copy(portrait = null)
+                } else {
+                    old.copy(landscape = null)
+                }
+                if (updated.portrait == null && updated.landscape == null) current.remove(id)
+                else current[id] = updated
+            }
+            prefs[channelZoomsStorage] = encodeChannelZoomPairs(current)
         }
     }
 
-    private fun decodeZoomMap(raw: String?): Map<String, Float> {
+    private fun decodeChannelZoomPairs(raw: String?): Map<String, ChannelZoomPair> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val json = org.json.JSONObject(raw)
+            json.keys().asSequence().associateWith { key ->
+                val item = json.optJSONObject(key)
+                ChannelZoomPair(
+                    portrait = item?.takeIf { it.has("p") }?.optDouble("p")?.toFloat()?.coerceIn(1f, 3f),
+                    landscape = item?.takeIf { it.has("l") }?.optDouble("l")?.toFloat()?.coerceIn(1f, 3f)
+                )
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun decodeLegacyZooms(raw: String?): Map<String, Float> {
         if (raw.isNullOrBlank()) return emptyMap()
         return runCatching {
             val json = org.json.JSONObject(raw)
@@ -270,10 +335,15 @@ class SettingsStore(private val context: Context) {
         }.getOrDefault(emptyMap())
     }
 
-    private fun encodeZoomMap(map: Map<String, Float>): String =
+    private fun encodeChannelZoomPairs(map: Map<String, ChannelZoomPair>): String =
         org.json.JSONObject().apply {
-            map.forEach { (id, zoom) -> put(id, zoom.toDouble()) }
+            map.forEach { (id, pair) ->
+                put(id, org.json.JSONObject().apply {
+                    pair.portrait?.let { put("p", it.toDouble()) }
+                    pair.landscape?.let { put("l", it.toDouble()) }
+                })
+            }
         }.toString()
 
-    suspend fun resetAll() { context.dataStore.edit { it.clear() } }
+    suspend fun resetAll() { context.dataStore.edit { it.clear(); it[firstLaunchKey] = false } }
 }
