@@ -86,6 +86,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -199,6 +200,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var radio: RadioMediaController
     internal var pipEnabled = true
     internal var tvViewing = false
+    internal var pipMode by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -224,6 +226,14 @@ class MainActivity : ComponentActivity() {
             )
         }
         super.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipMode = isInPictureInPictureMode
     }
 
     override fun onDestroy() {
@@ -441,7 +451,8 @@ private fun App(
                         notify("Таймер сна — отключён")
                     },
                     notify = ::notify,
-                    onViewingChanged = { activity.tvViewing = it }
+                    onViewingChanged = { activity.tvViewing = it },
+                    pipMode = activity.pipMode
                 )
                 else -> Radio(
                     player = radio,
@@ -513,7 +524,6 @@ private fun Home(
 ) {
     val context = LocalContext.current
     val transition = rememberInfiniteTransition(label = "home-animations")
-
     val gearPulse by transition.animateFloat(
         initialValue = 1f,
         targetValue = 1.08f,
@@ -544,7 +554,6 @@ private fun Home(
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "home-gear-rotation"
     )
-
     val telegramColor by transition.animateColor(
         initialValue = Color(0xFF229ED9),
         targetValue = Color(0xFF229ED9),
@@ -578,7 +587,6 @@ private fun Home(
         ),
         label = "telegram-logo-rotation"
     )
-
     val widthClass = calculateWindowSizeClass(activity).widthSizeClass
 
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
@@ -619,8 +627,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.fillMaxWidth().weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_cd, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
                     }
                 }
                 else -> {
@@ -628,8 +636,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_v8, Modifier.weight(1f), HomeArtworkKind.TV) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v8, Modifier.weight(1f), HomeArtworkKind.RADIO) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f)) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_cd, Modifier.weight(1f)) { open(Section.RADIO) }
                     }
                 }
             }
@@ -642,10 +650,23 @@ private fun Home(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Row(
-                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    Modifier.fillMaxSize().padding(horizontal = 10.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        Icons.Default.Send,
+                        "Telegram",
+                        tint = telegramColor,
+                        modifier = Modifier
+                            .size(21.dp)
+                            .graphicsLayer(
+                                scaleX = -telegramScale,
+                                scaleY = telegramScale,
+                                rotationZ = telegramRotation
+                            )
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         "рекомендовать друзьям",
                         color = Red,
@@ -653,7 +674,7 @@ private fun Home(
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
-                    Spacer(Modifier.width(9.dp))
+                    Spacer(Modifier.width(8.dp))
                     Icon(
                         Icons.Default.Send,
                         "Telegram",
@@ -672,14 +693,11 @@ private fun Home(
     }
 }
 
-private enum class HomeArtworkKind { TV, RADIO }
-
 @Composable
 private fun HomeCard(
     title: String,
     logo: Int,
     modifier: Modifier,
-    kind: HomeArtworkKind,
     onClick: () -> Unit
 ) {
     Card(
@@ -696,120 +714,17 @@ private fun HomeCard(
                 Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    Modifier
+                Image(
+                    painter = painterResource(logo),
+                    contentDescription = title,
+                    modifier = Modifier
                         .fillMaxHeight(0.82f)
-                        .aspectRatio(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(logo),
-                        contentDescription = title,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    when (kind) {
-                        HomeArtworkKind.TV -> {
-                            val noisePhase by rememberInfiniteTransition(label = "tv-no-signal")
-                                .animateFloat(
-                                    initialValue = 0f,
-                                    targetValue = 1f,
-                                    animationSpec = infiniteRepeatable(
-                                        animation = tween(700, easing = FastOutSlowInEasing),
-                                        repeatMode = RepeatMode.Reverse
-                                    ),
-                                    label = "tv-noise-phase"
-                                )
-                            Canvas(Modifier.fillMaxSize()) {
-                                val left = size.width * 0.15f
-                                val right = size.width * 0.85f
-                                val top = size.height * 0.25f
-                                val bottom = size.height * 0.66f
-                                repeat(8) { i ->
-                                    val y = top + (bottom - top) * (((i + noisePhase) / 8f) % 1f)
-                                    drawLine(
-                                        color = Color.White.copy(alpha = 0.035f + 0.07f * noisePhase),
-                                        start = Offset(left, y),
-                                        end = Offset(right, y),
-                                        strokeWidth = 1.5f
-                                    )
-                                }
-                            }
-                        }
-                        HomeArtworkKind.RADIO -> {
-                            val radioTransition = rememberInfiniteTransition(label = "radio-artwork")
-                            val cdRotation by radioTransition.animateFloat(
-                                initialValue = 0f,
-                                targetValue = 360f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(4000, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "radio-cd-rotation"
-                            )
-                            val speakerColor by radioTransition.animateColor(
-                                initialValue = Color(0xFFE53935),
-                                targetValue = Color(0xFFE53935),
-                                animationSpec = infiniteRepeatable(
-                                    animation = keyframes {
-                                        durationMillis = 60000
-                                        Color(0xFFE53935) at 0
-                                        Color(0xFF2196F3) at 10000
-                                        Color(0xFF4CAF50) at 20000
-                                        Color(0xFFFFD740) at 30000
-                                        Color(0xFF9C27B0) at 40000
-                                        Color(0xFFFF9800) at 50000
-                                        Color(0xFFE53935) at 60000
-                                    },
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "radio-speaker-colors"
-                            )
-                            val speakerPulse by radioTransition.animateFloat(
-                                initialValue = 0.94f,
-                                targetValue = 1.06f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(950, easing = FastOutSlowInEasing),
-                                    repeatMode = RepeatMode.Reverse
-                                ),
-                                label = "radio-speaker-pulse"
-                            )
-                            Canvas(Modifier.fillMaxSize()) {
-                                val speakerY = size.height * 0.58f
-                                val speakerRadius = size.minDimension * 0.105f * speakerPulse
-                                drawCircle(
-                                    color = speakerColor.copy(alpha = 0.16f),
-                                    radius = speakerRadius,
-                                    center = Offset(size.width * 0.30f, speakerY)
-                                )
-                                drawCircle(
-                                    color = speakerColor.copy(alpha = 0.16f),
-                                    radius = speakerRadius,
-                                    center = Offset(size.width * 0.70f, speakerY)
-                                )
-                                rotate(
-                                    degrees = cdRotation,
-                                    pivot = Offset(size.width * 0.50f, size.height * 0.62f)
-                                ) {
-                                    drawCircle(
-                                        color = Color.White.copy(alpha = 0.35f),
-                                        radius = size.minDimension * 0.067f,
-                                        center = Offset(size.width * 0.50f, size.height * 0.62f)
-                                    )
-                                    drawCircle(
-                                        color = speakerColor.copy(alpha = 0.85f),
-                                        radius = size.minDimension * 0.025f,
-                                        center = Offset(size.width * 0.50f, size.height * 0.62f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                        .aspectRatio(1f)
+                )
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                text = title,
+                title,
                 color = Color.White,
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold,
@@ -851,7 +766,7 @@ private fun ScrollUpButton(
                 .background(Color.Black.copy(alpha = 0.55f), CircleShape)
                 .border(1.5.dp, Red, CircleShape)
         ) {
-            Icon(Icons.Default.SkipPrevious, "Вверх", tint = Color.White, modifier = Modifier.graphicsLayer(rotationZ = -90f))
+            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(30.dp))
         }
     }
 }
