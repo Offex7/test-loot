@@ -588,9 +588,9 @@ private fun App(
     if (exit) {
         AlertDialog(
             onDismissRequest = { exit = false },
-            title = { Text("Выйти из приложения?") },
-            confirmButton = { TextButton(onClick = { activity.finishAndRemoveTask() }) { Text("Выйти", color = Red) } },
-            dismissButton = { TextButton(onClick = { exit = false }) { Text("Отмена") } }
+            title = { Text("Закрыть Radio.TV") },
+            confirmButton = { TextButton(onClick = { activity.finishAndRemoveTask() }) { Text("Да, закрыть", color = Red) } },
+            dismissButton = { TextButton(onClick = { exit = false }) { Text("Нет, остаюсь") } }
         )
     }
 }
@@ -1754,11 +1754,11 @@ private fun Settings(
                     Text("СТАТИСТИКА", color = Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
 
                     Spacer(Modifier.height(8.dp))
-                    Text("ТЕЛЕВИЗОР", color = Pink, fontWeight = FontWeight.SemiBold)
+                    Text("Телевизор", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
                     UsageLine("Общее время просмотра Телевизора", tvUsage)
                     Spacer(Modifier.height(4.dp))
-                    Text("ТОП-3 ТЕЛЕВИЗОРА", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("ТОП каналов:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(tvChannels)
                     Spacer(Modifier.height(6.dp))
                     OutlinedButton(
@@ -1767,11 +1767,11 @@ private fun Settings(
                     ) { Text("Сбросить счётчик просмотров") }
 
                     Spacer(Modifier.height(12.dp))
-                    Text("РАДИО", color = Pink, fontWeight = FontWeight.SemiBold)
+                    Text("Радио", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
                     UsageLine("Общее время прослушивания Радио", radioUsage)
                     Spacer(Modifier.height(4.dp))
-                    Text("ТОП-3 РАДИО", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("ТОП каналов:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(radioStations)
                     Spacer(Modifier.height(6.dp))
                     OutlinedButton(
@@ -1798,7 +1798,7 @@ private fun Settings(
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("КАРТИНКА В КАРТИНКЕ", fontSize = 16.sp)
+                        Text("Картинка в Картинке", fontSize = 16.sp)
                         Text("Сохраняется после перезапуска", fontSize = 11.sp, color = Color.Gray)
                     }
                     Switch(
