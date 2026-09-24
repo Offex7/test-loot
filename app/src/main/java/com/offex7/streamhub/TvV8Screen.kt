@@ -525,6 +525,8 @@ fun TvV8Screen(
 }
 
 
+@Composable
+private fun TvV9Header(
     searchOpen: Boolean,
     query: String,
     focusRequester: FocusRequester,
