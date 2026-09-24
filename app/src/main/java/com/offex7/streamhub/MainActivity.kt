@@ -1694,12 +1694,26 @@ private fun Settings(
     var deleteCandidate by remember { mutableStateOf<UserPlaylist?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
+    var hiddenTv by remember { mutableStateOf(emptySet<String>()) }
+    var hiddenRadio by remember { mutableStateOf(emptySet<String>()) }
+    var hiddenTvNames by remember { mutableStateOf(emptyMap<String, String>()) }
+    val settingsContext = LocalContext.current.applicationContext
+    val tvPlaylistRepo = remember(settingsContext, store) { TvPlaylistRepositoryV8(settingsContext, store) }
 
     KeepSystemBarsVisible()
 
     LaunchedEffect(Unit) {
         activeSourceKey = store.activeSourceKey()
         userPlaylists = store.userPlaylists()
+        hiddenTv = store.hidden(Section.TV)
+        hiddenRadio = store.hidden(Section.RADIO)
+    }
+
+    LaunchedEffect(activeSourceKey) {
+        hiddenTv = store.hidden(Section.TV)
+        hiddenRadio = store.hidden(Section.RADIO)
+        val cached = runCatching { tvPlaylistRepo.cached(activeSourceKey) }.getOrNull()
+        hiddenTvNames = cached?.items?.associate { it.key to it.name }.orEmpty()
     }
 
     val selectedSourceName = when {
@@ -1796,6 +1810,64 @@ private fun Settings(
                             uncheckedTrackColor = Gray
                         )
                     )
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                    Text("СКРЫТЫЕ КАНАЛЫ", color = Red, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    if (hiddenTv.isEmpty() && hiddenRadio.isEmpty()) {
+                        Text("Нет скрытых каналов", color = Color.Gray, fontSize = 12.sp)
+                    } else {
+                        hiddenTv.forEach { key ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    hiddenTvNames[key] ?: key,
+                                    Modifier.weight(1f),
+                                    color = Color.LightGray,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        store.setHidden(Section.TV, key, false)
+                                        hiddenTv = store.hidden(Section.TV)
+                                    }
+                                }) { Text("Восстановить", color = Red) }
+                            }
+                        }
+                        hiddenRadio.forEach { key ->
+                            val name = RADIO_STATIONS.firstOrNull { it.key == key }?.name ?: key
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Радио: $name",
+                                    Modifier.weight(1f),
+                                    color = Color.LightGray,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        store.setHidden(Section.RADIO, key, false)
+                                        hiddenRadio = store.hidden(Section.RADIO)
+                                    }
+                                }) { Text("Восстановить", color = Red) }
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    hiddenTv.forEach { store.setHidden(Section.TV, it, false) }
+                                    hiddenRadio.forEach { store.setHidden(Section.RADIO, it, false) }
+                                    hiddenTv = emptySet()
+                                    hiddenRadio = emptySet()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("ВОССТАНОВИТЬ ВСЕ") }
+                    }
                 }
             }
         }
