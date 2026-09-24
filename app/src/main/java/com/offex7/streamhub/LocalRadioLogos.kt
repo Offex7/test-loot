@@ -1,56 +1,51 @@
 package com.offex7.streamhub
 
-import android.graphics.Bitmap
+import android.content.Context
 import android.graphics.BitmapFactory
-import android.util.Base64
+import android.content.res.Resources
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.util.Locale
 
-private data class LogoCell(val col: Int, val row: Int)
-
-// 20 local station logos supplied in radio_logo.zip. Embedded in the APK; no runtime URL is used.
-private const val LOCAL_RADIO_LOGO_ATLAS = "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"
-
-private val localRadioLogoCells: Map<String, LogoCell> = mapOf(
-    "CHILL HOUSE" to LogoCell(0, 0),
-    "CHOCOLATE" to LogoCell(1, 0),
-    "COMEDY CLUB" to LogoCell(2, 0),
-    "DATASET [AI]" to LogoCell(3, 0),
-    "METALCORE" to LogoCell(4, 0),
-    "PIRATE STATION" to LogoCell(0, 1),
-    "PSY TRANCE" to LogoCell(1, 1),
-    "RECORD" to LogoCell(2, 1),
-    "RELAX" to LogoCell(3, 1),
-    "ULTRA" to LogoCell(4, 1),
-    "VOCAL DRUM" to LogoCell(0, 2),
-    "АВТОРАДИО" to LogoCell(1, 2),
-    "ГАМАЮН" to LogoCell(2, 2),
-    "ЕВРОПА ПЛЮС" to LogoCell(3, 2),
-    "КАЛЬЯН РЭП" to LogoCell(4, 2),
-    "НАШЕ РАДИО" to LogoCell(0, 3),
-    "РЕТРО FM" to LogoCell(1, 3),
-    "ХИТ FM" to LogoCell(2, 3),
-    "ЭНЕРДЖИ" to LogoCell(3, 3),
-    "ЮГ МОЛОДОЙ" to LogoCell(4, 3)
+private val localRadioLogoResources: Map<String, Int> = mapOf(
+    "CHILL HOUSE" to R.drawable.radio_logo_chill_house,
+    "CHOCOLATE" to R.drawable.radio_logo_chocolate,
+    "COMEDY CLUB" to R.drawable.radio_logo_comedy_club,
+    "DATASET [AI]" to R.drawable.radio_logo_dataset_ai,
+    "METALCORE" to R.drawable.radio_logo_metalcore,
+    "PIRATE STATION" to R.drawable.radio_logo_pirate_station,
+    "PSY TRANCE" to R.drawable.radio_logo_psy_trance,
+    "RECORD" to R.drawable.radio_logo_record,
+    "RELAX" to R.drawable.radio_logo_relax,
+    "ULTRA" to R.drawable.radio_logo_ultra,
+    "VOCAL DRUM" to R.drawable.radio_logo_vocal_drum,
+    "АВТОРАДИО" to R.drawable.radio_logo_avtoradio,
+    "ГАМАЮН" to R.drawable.radio_logo_gamaun,
+    "ЕВРОПА ПЛЮС" to R.drawable.radio_logo_evropa_plus,
+    "КАЛЬЯН РЭП" to R.drawable.radio_logo_kalyan_rep,
+    "НАШЕ РАДИО" to R.drawable.radio_logo_nashe_radio,
+    "РЕТРО FM" to R.drawable.radio_logo_retro_fm,
+    "ХИТ FM" to R.drawable.radio_logo_hit_fm,
+    "ЭНЕРДЖИ" to R.drawable.radio_logo_energy,
+    "ЮГ МОЛОДОЙ" to R.drawable.radio_logo_yug_molodoy
 )
 
 private val localRadioLogoCache = mutableMapOf<String, ImageBitmap>()
-private val localRadioAtlas: Bitmap? by lazy {
-    runCatching {
-        val bytes = Base64.decode(LOCAL_RADIO_LOGO_ATLAS, Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    }.getOrNull()
+@Volatile private var localRadioLogoResourcesContext: Resources? = null
+
+fun initLocalRadioLogoResources(context: Context) {
+    localRadioLogoResourcesContext = context.applicationContext.resources
 }
 
 fun localRadioLogo(name: String): ImageBitmap? {
     val key = name.trim().uppercase(Locale.ROOT)
-    val cell = localRadioLogoCells[key] ?: return null
+    val resId = localRadioLogoResources[key] ?: return null
+    val resources = localRadioLogoResourcesContext ?: return null
     return synchronized(localRadioLogoCache) {
         localRadioLogoCache[key] ?: runCatching {
-            val atlas = localRadioAtlas ?: return@runCatching null
-            val size = 128
-            Bitmap.createBitmap(atlas, cell.col * size, cell.row * size, size, size).asImageBitmap()
-        }.getOrNull()?.also { localRadioLogoCache[key] = it }
+            BitmapFactory.decodeResource(resources, resId)?.asImageBitmap()
+        }.getOrNull()?.also {
+            localRadioLogoCache[key] = it
+        }
     }
 }
