@@ -1115,11 +1115,15 @@ private fun TvV9Player(
         runCatching { rootFocus.requestFocus() }
     }
 
+    var lastPortrait by remember(channel.key) { mutableStateOf(isPortrait) }
     LaunchedEffect(isPortrait) {
-        controls = false
-        favoriteMenu = false
-        sleepMenu = false
-        interactionToken += 1L
+        if (isPortrait != lastPortrait) {
+            controls = false
+            favoriteMenu = false
+            sleepMenu = false
+            interactionToken += 1L
+            lastPortrait = isPortrait
+        }
     }
 
     BackHandler(enabled = locked) { /* unlock only through the on-screen lock icon */ }
