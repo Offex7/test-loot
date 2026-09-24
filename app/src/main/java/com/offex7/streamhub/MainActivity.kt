@@ -223,6 +223,7 @@ class MainActivity : ComponentActivity() {
         store = SettingsStore(applicationContext)
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
+        initLocalRadioLogoResources(applicationContext)
         handleWidgetIntent(intent)
         setContent { AppTheme { App(store, tv, radio, this) } }
     }
