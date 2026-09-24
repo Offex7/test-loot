@@ -307,7 +307,7 @@ fun TvV8Screen(
     LaunchedEffect(channels, hidden) {
         if (channels.isEmpty()) return@LaunchedEffect
         while (true) {
-            delay(12 * 60 * 1000L)
+            delay(30 * 60 * 1000L)
             val targets = channels
                 .filterNot { hidden.contains(it.key) }
                 .filter { health[it.url] == AvailabilityStatus.OFFLINE }
@@ -1034,7 +1034,7 @@ private fun TvV9Player(
         else insets?.show(WindowInsetsCompat.Type.systemBars())
         if (controls && !locked && !pipMode) {
             val token = interactionToken
-            delay(6000L)
+            delay(10_000L)
             if (token == interactionToken) {
                 controls = false
                 favoriteMenu = false
@@ -1250,13 +1250,12 @@ private fun TvV9Player(
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
                             interactionToken += 1L
-                            sizeMode = (sizeMode + 1) % 6
+                            sizeMode = (sizeMode + 1) % 5
                             showPlayerToast("Размер: " + when ((sizeMode)) {
                                 1 -> "РАСТЯНУТЬ 25%"
                                 2 -> "РАСТЯНУТЬ 150%"
                                 3 -> "РАСТЯНУТЬ 200%"
                                 4 -> "ЗАПОЛНИТЬ"
-                                5 -> "ПОЛЬЗОВАТЕЛЬСКИЙ"
                                 else -> "ОРИГИНАЛ"
                             }, 5000L)
                         }
