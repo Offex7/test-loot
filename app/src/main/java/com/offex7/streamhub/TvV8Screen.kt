@@ -443,16 +443,22 @@ fun TvV8Screen(
                 onRefresh = {
                     scope.launch {
                         refreshing = true
-                        runCatching { repo.load(sourceKey) }
-                            .onSuccess {
-                                channels = it.items
+                        val result = try {
+                            repo.load(sourceKey)
+                        } catch (t: Throwable) {
+                            Result.failure(t)
+                        }
+                        result.fold(
+                            onSuccess = { loaded ->
+                                channels = loaded.items
                                 health = emptyMap()
                                 loading = false
                                 notify("Список обновлён")
-                            }
-                            .onFailure {
+                            },
+                            onFailure = {
                                 loadError = "Не удалось обновить список"
                             }
+                        )
                         refreshing = false
                     }
                 },
