@@ -227,7 +227,7 @@ class MainActivity : ComponentActivity() {
         setContent { AppTheme { App(store, tv, radio, this) } }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleWidgetIntent(intent)
@@ -324,12 +324,14 @@ private fun App(
             scope.launch { store.setSection(requestedSection) }
         }
         if (toggleRadio) {
+            var toggled = false
             repeat(10) {
-                if (radio.connected.value) {
+                if (!toggled && radio.connected.value) {
                     radio.toggle()
-                    return@repeat
+                    toggled = true
+                } else if (!toggled) {
+                    delay(200L)
                 }
-                delay(200L)
             }
         }
         activity.widgetSection = null
@@ -663,6 +665,22 @@ private fun Home(
         ),
         label = "telegram-logo-rotation"
     )
+    val telegramTravel by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 34f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3600
+                0f at 0
+                34f at 1350
+                34f at 1750
+                0f at 3100
+                0f at 3600
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "telegram-logo-travel"
+    )
     val widthClass = calculateWindowSizeClass(activity).widthSizeClass
 
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
@@ -739,7 +757,8 @@ private fun Home(
                             .graphicsLayer(
                                 scaleX = -telegramScale,
                                 scaleY = telegramScale,
-                                rotationZ = telegramRotation
+                                rotationZ = telegramRotation,
+                                translationX = -telegramTravel
                             )
                     )
                     Spacer(Modifier.width(8.dp))
@@ -760,7 +779,8 @@ private fun Home(
                             .graphicsLayer(
                                 scaleX = telegramScale,
                                 scaleY = telegramScale,
-                                rotationZ = telegramRotation
+                                rotationZ = telegramRotation,
+                                translationX = telegramTravel
                             )
                     )
                 }
@@ -925,6 +945,7 @@ private fun Radio(
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
     var showScrollUp by remember { mutableStateOf(false) }
+    var scrollActivityToken by remember { mutableLongStateOf(0L) }
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
 
@@ -986,9 +1007,17 @@ private fun Radio(
                 if (current != previous) {
                     showScrollUp = current.first < previous.first ||
                         (current.first == previous.first && current.second < previous.second)
+                    scrollActivityToken += 1L
                     previous = current
                 }
             }
+    }
+    LaunchedEffect(scrollActivityToken, showScrollUp) {
+        if (showScrollUp) {
+            val token = scrollActivityToken
+            delay(5000L)
+            if (token == scrollActivityToken) showScrollUp = false
+        }
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -2162,6 +2191,18 @@ private fun DonationQrImage(
 
 @Composable
 private fun Disclaimer(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val transition = rememberInfiniteTransition(label = "disclaimer-telegram")
+    val pulse by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.03f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "disclaimer-telegram-pulse"
+    )
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -2180,6 +2221,29 @@ private fun Disclaimer(onBack: () -> Unit) {
                 fontSize = 14.sp,
                 lineHeight = 21.sp
             )
+        }
+        item {
+            Card(
+                onClick = { openUrl(context, TELEGRAM) },
+                modifier = Modifier.fillMaxWidth().height(52.dp).graphicsLayer(scaleX = pulse, scaleY = pulse),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Send, "Telegram", tint = Color.White, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Telegram",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
