@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_bg"
+    android:padding="6dp">
+
+    <LinearLayout
+        android:id="@+id/widget_tv_button"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@drawable/start_tv_final"
+            android:contentDescription="Телевизор" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ТЕЛЕВИЗОР"
+            android:textColor="#FFFFFFFF"
+            android:textStyle="bold"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <Space
+        android:layout_width="6dp"
+        android:layout_height="1dp" />
+
+    <LinearLayout
+        android:id="@+id/widget_radio_button"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@drawable/start_radio_cd"
+            android:contentDescription="Радио" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="РАДИО"
+            android:textColor="#FFFFFFFF"
+            android:textStyle="bold"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>
