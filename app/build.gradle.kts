@@ -11,7 +11,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 3
-        versionName = "2.0.1"
+        versionName = "3.0"
     }
     signingConfigs {
         create("v5Debug") {
