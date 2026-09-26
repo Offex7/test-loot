@@ -40,7 +40,6 @@ class SettingsStore(private val context: Context) {
     private val channelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v1")
     private val firstLaunchKey = booleanPreferencesKey("first_launch_v2")
     private val hiddenChannelsKey = stringSetPreferencesKey("hiddenChannels")
-    private val radioPlayingKey = booleanPreferencesKey("radio_playing")
 
     suspend fun disclaimerShown(): Boolean = context.dataStore.data.first()[firstLaunchKey] ?: false
     suspend fun setDisclaimerShown(shown: Boolean) { context.dataStore.edit { it[firstLaunchKey] = shown } }
@@ -74,8 +73,6 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[hiddenChannelsKey] = emptySet() }
     }
 
-    suspend fun radioPlaying(): Boolean = context.dataStore.data.first()[radioPlayingKey] ?: false
-    suspend fun setRadioPlaying(value: Boolean) { context.dataStore.edit { it[radioPlayingKey] = value } }
 
     suspend fun lastSection(): Section? = context.dataStore.data.first()[sectionKey]?.let { runCatching { Section.valueOf(it) }.getOrNull() }
     suspend fun setSection(section: Section) { context.dataStore.edit { it[sectionKey] = section.name } }
