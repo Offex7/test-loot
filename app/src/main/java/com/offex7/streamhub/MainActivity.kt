@@ -298,7 +298,7 @@ private fun App(
     }
 
     LaunchedEffect(weakNetwork) {
-        if (weakNetwork) notify("Нестабильное интернет-соединение. Попробую снизить качество видеопотока")
+        if (weakNetwork) notify("Нестабильное интернет-соединение. Попробую снизить качество видеопотока или переключу на другой канал.")
     }
 
     LaunchedEffect(Unit) {
@@ -571,48 +571,42 @@ private fun Home(
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "home-gear-rotation"
     )
-    val telegramOffset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 20f,
+    val homeOutlineColors = listOf(
+        Color.White, Red, Orange, Color(0xFF4CAF50),
+        Color(0xFF2196F3), Color(0xFF9C27B0), Color(0xFFFFEB3B),
+        Color.Black, Color(0xFFFF4081)
+    )
+    var tvOutlineTarget by remember { mutableStateOf(Color.White) }
+    var radioOutlineTarget by remember { mutableStateOf(Color.White) }
+    val tvOutlineColor by animateColorAsState(
+        targetValue = tvOutlineTarget,
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label = "home-tv-outline-color"
+    )
+    val radioOutlineColor by animateColorAsState(
+        targetValue = radioOutlineTarget,
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label = "home-radio-outline-color"
+    )
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            val next = homeOutlineColors.shuffled()
+            tvOutlineTarget = next[0]
+            radioOutlineTarget = next.first { it != next[0] }
+        }
+    }
+    val recommendPulse by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "telegram-logo-flight"
+        label = "recommend-text-pulse"
     )
-    val telegramColor by transition.animateColor(
-        initialValue = Color(0xFF229ED9),
-        targetValue = Color(0xFF229ED9),
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 3000
-                Color(0xFF229ED9) at 0
-                Color(0xFF2AABEE) at 1000
-                Color.White at 2000
-                Color(0xFF229ED9) at 3000
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "telegram-logo-color"
-    )
-    val telegramScale by transition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "telegram-logo-scale"
-    )
-    val telegramRotation by transition.animateFloat(
-        initialValue = -3f,
-        targetValue = 3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "telegram-logo-rotation"
-    )
+
+    val widthClass = calculateWindowSizeClass(activity).widthSizeClass
     val widthClass = calculateWindowSizeClass(activity).widthSizeClass
 
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
@@ -653,8 +647,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f), tvOutlineColor) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.fillMaxWidth().weight(1f), radioOutlineColor) { open(Section.RADIO) }
                     }
                 }
                 else -> {
@@ -662,8 +656,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f)) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.weight(1f)) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f), tvOutlineColor) { open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.weight(1f), radioOutlineColor) { open(Section.RADIO) }
                     }
                 }
             }
@@ -675,45 +669,17 @@ private fun Home(
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Row(
-                    Modifier.fillMaxSize().padding(horizontal = 10.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Send,
-                        "Telegram",
-                        tint = telegramColor,
-                        modifier = Modifier
-                            .size(21.dp)
-                            .graphicsLayer(
-                                scaleX = -telegramScale,
-                                scaleY = telegramScale,
-                                rotationZ = telegramRotation,
-                                translationX = -telegramOffset
-                            )
-                    )
-                    Spacer(Modifier.width(8.dp))
                     Text(
                         "рекомендовать друзьям",
                         color = Red,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Icon(
-                        Icons.Default.Send,
-                        "Telegram",
-                        tint = telegramColor,
-                        modifier = Modifier
-                            .size(21.dp)
-                            .graphicsLayer(
-                                scaleX = telegramScale,
-                                scaleY = telegramScale,
-                                rotationZ = telegramRotation,
-                                translationX = telegramOffset
-                            )
+                        maxLines = 1,
+                        modifier = Modifier.graphicsLayer(scaleX = recommendPulse, scaleY = recommendPulse)
                     )
                 }
             }
@@ -726,6 +692,7 @@ private fun HomeCard(
     title: String,
     logo: Int,
     modifier: Modifier,
+    borderColor: Color = Color.White,
     onClick: () -> Unit
 ) {
     Card(
@@ -748,6 +715,8 @@ private fun HomeCard(
                     modifier = Modifier
                         .fillMaxHeight(0.82f)
                         .aspectRatio(1f)
+                        .border(2.dp, borderColor, RoundedCornerShape(16.dp))
+                        .padding(3.dp)
                 )
             }
             Spacer(Modifier.height(2.dp))
@@ -1653,12 +1622,14 @@ private fun Settings(
                     Spacer(Modifier.height(4.dp))
                     UsageLine("Общее время просмотра Телевизора", tvUsage)
                     Spacer(Modifier.height(4.dp))
-                    Text("ТОП-3 ТЕЛЕВИЗОРА", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("ТОП-3 Активных канала:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(tvChannels)
                     Spacer(Modifier.height(6.dp))
-                    OutlinedButton(
+                    Button(
                         onClick = { onResetStats(Section.TV) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.height(40.dp).align(Alignment.Start),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
                     ) { Text("Сбросить счётчик просмотров") }
 
                     Spacer(Modifier.height(12.dp))
@@ -1666,12 +1637,14 @@ private fun Settings(
                     Spacer(Modifier.height(4.dp))
                     UsageLine("Общее время прослушивания Радио", radioUsage)
                     Spacer(Modifier.height(4.dp))
-                    Text("ТОП-3 РАДИО", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("ТОП-3 Активных станции:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     TopStats(radioStations)
                     Spacer(Modifier.height(6.dp))
-                    OutlinedButton(
+                    Button(
                         onClick = { onResetStats(Section.RADIO) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.height(40.dp).align(Alignment.Start),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
                     ) { Text("Сбросить счётчик прослушивания") }
                 }
             }
@@ -1912,9 +1885,19 @@ private fun TopStats(stats: Map<String, Long>) {
     if (top.isEmpty()) {
         Text("Пока нет данных", color = Color.Gray, fontSize = 12.sp)
     } else {
+        val rankColors = listOf(Color(0xFF00E676), Color(0xFFB388FF), Color(0xFFFFD740))
         top.forEachIndexed { i, entry ->
+            val rankColor = rankColors.getOrElse(i) { Color.White }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${i + 1}. ${entry.key}", Modifier.weight(1f), color = Color.LightGray, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = rankColor, fontWeight = FontWeight.Bold)) { append((i + 1).toString() + ". ") }
+                        withStyle(SpanStyle(color = Color.LightGray)) { append(entry.key) }
+                    },
+                    Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
                 Text(formatUsage(entry.value), color = Red, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -1992,6 +1975,16 @@ private fun DonationCard() {
         animationSpec = tween(80, easing = FastOutSlowInEasing),
         label = "donation-heart-scale"
     )
+    val starTransition = rememberInfiniteTransition(label = "donation-star")
+    val starPulse by starTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "donation-star-pulse"
+    )
 
     Card(
         Modifier.fillMaxWidth(),
@@ -2011,10 +2004,7 @@ private fun DonationCard() {
                     Icons.Default.Favorite,
                     null,
                     tint = heartColor,
-                    modifier = Modifier.graphicsLayer(
-                        scaleX = heartScale,
-                        scaleY = heartScale
-                    )
+                    modifier = Modifier.graphicsLayer(scaleX = heartScale, scaleY = heartScale)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -2045,44 +2035,27 @@ private fun DonationCard() {
                 )
             }
             Spacer(Modifier.height(10.dp))
-            val tgTransition = rememberInfiniteTransition(label = "donation-telegram")
-            val tgPulse by tgTransition.animateFloat(
-                initialValue = 1f,
-                targetValue = 1.08f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(500, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "donation-telegram-pulse"
-            )
-            val tgColor by tgTransition.animateColor(
-                initialValue = Color.White,
-                targetValue = Color.White,
-                animationSpec = infiniteRepeatable(
-                    animation = keyframes {
-                        durationMillis = 2000
-                        Color.White at 0
-                        Color.Black at 1000
-                        Color.White at 2000
-                    },
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "donation-telegram-color"
-            )
-            Card(
-                onClick = { openUrl(context, TELEGRAM_DONATION) },
-                modifier = Modifier.fillMaxWidth().height(50.dp).graphicsLayer(scaleX = tgPulse, scaleY = tgPulse),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Row(
-                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Card(
+                    onClick = { openUrl(context, TELEGRAM_DONATION) },
+                    modifier = Modifier.height(46.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(Icons.Default.Send, "Telegram", tint = tgColor, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Telegram $", color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(
+                        Modifier.padding(horizontal = 14.dp).fillMaxHeight(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            "★",
+                            color = Color(0xFFFFD740),
+                            fontSize = 22.sp,
+                            modifier = Modifier.graphicsLayer(scaleX = starPulse, scaleY = starPulse)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Telegram", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -2134,7 +2107,15 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
         item {
             Text(
-                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.\n\nПриложение не хранит, не распространяет и не модифицирует транслируемый контент. Все трансляции предоставляются третьими лицами. Разработчик не несёт ответственности за содержание транслируемого контента.\n\nПользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
+                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.
+
+При использовании сторонних M3U/M3U8-плейлистов и других внешних источников возможны изменения, блокировки, недоступность, ошибки воспроизведения и прекращение отдельных трансляций. Пользователь самостоятельно принимает решение об использовании таких источников и несёт ответственность за свои действия и соблюдение применимых правил и законодательства.
+
+Приложение не хранит, не распространяет и не модифицирует транслируемый контент. Технически приложение только получает данные и пытается воспроизвести поток, предоставленный сторонним источником. Разработчик не контролирует содержание сторонних трансляций, их доступность, качество и стабильность и не гарантирует бесперебойную работу источников.
+
+Функциональность, внешний вид, источники, способы загрузки и другие возможности приложения могут изменяться или отключаться без предварительного уведомления. Используя приложение, пользователь подтверждает, что понимает эти ограничения.
+
+Пользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
                 color = Color.LightGray,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
@@ -2186,7 +2167,7 @@ private fun ChannelRow(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio)
+            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio, isRadio = isRadio)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -2226,15 +2207,16 @@ private fun LogoImage(
     dimmed: Boolean = false,
     preferRemote: Boolean = false,
     overlayText: String? = null,
-    activeRadio: Boolean = false
+    activeRadio: Boolean = false,
+    isRadio: Boolean = false
 ) {
     val context = LocalContext.current
     val resourceName = localLogoName(item.name)
     val resourceId = remember(resourceName) {
         context.resources.getIdentifier(resourceName, "drawable", context.packageName)
     }
-    val localRadioImage = remember(item.name) {
-        if (activeRadio) RadioLogoAssets.image(item.name) else null
+    val localRadioImage = remember(item.name, isRadio) {
+        if (isRadio) RadioLogoAssets.image(item.name) else null
     }
 
     val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
@@ -2280,6 +2262,13 @@ private fun LogoImage(
                 contentDescription = item.name,
                 modifier = imageModifier
             )
+        } else if (isRadio) {
+            Box(
+                imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+            }
         } else if (preferRemote && !remoteUrl.isNullOrBlank()) {
             RemoteLogoImage(remoteUrl, item.name, imageModifier)
         } else if (resourceId != 0) {
@@ -2303,7 +2292,10 @@ private fun LogoImage(
                 color = Color(0xFF66BB6A),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp).padding(bottom = 2.dp),
+                modifier = Modifier
+                    .border(1.dp, Color.Black, RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = .18f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
                 maxLines = 1
             )
         }
