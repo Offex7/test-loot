@@ -150,7 +150,7 @@ fun TvV8Screen(
     sleepMinutes: Long,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit,
-    notify: (String) -> Unit,
+    notify: (String, Long) -> Unit,
     onViewingChanged: (Boolean) -> Unit,
     pipMode: Boolean
 ) {
@@ -518,7 +518,7 @@ fun TvV8Screen(
                     val i = channels.indexOfFirst {
                         it.url == item.url || it.name.equals(item.name, true)
                     }
-                    if (i >= 0) startPlayback(i) else notify("Сохранённый канал больше не найден")
+                    if (i >= 0) startPlayback(i) else notify("Сохранённый канал больше не найден", 5000L)
                 },
                 onClose = dismissRestore
             )
@@ -540,7 +540,7 @@ fun TvV8Screen(
                                 channels = loaded.items
                                 health = emptyMap()
                                 loading = false
-                                notify("Список обновлён")
+                                notify("Список обновлён", 5000L)
                             },
                             onFailure = {
                                 loadError = "Не удалось обновить список"
