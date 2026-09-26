@@ -29,6 +29,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
@@ -158,6 +160,7 @@ fun TvV8Screen(
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
     val network by rememberTvV9Network()
+    val hiddenChannels by store.hiddenChannelsFlow().collectAsStateWithLifecycle(initialValue = emptySet())
     val error by player.error.collectAsStateWithLifecycle()
     val waiting by player.waitingForNetwork.collectAsStateWithLifecycle()
     val isPlaying by player.isPlaying.collectAsStateWithLifecycle()
@@ -181,6 +184,7 @@ fun TvV8Screen(
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playbackJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var showScrollUp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var scrollActivityToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
     suspend fun reload() {
         loading = true
@@ -216,8 +220,12 @@ fun TvV8Screen(
             .collect { current ->
                 store.saveScrollPosition(Section.TV, current.first, current.second)
                 if (current != previous) {
-                    showScrollUp = current.first < previous.first ||
+                    val movingUp = current.first < previous.first ||
                         (current.first == previous.first && current.second < previous.second)
+                    if (movingUp) {
+                        showScrollUp = true
+                        scrollActivityToken += 1L
+                    }
                     previous = current
                 }
             }
@@ -260,6 +268,22 @@ fun TvV8Screen(
         onViewingChanged(fullscreen)
     }
 
+    LaunchedEffect(Unit) {
+        UsageTicker(
+            store = store,
+            section = Section.TV,
+            channelIdProvider = { channels.getOrNull(selectedIndex)?.name },
+            activeProvider = { fullscreen && selectedIndex in channels.indices && player.isPlaying.value }
+        ).run()
+    }
+
+    LaunchedEffect(scrollActivityToken) {
+        if (scrollActivityToken == 0L) return@LaunchedEffect
+        val token = scrollActivityToken
+        delay(5000L)
+        if (token == scrollActivityToken) showScrollUp = false
+    }
+
     LaunchedEffect(fullscreen) {
         val activity = context as? androidx.activity.ComponentActivity
         if (fullscreen) {
@@ -286,6 +310,17 @@ fun TvV8Screen(
         }
     }
 
+    LaunchedEffect(channels) {
+        if (channels.isEmpty()) return@LaunchedEffect
+        while (true) {
+            delay(30 * 60 * 1000L)
+            val offlineItems = channels.filter { health[it.url] == AvailabilityStatus.OFFLINE }
+            if (offlineItems.isNotEmpty()) {
+                health = health + scanTvV9(offlineItems, repo)
+            }
+        }
+    }
+
     LaunchedEffect(list.firstVisibleItemIndex, channels, health) {
         if (channels.isEmpty()) return@LaunchedEffect
         val first = list.firstVisibleItemIndex.coerceIn(0, channels.lastIndex)
@@ -294,36 +329,55 @@ fun TvV8Screen(
         if (pending.isNotEmpty()) health = health + scanTvV9(pending, repo)
     }
 
+    fun navigationOrder(): List<Int> =
+        channels.indices
+            .filter { index ->
+                val item = channels[index]
+                !hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE
+            }
+            .sortedWith(
+                compareByDescending<Int> { favorites.contains(channels[it].key) }
+                    .thenBy { it }
+            )
+
     fun previousIndex(start: Int): Int {
-        if (channels.isEmpty()) return -1
-        var cursor = start.coerceIn(0, channels.lastIndex)
-        repeat(channels.size - 1) {
-            cursor = (cursor - 1 + channels.size) % channels.size
-            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
-        }
-        return -1
+        val order = navigationOrder()
+        if (order.size <= 1) return -1
+        val pos = order.indexOf(start)
+        val base = if (pos >= 0) pos else 0
+        return order[(base - 1 + order.size) % order.size]
     }
 
     fun nextIndex(start: Int): Int {
-        if (channels.isEmpty()) return -1
-        var cursor = start.coerceIn(0, channels.lastIndex)
-        repeat(channels.size - 1) {
-            cursor = (cursor + 1) % channels.size
-            if (health[channels[cursor].url] != AvailabilityStatus.OFFLINE) return cursor
-        }
-        return -1
+        val order = navigationOrder()
+        if (order.size <= 1) return -1
+        val pos = order.indexOf(start)
+        val base = if (pos >= 0) pos else -1
+        return order[(base + 1) % order.size]
     }
 
     fun startPlayback(start: Int) {
-        if (start !in channels.indices) return
+        if (start !in channels.indices || hiddenChannels.contains(channels[start].key)) return
         playbackJob?.cancel()
         fullscreen = true
         notice = null
         playbackJob = scope.launch {
             var cursor = start
-            repeat(channels.size) {
-                selectedIndex = cursor
+            var attempts = 0
+            while (attempts < channels.size) {
+                attempts++
+                if (cursor !in channels.indices || hiddenChannels.contains(channels[cursor].key)) {
+                    cursor = nextIndex(cursor)
+                    if (cursor < 0) break
+                    continue
+                }
                 val candidate = channels[cursor]
+                if (health[candidate.url] == AvailabilityStatus.OFFLINE) {
+                    cursor = nextIndex(cursor)
+                    if (cursor < 0) break
+                    continue
+                }
+                selectedIndex = cursor
                 val result = player.playWithFallback(listOf(candidate.url))
                 if (result >= 0) {
                     health = health + (candidate.url to AvailabilityStatus.ONLINE)
@@ -331,14 +385,8 @@ fun TvV8Screen(
                     return@launch
                 }
                 health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                notice = "Канал временно недоступен — переключаю на следующий"
-                delay(3000L)
-                notice = null
                 cursor = nextIndex(cursor)
-                if (cursor < 0) {
-                    fullscreen = false
-                    return@launch
-                }
+                if (cursor < 0) break
             }
             fullscreen = false
         }
@@ -355,7 +403,9 @@ fun TvV8Screen(
 
     if (fullscreen && selectedIndex in channels.indices) {
         val favoriteChannels = channels.mapIndexedNotNull { index, channel ->
-            if (favorites.contains(channel.key)) index to channel else null
+            if (favorites.contains(channel.key) && !hiddenChannels.contains(channel.key)) {
+                Triple(index, channel, health[channel.url] ?: AvailabilityStatus.UNKNOWN)
+            } else null
         }
         TvV9Player(
             player = player,
@@ -420,10 +470,12 @@ fun TvV8Screen(
         keyboardController?.hide()
     }
 
-    val ordered = channels.sortedWith(
-        compareByDescending<StreamItem> { favorites.contains(it.key) }
-            .thenBy { it.name.lowercase(Locale.ROOT) }
-    )
+    val ordered = channels
+        .filterNot { hiddenChannels.contains(it.key) }
+        .sortedWith(
+            compareByDescending<StreamItem> { favorites.contains(it.key) }
+                .thenBy { it.name.lowercase(Locale.ROOT) }
+        )
     val filtered = if (query.isBlank()) ordered else ordered.filter {
         it.name.contains(query.trim(), true) ||
             it.groupTitle.orEmpty().contains(query.trim(), true)
@@ -533,7 +585,15 @@ fun TvV8Screen(
                                         store.setFavorite(Section.TV, channel.key, !favorite)
                                         favorites = store.favorites(Section.TV)
                                     }
-                                }
+                                },
+                                onHide = if (!offline) {
+                                    {
+                                        scope.launch {
+                                            store.addHiddenChannel(channel.key)
+                                            notify("Канал скрыт", 3000L)
+                                        }
+                                    }
+                                } else null
                             )
                         }
                     }
@@ -620,15 +680,33 @@ private fun TvV9ChannelRow(
     logoCache: TvLogoCache,
     offline: Boolean,
     onPlay: () -> Unit,
-    onFavorite: () -> Unit
+    onFavorite: () -> Unit,
+    onHide: (() -> Unit)? = null
 ) {
+    var dragDistance by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val iconColor by animateColorAsState(
         if (favorite) TvV9Red else Color.White,
         label = "tv-v9-favorite-color"
     )
     Card(
         onClick = onPlay,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(item.key, offline) {
+                if (onHide != null) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragDistance += dragAmount
+                        },
+                        onDragEnd = {
+                            if (dragDistance <= -80f && !offline) onHide()
+                            dragDistance = 0f
+                        },
+                        onDragCancel = { dragDistance = 0f }
+                    )
+                }
+            },
         colors = CardDefaults.cardColors(
             containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
         ),
@@ -656,6 +734,11 @@ private fun TvV9ChannelRow(
                     "Избранное",
                     tint = iconColor
                 )
+            }
+            if (!offline && onHide != null) {
+                IconButton(onClick = onHide) {
+                    Icon(Icons.Default.Delete, "Удалить / скрыть канал", tint = TvV9Red)
+                }
             }
         }
     }
@@ -806,7 +889,7 @@ private fun TvV9Player(
     player: PlayerController,
     playerInstance: androidx.media3.exoplayer.ExoPlayer,
     channel: StreamItem,
-    favoriteChannels: List<Pair<Int, StreamItem>>,
+    favoriteChannels: List<Triple<Int, StreamItem, AvailabilityStatus>>,
     error: String?,
     waiting: Boolean,
     isPlaying: Boolean,
@@ -846,6 +929,10 @@ private fun TvV9Player(
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    val orientation = LocalConfiguration.current.orientation
+    var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
+    var channelNotice by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
+    val channelLogoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
     var zoom by androidx.compose.runtime.remember(channel.key, initialZoom) {
         androidx.compose.runtime.mutableFloatStateOf(initialZoom?.coerceIn(1f, 3f) ?: 1f)
     }
@@ -871,9 +958,21 @@ private fun TvV9Player(
 
     val formatLabel = when (formatMode) {
         1 -> "РАСТЯНУТЬ 25%"
-        2 -> "ЗАПОЛНИТЬ / ZOOM"
+        2 -> "РАСТЯНУТЬ 150%"
+        3 -> "РАСТЯНУТЬ 200%"
+        4 -> "ЗАПОЛНИТЬ"
         else -> "ОРИГИНАЛ"
     }
+    val formatScale = when (formatMode) {
+        1 -> 1.25f
+        2 -> 1.5f
+        3 -> 2f
+        else -> 1f
+    }
+    val channelNoticeName = channel.name
+        .filter { it.isLetterOrDigit() || it.isWhitespace() }
+        .trim()
+        .take(15)
 
     val playerView = androidx.compose.runtime.remember {
         PlayerView(context).apply {
@@ -891,10 +990,10 @@ private fun TvV9Player(
     }
 
     androidx.compose.runtime.LaunchedEffect(formatMode) {
-        playerView.resizeMode = when (formatMode) {
-            1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-            2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        playerView.resizeMode = if (formatMode == 4) {
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
     }
 
@@ -903,12 +1002,28 @@ private fun TvV9Player(
         onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
+    androidx.compose.runtime.LaunchedEffect(channel.key) {
+        channelNotice = true
+        delay(3000L)
+        channelNotice = false
+    }
+
+    androidx.compose.runtime.LaunchedEffect(orientation) {
+        if (lastOrientation != orientation) {
+            controls = false
+            favoriteMenu = false
+            sleepMenu = false
+            hideSystemBars()
+            lastOrientation = orientation
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(controls, locked) {
         insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (locked || !controls) insets?.hide(WindowInsetsCompat.Type.systemBars())
         else insets?.show(WindowInsetsCompat.Type.systemBars())
         if (controls && !locked) {
-            delay(5000L)
+            delay(10_000L)
             controls = false
             favoriteMenu = false
             sleepMenu = false
@@ -989,7 +1104,7 @@ private fun TvV9Player(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(scaleX = zoom, scaleY = zoom)
+                .graphicsLayer(scaleX = zoom * formatScale, scaleY = zoom * formatScale)
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
                         detectTapGestures(
@@ -1053,7 +1168,7 @@ private fun TvV9Player(
                             sleepToken++
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
-                            formatMode = (formatMode + 1) % 3
+                            formatMode = (formatMode + 1) % 5
                             showPlayerToast("Формат: " + formatLabel, 5000L)
                         }
                         TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
@@ -1090,6 +1205,34 @@ private fun TvV9Player(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (channelNotice) {
+                        Card(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 92.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .72f)),
+                            border = BorderStroke(1.dp, TvV9Red),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!channel.logoUrl.isNullOrBlank()) {
+                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false)
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(
+                                    channelNoticeName,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
 
                     Row(
@@ -1167,7 +1310,7 @@ private fun TvV9Player(
                                                 items(
                                                     items = favoriteChannels,
                                                     key = { it.second.key }
-                                                ) { (index, item) ->
+                                                ) { (index, item, availability) ->
                                                     val focusIndex = favoriteChannels.indexOfFirst { it.first == index }
                                                     TextButton(
                                                         onClick = {
@@ -1212,7 +1355,7 @@ private fun TvV9Player(
                                                         Text(
                                                             item.name,
                                                             Modifier.fillMaxWidth(),
-                                                            color = Color.White,
+                                                            color = if (availability == AvailabilityStatus.OFFLINE) TvV9Gray else Color.White,
                                                             maxLines = 2,
                                                             overflow = TextOverflow.Ellipsis,
                                                             textAlign = TextAlign.Start

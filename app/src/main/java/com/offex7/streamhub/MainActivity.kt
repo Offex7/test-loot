@@ -183,10 +183,11 @@ private val PanelAlt = Color(0xFF232323)
 private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline"
+private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/9"
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
-private const val APP_VERSION = "1.0"
+private val APP_VERSION = BuildConfig.VERSION_NAME
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
 private val SleepOptions = listOf(
@@ -268,6 +269,7 @@ private fun App(
     val appContext = LocalContext.current.applicationContext
     val radioTimerStore = remember(appContext) { RadioTimerStore(appContext) }
     var notification by rememberSaveable { mutableStateOf<String?>(null) }
+    var notificationDuration by remember { mutableLongStateOf(5000L) }
     var notificationToken by remember { mutableLongStateOf(0L) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
@@ -282,20 +284,35 @@ private fun App(
     val radioWeakNetwork by radio.weakNetwork.collectAsState()
     val weakNetwork = tvWeakNetwork || radioWeakNetwork
 
-    fun notify(message: String) {
+    fun notify(message: String, durationMs: Long = 5000L) {
         notification = message
+        notificationDuration = durationMs.coerceAtLeast(250L)
         notificationToken += 1L
     }
 
     LaunchedEffect(notificationToken) {
         if (notification == null || notificationToken == 0L) return@LaunchedEffect
         val token = notificationToken
-        delay(5000L)
+        delay(notificationDuration)
         if (token == notificationToken) notification = null
     }
 
     LaunchedEffect(weakNetwork) {
-        if (weakNetwork) notify("Слабый интернет. Проверьте соединение")
+        if (weakNetwork) notify("Нестабильное интернет-соединение. Попробую снизить качество видеопотока")
+    }
+
+    LaunchedEffect(Unit) {
+        if (!store.disclaimerShown()) {
+            disclaimer = true
+            store.setDisclaimerShown(true)
+        }
+    }
+
+    LaunchedEffect(disclaimer) {
+        if (disclaimer) {
+            delay(10_000L)
+            disclaimer = false
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -554,6 +571,15 @@ private fun Home(
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "home-gear-rotation"
     )
+    val telegramOffset by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 20f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "telegram-logo-flight"
+    )
     val telegramColor by transition.animateColor(
         initialValue = Color(0xFF229ED9),
         targetValue = Color(0xFF229ED9),
@@ -628,7 +654,7 @@ private fun Home(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f)) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_cd, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.fillMaxWidth().weight(1f)) { open(Section.RADIO) }
                     }
                 }
                 else -> {
@@ -637,7 +663,7 @@ private fun Home(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f)) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_cd, Modifier.weight(1f)) { open(Section.RADIO) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.weight(1f)) { open(Section.RADIO) }
                     }
                 }
             }
@@ -663,7 +689,8 @@ private fun Home(
                             .graphicsLayer(
                                 scaleX = -telegramScale,
                                 scaleY = telegramScale,
-                                rotationZ = telegramRotation
+                                rotationZ = telegramRotation,
+                                translationX = -telegramOffset
                             )
                     )
                     Spacer(Modifier.width(8.dp))
@@ -684,7 +711,8 @@ private fun Home(
                             .graphicsLayer(
                                 scaleX = telegramScale,
                                 scaleY = telegramScale,
-                                rotationZ = telegramRotation
+                                rotationZ = telegramRotation,
+                                translationX = telegramOffset
                             )
                     )
                 }
@@ -847,6 +875,7 @@ private fun Radio(
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
     var showScrollUp by remember { mutableStateOf(false) }
+    var scrollActivityToken by remember { mutableLongStateOf(0L) }
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
 
@@ -905,11 +934,22 @@ private fun Radio(
             .collect { current ->
                 store.saveScrollPosition(Section.RADIO, current.first, current.second)
                 if (current != previous) {
-                    showScrollUp = current.first < previous.first ||
+                    val movingUp = current.first < previous.first ||
                         (current.first == previous.first && current.second < previous.second)
+                    if (movingUp) {
+                        showScrollUp = true
+                        scrollActivityToken += 1L
+                    }
                     previous = current
                 }
             }
+    }
+
+    LaunchedEffect(scrollActivityToken) {
+        if (scrollActivityToken == 0L) return@LaunchedEffect
+        val token = scrollActivityToken
+        delay(5000L)
+        if (token == scrollActivityToken) showScrollUp = false
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -1555,6 +1595,7 @@ private fun Settings(
     val radioUsage by store.usageFlow(Section.RADIO).collectAsState(0L)
     val tvChannels by store.channelUsageFlow(Section.TV).collectAsState(emptyMap())
     val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
+    val hiddenChannels by store.hiddenChannelsFlow().collectAsState(emptySet())
     val scope = rememberCoroutineScope()
     var activeSourceKey by remember { mutableStateOf(builtinSourceKey(0)) }
     var userPlaylists by remember { mutableStateOf(emptyList<UserPlaylist>()) }
@@ -1674,6 +1715,35 @@ private fun Settings(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
             ) { Text("СБРОСИТЬ НАСТРОЙКИ ДО ЗАВОДСКИХ") }
+        }
+        if (hiddenChannels.isNotEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("СКРЫТЫЕ КАНАЛЫ", color = Red, fontWeight = FontWeight.Bold)
+                        hiddenChannels.sorted().forEach { key ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    key,
+                                    Modifier.weight(1f),
+                                    color = Color.LightGray,
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                TextButton(onClick = { scope.launch { store.removeHiddenChannel(key) } }) {
+                                    Text("Восстановить", color = Red)
+                                }
+                            }
+                        }
+                        Button(
+                            onClick = { scope.launch { store.clearHiddenChannels() } },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
+                        ) { Text("ВОССТАНОВИТЬ ВСЕ") }
+                    }
+                }
+            }
         }
         item {
             OutlinedButton(onClick = onDisclaimer, modifier = Modifier.fillMaxWidth()) {
@@ -1974,6 +2044,47 @@ private fun DonationCard() {
                     modifier = Modifier.fillMaxSize().padding(4.dp)
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            val tgTransition = rememberInfiniteTransition(label = "donation-telegram")
+            val tgPulse by tgTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.08f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(500, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "donation-telegram-pulse"
+            )
+            val tgColor by tgTransition.animateColor(
+                initialValue = Color.White,
+                targetValue = Color.White,
+                animationSpec = infiniteRepeatable(
+                    animation = keyframes {
+                        durationMillis = 2000
+                        Color.White at 0
+                        Color.Black at 1000
+                        Color.White at 2000
+                    },
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "donation-telegram-color"
+            )
+            Card(
+                onClick = { openUrl(context, TELEGRAM_DONATION) },
+                modifier = Modifier.fillMaxWidth().height(50.dp).graphicsLayer(scaleX = tgPulse, scaleY = tgPulse),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.Send, "Telegram", tint = tgColor, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Telegram $", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -2023,14 +2134,29 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
         item {
             Text(
-                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.\n\nПриложение не хранит, не распространяет и не модифицирует транслируемый контент. Все трансляции предоставляются третьими лицами. Разработчик не несёт ответственности за содержание транслируемого контента.\n\nЕсли вы являетесь правообладателем и считаете, что ваши права нарушаются — свяжитесь с нами через Telegram: $TELEGRAM",
+                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.\n\nПриложение не хранит, не распространяет и не модифицирует транслируемый контент. Все трансляции предоставляются третьими лицами. Разработчик не несёт ответственности за содержание транслируемого контента.\n\nПользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
                 color = Color.LightGray,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
             )
         }
         item {
-            OutlinedButton(onClick = { openUrl(context, TELEGRAM) }, Modifier.fillMaxWidth()) { Text("Telegram") }
+            Card(
+                onClick = { openUrl(context, TELEGRAM) },
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Send, "Telegram", tint = Color(0xFF229ED9), modifier = Modifier.size(21.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Telegram", color = Red, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -2107,6 +2233,9 @@ private fun LogoImage(
     val resourceId = remember(resourceName) {
         context.resources.getIdentifier(resourceName, "drawable", context.packageName)
     }
+    val localRadioImage = remember(item.name) {
+        if (isRadio) RadioLogoAssets.image(item.name) else null
+    }
 
     val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
     val pulse by pulseTransition.animateFloat(
@@ -2145,7 +2274,13 @@ private fun LogoImage(
             )
 
         val remoteUrl = item.logoUrl ?: item.epgLogoUrl
-        if (preferRemote && !remoteUrl.isNullOrBlank()) {
+        if (localRadioImage != null) {
+            Image(
+                bitmap = localRadioImage,
+                contentDescription = item.name,
+                modifier = imageModifier
+            )
+        } else if (preferRemote && !remoteUrl.isNullOrBlank()) {
             RemoteLogoImage(remoteUrl, item.name, imageModifier)
         } else if (resourceId != 0) {
             Image(
@@ -2225,6 +2360,12 @@ private fun localLogoName(name: String): String = when (name.uppercase(Locale.RO
     "COMEDY CLUB" -> "logo_comedy"
     "АВТОРАДИО" -> "logo_autoradio"
     "ЮГ МОЛОДОЙ" -> "logo_yug"
+    "ЕВРОПА ПЛЮС" -> "logo_europa"
+    "РЕТРО FM" -> "logo_retro"
+    "ХИТ FM" -> "logo_hit"
+    "НАШЕ РАДИО" -> "logo_nashe"
+    "DATASET [AI]" -> "logo_dataset_ai"
+    "ГАМАЮН" -> "logo_gamaun"
     else -> "logo_fallback"
 }
 
@@ -2396,7 +2537,7 @@ private suspend fun scanAvailability(
     }
     return current + output
 }
-private class UsageTicker(
+internal class UsageTicker(
     private val store: SettingsStore,
     private val section: Section,
     private val channelIdProvider: () -> String?,
