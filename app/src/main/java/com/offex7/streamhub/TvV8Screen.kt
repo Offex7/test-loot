@@ -570,6 +570,7 @@ fun TvV8Screen(
                     ) {
                         items(filtered, key = { it.key }) { channel ->
                             val favorite = favorites.contains(channel.key)
+                            val offline = health[channel.url] == AvailabilityStatus.OFFLINE
                             TvV9ChannelRow(
                                 item = channel,
                                 favorite = favorite,
