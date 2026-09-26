@@ -14,15 +14,18 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Prepare Android SDK
         run: |
@@ -38,7 +41,7 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate final release 1.0 project
+      - name: Validate final release 2.0 project
         run: |
           set -e
           grep -q 'versionCode = 2' app/build.gradle.kts
@@ -106,8 +109,8 @@ jobs:
           APK_PACKAGE=$(aapt2 dump badging radio-tv-release-2.0.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='1'"
-          echo "$APK_PACKAGE" | grep -q "versionName='1.0'"
+          echo "$APK_PACKAGE" | grep -q "versionCode='2'"
+          echo "$APK_PACKAGE" | grep -q "versionName='2.0'"
           sha256sum radio-tv-release-2.0.apk
           ls -lh radio-tv-release-2.0.apk
 
