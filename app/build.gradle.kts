@@ -64,8 +64,8 @@ dependencies {
 }
 
 val v5Assets = mapOf(
-    "start_tv" to "https://avatars.mds.yandex.net/i?id=124c90a0cfd3b3341d7e7592f8eda057e77081cd-4926719-images-thumbs&n=13",
-    "start_radio" to "https://static.vecteezy.com/system/resources/previews/001/207/003/non_2x/music-icon-radio-png.png",
+    "v5_start_tv" to "https://avatars.mds.yandex.net/i?id=124c90a0cfd3b3341d7e7592f8eda057e77081cd-4926719-images-thumbs&n=13",
+    "v5_start_radio" to "https://static.vecteezy.com/system/resources/previews/001/207/003/non_2x/music-icon-radio-png.png",
     "logo_record" to "https://sun9-58.vkuserphoto.ru/s/v1/ig2/IiddqILI9W20xtBjGASd1Wc2qaE8CtlNMcM4HP7_rOxeHWqZHsTZQrxChaHjZF90iod1cWtN-YKmKEhzRcRW4WNu.jpg?quality=96&cs=640x0",
     "logo_chocolate" to "https://avatars.mds.yandex.net/i?id=1e60272039bd4313b6db31715603bcbd_l-5207916-images-thumbs&n=13",
     "logo_energy" to "https://www.energyfm.ru/favicon.ico",
