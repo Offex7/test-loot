@@ -57,12 +57,10 @@ class RadioPlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 serviceScope.launch {
-                    settingsStore.setRadioPlaying(isPlaying)
                 }
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 serviceScope.launch {
-                    settingsStore.setRadioPlaying(player.isPlaying)
                 }
             }
         })
