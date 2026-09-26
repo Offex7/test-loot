@@ -63,6 +63,13 @@ jobs:
           grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
+          test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssets.kt
+          test -f app/src/main/java/com/offex7/streamhub/WidgetActions.kt
+          test -f app/src/main/java/com/offex7/streamhub/WidgetRefreshWorker.kt
+          test -f app/src/main/java/com/offex7/streamhub/LastRadioWidgetProvider.kt
+          test -f app/src/main/java/com/offex7/streamhub/QuickAccessWidgetProvider.kt
+          grep -q 'versionCode = 2' app/build.gradle.kts
+          grep -q 'ГАМАЮН' app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/signing/radio-tv-v5-debug.keystore
 
       - name: Validate signing keystore
@@ -109,4 +116,14 @@ jobs:
         with:
           name: Radio-TV-Release-2.0-APK
           path: radio-tv-release-2.0.apk
+          if-no-files-found: error
+
+      - name: Package source ZIP
+        run: git archive --format=zip HEAD -o Radio-TV-v2.0-source.zip
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio-TV-v2.0-Source
+          path: Radio-TV-v2.0-source.zip
           if-no-files-found: error

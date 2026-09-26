@@ -12,14 +12,22 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class RadioPlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var settingsStore: SettingsStore
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var wasPlaying = false
 
     override fun onCreate() {
         super.onCreate()
+        settingsStore = SettingsStore(applicationContext)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(10_000, 30_000, 2_000, 5_000)
             .build()
@@ -45,6 +53,20 @@ class RadioPlaybackService : MediaSessionService() {
                         .build()
                 )
                 .build()
+        })
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                serviceScope.launch {
+                    settingsStore.setRadioPlaying(isPlaying)
+                    LastRadioWidgetProvider.updateAll(applicationContext)
+                }
+            }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                serviceScope.launch {
+                    settingsStore.setRadioPlaying(player.isPlaying)
+                    LastRadioWidgetProvider.updateAll(applicationContext)
+                }
+            }
         })
         session = MediaSession.Builder(this, player).build()
 
@@ -78,6 +100,7 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        serviceScope.cancel()
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         session?.run {
             player.release()

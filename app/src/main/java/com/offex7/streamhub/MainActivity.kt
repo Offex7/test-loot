@@ -315,6 +315,48 @@ private fun App(
         }
     }
 
+    LaunchedEffect(activity.intent.action) {
+        val action = activity.intent.action
+        when (action) {
+            WidgetActions.OPEN_TV -> {
+                section = Section.TV
+                settings = false
+                scope.launch { store.setSection(Section.TV) }
+            }
+            WidgetActions.OPEN_RADIO -> {
+                section = Section.RADIO
+                settings = false
+                scope.launch { store.setSection(Section.RADIO) }
+            }
+            WidgetActions.TOGGLE_LAST_RADIO -> {
+                section = Section.RADIO
+                settings = false
+                scope.launch {
+                    store.setSection(Section.RADIO)
+                    val last = store.lastStream(Section.RADIO)
+                    val index = last?.let { item ->
+                        RADIO_STATIONS.indexOfFirst { station ->
+                            station.url == item.url || station.name.equals(item.name, ignoreCase = true)
+                        }
+                    } ?: -1
+                    if (index >= 0) {
+                        if (radio.currentIndex.value == index && radio.isPlaying.value) radio.pause()
+                        else radio.play(index)
+                    }
+                    LastRadioWidgetProvider.updateAll(appContext)
+                }
+            }
+        }
+        if (action in setOf(
+                WidgetActions.OPEN_TV,
+                WidgetActions.OPEN_RADIO,
+                WidgetActions.TOGGLE_LAST_RADIO
+            )
+        ) {
+            activity.intent = android.content.Intent(activity, MainActivity::class.java)
+        }
+    }
+
     LaunchedEffect(Unit) {
         pip = store.pipEnabled()
         activity.pipEnabled = pip
