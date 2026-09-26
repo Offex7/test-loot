@@ -6,6 +6,7 @@
 
 package com.offex7.streamhub
 
+import android.content.res.Configuration
 import android.view.KeyEvent
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -23,6 +24,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +46,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -73,6 +76,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -122,6 +126,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
+import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
 private val TvV9Red = Color(0xFFE53935)
@@ -169,6 +174,11 @@ fun TvV8Screen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
     var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Float>()) }
+    val configuration = LocalConfiguration.current
+    val showHideIcon =
+        (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ||
+            configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var isSwitching by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
     var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
@@ -356,15 +366,29 @@ fun TvV8Screen(
         return order[(base + 1) % order.size]
     }
 
+    fun nextRawCandidate(start: Int): Int {
+        if (channels.size <= 1) return -1
+        for (step in 1 until channels.size) {
+            val index = (start + step) % channels.size
+            val item = channels[index]
+            if (!hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE) {
+                return index
+            }
+        }
+        return -1
+    }
+
     fun startPlayback(start: Int) {
         if (start !in channels.indices || hiddenChannels.contains(channels[start].key)) return
         playbackJob?.cancel()
         fullscreen = true
         notice = null
+        isSwitching = true
         playbackJob = scope.launch {
             var cursor = start
             var attempts = 0
-            while (attempts < channels.size) {
+            try {
+                while (attempts < channels.size) {
                 attempts++
                 if (cursor !in channels.indices || hiddenChannels.contains(channels[cursor].key)) {
                     cursor = nextIndex(cursor)
@@ -385,10 +409,15 @@ fun TvV8Screen(
                     return@launch
                 }
                 health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                cursor = nextIndex(cursor)
+                cursor = nextRawCandidate(cursor)
                 if (cursor < 0) break
             }
+            isSwitching = false
             fullscreen = false
+            notify("Не удалось найти рабочий канал", 2500L)
+            } finally {
+                isSwitching = false
+            }
         }
     }
 
@@ -412,9 +441,9 @@ fun TvV8Screen(
             playerInstance = playerInstance,
             channel = channels[selectedIndex],
             favoriteChannels = favoriteChannels,
-            error = if (notice == null) error else null,
-            waiting = waiting || !network,
-            isPlaying = isPlaying,
+            error = if (notice == null && !isSwitching) error else null,
+            waiting = if (isSwitching) false else (waiting || !network),
+            isPlaying = if (isSwitching) true else isPlaying,
             noticeMessage = notice,
             sleepRemaining = sleepRemaining,
             sleepUntil = sleepUntil,
@@ -575,7 +604,8 @@ fun TvV8Screen(
                                 item = channel,
                                 favorite = favorite,
                                 logoCache = logoCache,
-                                offline = health[channel.url] == AvailabilityStatus.OFFLINE,
+                                offline = offline,
+                                showHideIcon = showHideIcon,
                                 onPlay = {
                                     channels.indexOfFirst { it.key == channel.key }
                                         .takeIf { it >= 0 }
@@ -587,14 +617,12 @@ fun TvV8Screen(
                                         favorites = store.favorites(Section.TV)
                                     }
                                 },
-                                onHide = if (!offline) {
-                                    {
-                                        scope.launch {
-                                            store.addHiddenChannel(channel.key)
-                                            notify("Канал скрыт", 3000L)
-                                        }
+                                onHide = {
+                                    scope.launch {
+                                        store.addHiddenChannel(channel.key)
+                                        notify("Канал скрыт", 3000L)
                                     }
-                                } else null
+                                }
                             )
                         }
                     }
@@ -680,65 +708,120 @@ private fun TvV9ChannelRow(
     favorite: Boolean,
     logoCache: TvLogoCache,
     offline: Boolean,
+    showHideIcon: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
-    onHide: (() -> Unit)? = null
+    onHide: () -> Unit
 ) {
-    var dragDistance by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    val iconColor by animateColorAsState(
-        if (favorite) TvV9Red else Color.White,
-        label = "tv-v9-favorite-color"
+    var rowWidth by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(1f) }
+    var dragOffset by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var settleTarget by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var settling by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var hiding by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
+    val animatedOffset by animateFloatAsState(
+        targetValue = if (settling) settleTarget else dragOffset,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "tv-v9-swipe-offset"
     )
-    Card(
-        onClick = onPlay,
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(item.key, offline) {
-                if (onHide != null) {
+    LaunchedEffect(settling, settleTarget) {
+        if (!settling) return@LaunchedEffect
+        delay(220L)
+        if (settleTarget < 0f) {
+            onHide()
+        }
+        dragOffset = 0f
+        settleTarget = 0f
+        settling = false
+    }
+
+    AnimatedVisibility(
+        visible = !hiding,
+        enter = fadeIn(),
+        exit = fadeOut(tween(180)) + shrinkVertically(tween(180))
+    ) {
+        Card(
+            onClick = if (hiding) ({}) else onPlay,
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { rowWidth = it.width.toFloat().coerceAtLeast(1f) }
+                .graphicsLayer {
+                    translationX = animatedOffset
+                    alpha = 1f - (abs(animatedOffset) / rowWidth).coerceIn(0f, 0.45f)
+                }
+                .pointerInput(item.key, rowWidth) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            dragDistance += dragAmount
+                            if (!settling && !hiding) {
+                                dragOffset = (dragOffset + dragAmount).coerceIn(-rowWidth, 0f)
+                            }
                         },
                         onDragEnd = {
-                            if (dragDistance <= -80f && !offline) onHide()
-                            dragDistance = 0f
+                            if (hiding) return@detectHorizontalDragGestures
+                            val threshold = rowWidth * 0.5f
+                            settling = true
+                            if (dragOffset <= -threshold) {
+                                settleTarget = -rowWidth
+                                hiding = true
+                            } else {
+                                settleTarget = 0f
+                            }
                         },
-                        onDragCancel = { dragDistance = 0f }
+                        onDragCancel = {
+                            if (!hiding) {
+                                settling = true
+                                settleTarget = 0f
+                            }
+                        }
+                    )
+                },
+            colors = CardDefaults.cardColors(
+                containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.name.uppercase(Locale.ROOT),
+                        color = if (offline) TvV9Gray else Color.White,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    item.groupTitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
+                }
+                IconButton(onClick = onFavorite) {
+                    Icon(
+                        if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        "Избранное",
+                        tint = if (favorite) TvV9Red else Color.White
                     )
                 }
-            },
-        colors = CardDefaults.cardColors(
-            containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.name.uppercase(Locale.ROOT),
-                    color = if (offline) TvV9Gray else Color.White,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                item.groupTitle?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
-            }
-            IconButton(onClick = onFavorite) {
-                Icon(
-                    if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    "Избранное",
-                    tint = iconColor
-                )
-            }
-            if (!offline && onHide != null) {
-                IconButton(onClick = onHide) {
-                    Icon(Icons.Default.Delete, "Удалить / скрыть канал", tint = TvV9Red)
+                if (showHideIcon) {
+                    IconButton(
+                        onClick = {
+                            if (!hiding) {
+                                settleTarget = -rowWidth
+                                settling = true
+                                hiding = true
+                            }
+                        },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .border(1.dp, TvV9Red, CircleShape)
+                    ) {
+                        Icon(
+                            Icons.Default.VisibilityOff,
+                            "Скрыть канал",
+                            tint = TvV9Gray
+                        )
+                    }
                 }
             }
         }
@@ -962,6 +1045,7 @@ private fun TvV9Player(
         2 -> "РАСТЯНУТЬ 150%"
         3 -> "РАСТЯНУТЬ 200%"
         4 -> "ЗАПОЛНИТЬ"
+        5 -> "ПОЛЬЗОВАТЕЛЬСКИЙ"
         else -> "ОРИГИНАЛ"
     }
     val formatScale = when (formatMode) {
@@ -1122,9 +1206,14 @@ private fun TvV9Player(
                 .pointerInput(locked, channel.key) {
                     if (!locked) {
                         detectTransformGestures { _, _, gestureZoom, _ ->
+                            if (formatMode != 5) {
+                                formatMode = 5
+                                zoom = 1f
+                                onZoomReset()
+                            }
                             zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
                             onZoomChanged(zoom)
-                            showPlayerToast("Масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
+                            showPlayerToast("Пользовательский масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
                         }
                     } else {
                         detectTransformGestures { _, _, _, _ -> }
@@ -1165,12 +1254,26 @@ private fun TvV9Player(
                     ) {
                         TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", onBack)
                         TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна") {
-                            sleepMenu = !sleepMenu
+                            val open = !sleepMenu
+                            sleepMenu = open
+                            if (open) favoriteMenu = false
                             sleepToken++
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
-                            formatMode = (formatMode + 1) % 5
-                            showPlayerToast("Формат: " + formatLabel, 5000L)
+                            favoriteMenu = false
+                            sleepMenu = false
+                            formatMode = (formatMode + 1) % 6
+                            zoom = 1f
+                            onZoomReset()
+                            val nextLabel = when (formatMode) {
+                                1 -> "РАСТЯНУТЬ 25%"
+                                2 -> "РАСТЯНУТЬ 150%"
+                                3 -> "РАСТЯНУТЬ 200%"
+                                4 -> "ЗАПОЛНИТЬ"
+                                5 -> "ПОЛЬЗОВАТЕЛЬСКИЙ"
+                                else -> "ОРИГИНАЛ"
+                            }
+                            showPlayerToast("Формат: " + nextLabel, 5000L)
                         }
                         TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
                             favoriteMenu = false
@@ -1182,8 +1285,9 @@ private fun TvV9Player(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
                             "Избранное"
                         ) {
-                            favoriteMenu = !favoriteMenu
-                            if (favoriteMenu) sleepMenu = false
+                            val open = !favoriteMenu
+                            favoriteMenu = open
+                            if (open) sleepMenu = false
                         }
                         TvV9PlayerButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip)
                     }
@@ -1280,7 +1384,8 @@ private fun TvV9Player(
                     if (favoriteMenu) {
                         Popup(
                             alignment = Alignment.TopStart,
-                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
+                            onDismissRequest = { favoriteMenu = false },
+                            properties = PopupProperties(focusable = false, dismissOnClickOutside = true)
                         ) {
                             Box(
                                 Modifier
@@ -1375,7 +1480,8 @@ private fun TvV9Player(
                     if (sleepMenu) {
                         Popup(
                             alignment = Alignment.TopStart,
-                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
+                            onDismissRequest = { sleepMenu = false },
+                            properties = PopupProperties(focusable = false, dismissOnClickOutside = true)
                         ) {
                             Column(
                                 Modifier
