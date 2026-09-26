@@ -222,7 +222,6 @@ class PlayerController(context: Context) {
                 _error.value = null
 
                 val started = runCatching {
-                    replacePlayer()
                     currentPlayer.setMediaItem(MediaItem.fromUri(url))
                     currentPlayer.prepare()
                     currentPlayer.playWhenReady = true
