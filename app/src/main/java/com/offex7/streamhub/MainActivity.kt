@@ -905,7 +905,7 @@ private fun Radio(
                 val movingDown = deltaIndex > 0 || (deltaIndex == 0 && deltaPx > 0)
                 val fast = kotlin.math.abs(deltaIndex) >= 2 ||
                     (elapsed <= 140L && kotlin.math.abs(deltaPx) >= 96)
-                val total = orderedStations.size
+                val total = RADIO_STATIONS.size
                 val lastVisible = current.third
                 val canGoTop = current.first > 5
                 val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
