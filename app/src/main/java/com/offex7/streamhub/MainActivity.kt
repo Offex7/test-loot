@@ -72,7 +72,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1729,8 +1728,8 @@ private fun Settings(
                                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
                                     if (!item?.logoUrl.isNullOrBlank()) {
                                         RemoteLogoImage(
-                                            item?.logoUrl,
-                                            item?.name ?: "Скрытый канал",
+                                            item!!.logoUrl!!,
+                                            item.name,
                                             Modifier.fillMaxSize()
                                         )
                                     } else {
@@ -2196,7 +2195,7 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
         item {
             Text(
-                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.
+                """Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.
 
 При использовании сторонних M3U/M3U8-плейлистов и других внешних источников возможны изменения, блокировки, недоступность, ошибки воспроизведения и прекращение отдельных трансляций. Пользователь самостоятельно принимает решение об использовании таких источников и несёт ответственность за свои действия и соблюдение применимых правил и законодательства.
 
@@ -2204,7 +2203,7 @@ private fun Disclaimer(onBack: () -> Unit) {
 
 Функциональность, внешний вид, источники, способы загрузки и другие возможности приложения могут изменяться или отключаться без предварительного уведомления. Используя приложение, пользователь подтверждает, что понимает эти ограничения.
 
-Пользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
+Пользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.""",
                 color = Color.LightGray,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
