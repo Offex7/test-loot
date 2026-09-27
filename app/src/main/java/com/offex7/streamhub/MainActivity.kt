@@ -861,6 +861,18 @@ private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, cons
     if (enabled) view.performHapticFeedback(constant)
 }
 
+private fun performFavoriteHaptic(view: android.view.View, enabled: Boolean, adding: Boolean) {
+    if (!enabled) return
+    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+    if (adding) {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (view.isAttachedToWindow) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+        }, 70L)
+    }
+}
+
 internal fun fuzzyMatch(query: String, text: String): Boolean {
     val q = query.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
     if (q.isBlank()) return true
@@ -2884,7 +2896,7 @@ private fun ChannelRow(
             if (isRadio && activeRadio && onToggle != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IconButton(
-                        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() },
+                        onClick = { performFavoriteHaptic(hapticView, haptics, adding = !favorite); onFavorite() },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
