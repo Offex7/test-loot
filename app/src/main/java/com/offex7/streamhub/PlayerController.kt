@@ -38,6 +38,18 @@ class PlayerController(context: Context) {
     private val _weakNetwork = MutableStateFlow(false)
     val weakNetwork: StateFlow<Boolean> = _weakNetwork.asStateFlow()
 
+    private val _buffering = MutableStateFlow(false)
+    val buffering: StateFlow<Boolean> = _buffering.asStateFlow()
+
+    private val _weakNetworkEvent = MutableStateFlow(0L)
+    val weakNetworkEvent: StateFlow<Long> = _weakNetworkEvent.asStateFlow()
+
+    private val _weakNetworkNoticeCount = MutableStateFlow(0)
+    val weakNetworkNoticeCount: StateFlow<Int> = _weakNetworkNoticeCount.asStateFlow()
+
+    private val _adaptiveBufferLevel = MutableStateFlow(0)
+    val adaptiveBufferLevel: StateFlow<Int> = _adaptiveBufferLevel.asStateFlow()
+
     private val initialPlayer = createPlayer()
     private var currentPlayer: ExoPlayer = initialPlayer
     private val _playerInstance = MutableStateFlow(initialPlayer)
@@ -54,6 +66,7 @@ class PlayerController(context: Context) {
     private var released = false
     private var fadeAnimator: ValueAnimator? = null
     private var internalRetryEnabled = true
+    private var bufferMultiplier = 1f
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onLost(network: Network) {
@@ -80,8 +93,10 @@ class PlayerController(context: Context) {
     }
 
     private fun createPlayer(): ExoPlayer {
+        val minBufferMs = (10_000f * bufferMultiplier).toInt().coerceIn(10_000, 60_000)
+        val maxBufferMs = (30_000f * bufferMultiplier).toInt().coerceIn(30_000, 120_000)
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(10_000, 30_000, 2_000, 5_000)
+            .setBufferDurationsMs(minBufferMs, maxBufferMs, 2_000, 5_000)
             .setBackBuffer(0, false)
             .build()
 
@@ -105,6 +120,7 @@ class PlayerController(context: Context) {
                         if (newPlayer !== currentPlayer) return
                         when (state) {
                             Player.STATE_BUFFERING -> {
+                                _buffering.value = true
                                 bufferingStartedAt = System.currentTimeMillis()
                                 val generation = ++bufferingGeneration
                                 handler.postDelayed({
@@ -115,18 +131,22 @@ class PlayerController(context: Context) {
                                         currentPlayer.playbackState == Player.STATE_BUFFERING &&
                                         System.currentTimeMillis() - bufferingStartedAt >= 4_000L
                                     ) {
-                                        _weakNetwork.value = true
+                                        handleWeakNetworkEvent()
                                     }
                                 }, 4_000L)
                             }
                             Player.STATE_READY -> {
                                 bufferingGeneration++
                                 bufferingStartedAt = 0L
+                                _buffering.value = false
                                 _weakNetwork.value = false
                                 reconnectAttempts = 0
                                 _error.value = null
                             }
-                            Player.STATE_ENDED -> _isPlaying.value = false
+                            Player.STATE_ENDED -> {
+                                _buffering.value = false
+                                _isPlaying.value = false
+                            }
                         }
                     }
 
@@ -167,6 +187,71 @@ class PlayerController(context: Context) {
         bufferingGeneration++
     }
 
+    fun resetWeakNetworkSession() {
+        if (released) return
+        bufferingGeneration++
+        _weakNetworkEvent.value = 0L
+        _weakNetworkNoticeCount.value = 0
+        _adaptiveBufferLevel.value = 0
+        _weakNetwork.value = false
+        _buffering.value = false
+        bufferMultiplier = 1f
+    }
+
+    private fun handleWeakNetworkEvent() {
+        if (released) return
+        val previous = _weakNetworkNoticeCount.value
+        if (previous >= 5) return
+        val count = previous + 1
+        _weakNetworkNoticeCount.value = count
+        _weakNetworkEvent.value += 1L
+        _weakNetwork.value = true
+        when (count) {
+            1, 2 -> lowerVideoQuality()
+            3 -> {
+                bufferMultiplier *= 1.10f
+                _adaptiveBufferLevel.value = 3
+                reconfigurePlayerForBuffer()
+            }
+            4 -> {
+                bufferMultiplier *= 1.20f
+                _adaptiveBufferLevel.value = 4
+                reconfigurePlayerForBuffer()
+            }
+            5 -> {
+                bufferMultiplier *= 1.40f
+                _adaptiveBufferLevel.value = 5
+                reconfigurePlayerForBuffer()
+            }
+        }
+    }
+
+    private fun lowerVideoQuality() {
+        runCatching {
+            currentPlayer.trackSelectionParameters =
+                currentPlayer.trackSelectionParameters.buildUpon()
+                    .setMaxVideoSize(854, 480)
+                    .build()
+        }
+    }
+
+    private fun reconfigurePlayerForBuffer() {
+        val url = lastUrl ?: return
+        if (released) return
+        handler.post {
+            if (released || url != lastUrl) return@post
+            val shouldPlay = currentPlayer.playWhenReady || currentPlayer.isPlaying
+            runCatching {
+                replacePlayer()
+                currentPlayer.setMediaItem(MediaItem.fromUri(url))
+                currentPlayer.prepare()
+                currentPlayer.playWhenReady = shouldPlay
+            }.onFailure {
+                _error.value = "Поток недоступен"
+            }
+        }
+    }
+
     private fun hasValidatedInternet(): Boolean =
         connectivityManager.allNetworks.any { network ->
             connectivityManager.getNetworkCapabilities(network)?.run {
@@ -193,6 +278,7 @@ class PlayerController(context: Context) {
         fadeAnimator?.cancel()
         _error.value = null
         _weakNetwork.value = false
+        _buffering.value = false
         runCatching {
             replacePlayer()
             currentPlayer.setMediaItem(MediaItem.fromUri(url))
@@ -280,6 +366,7 @@ class PlayerController(context: Context) {
         }
         _error.value = null
         _weakNetwork.value = false
+        _buffering.value = false
         _waitingForNetwork.value = false
         _isPlaying.value = false
     }
