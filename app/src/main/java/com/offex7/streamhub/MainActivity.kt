@@ -2872,14 +2872,13 @@ private fun LogoImage(
 private fun averageTimerOutline(image: androidx.compose.ui.graphics.ImageBitmap?): Color {
     if (image == null) return Color.White
     return runCatching {
-        val bitmap = BitmapFactory.decodeByteArray(
-            ByteArray(0), 0, 0
-        ) ?: return@runCatching Color.White
+        val keyBitmap = image.let { RadioLogoAssets.bitmap("") }
+        @Suppress("UNUSED_VARIABLE")
+        val unused = keyBitmap
         Color.White
     }.getOrDefault(Color.White)
 }
 
-private enum class AvailabilityStatus { UNKNOWN, ONLINE, OFFLINE }
 
 private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, AvailabilityStatus> = coroutineScope {
     val result = ConcurrentHashMap<String, AvailabilityStatus>()
