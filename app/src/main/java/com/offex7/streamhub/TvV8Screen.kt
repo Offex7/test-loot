@@ -409,9 +409,9 @@ fun TvV8Screen(
                     if (cursor < 0) break
                     continue
                 }
-                selectedIndex = cursor
                 val result = player.playWithFallback(listOf(candidate.url))
                 if (result >= 0) {
+                    selectedIndex = cursor
                     health = health + (candidate.url to AvailabilityStatus.ONLINE)
                     saveLast(candidate)
                     return@launch
