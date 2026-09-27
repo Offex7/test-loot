@@ -28,6 +28,8 @@ class SettingsStore(private val context: Context) {
     private val radioLogoKey = stringPreferencesKey("last_radio_logo")
     private val tvFavoritesKey = stringSetPreferencesKey("favorites_tv")
     private val radioFavoritesKey = stringSetPreferencesKey("favorites_radio")
+    private val tvFavoriteTimesKey = stringPreferencesKey("favorites_tv_added_at_v1")
+    private val radioFavoriteTimesKey = stringPreferencesKey("favorites_radio_added_at_v1")
     private val pipKey = booleanPreferencesKey("pip_on_minimize")
     private val tvUsageKey = longPreferencesKey("usage_tv_seconds")
     private val radioUsageKey = longPreferencesKey("usage_radio_seconds")
@@ -175,18 +177,56 @@ class SettingsStore(private val context: Context) {
         return StreamItem(name, url, prefs[lk])
     }
 
-    suspend fun favorites(section: Section): Set<String> = context.dataStore.data.first()[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet()
+    suspend fun favorites(section: Section): Set<String> =
+        context.dataStore.data.first()[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet()
+
+    suspend fun favoriteAddedAt(section: Section): Map<String, Long> {
+        val key = if (section == Section.TV) tvFavoriteTimesKey else radioFavoriteTimesKey
+        return decodeFavoriteTimes(context.dataStore.data.first()[key])
+    }
 
     suspend fun setFavorite(section: Section, channelId: String, value: Boolean) {
+        val id = channelId.trim()
+        if (id.isBlank()) return
         context.dataStore.edit {
-            val key = if (section == Section.TV) tvFavoritesKey else radioFavoritesKey
-            val set = (it[key] ?: emptySet()).toMutableSet()
-            if (value) set.add(channelId) else set.remove(channelId)
-            it[key] = set
+            val favoriteKey = if (section == Section.TV) tvFavoritesKey else radioFavoritesKey
+            val timeKey = if (section == Section.TV) tvFavoriteTimesKey else radioFavoriteTimesKey
+            val set = (it[favoriteKey] ?: emptySet()).toMutableSet()
+            val times = decodeFavoriteTimes(it[timeKey]).toMutableMap()
+            if (value) {
+                set.add(id)
+                val now = System.currentTimeMillis()
+                val next = maxOf(now, (times.values.maxOrNull() ?: 0L) + 1L)
+                times[id] = next
+            } else {
+                set.remove(id)
+                times.remove(id)
+            }
+            it[favoriteKey] = set
+            it[timeKey] = encodeFavoriteTimes(times)
         }
     }
 
-    fun favoritesFlow(section: Section): Flow<Set<String>> = context.dataStore.data.map { it[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet() }
+    fun favoritesFlow(section: Section): Flow<Set<String>> =
+        context.dataStore.data.map { it[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet() }
+
+    private fun decodeFavoriteTimes(raw: String?): Map<String, Long> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val json = org.json.JSONObject(raw)
+            buildMap {
+                json.keys().forEach { key ->
+                    val value = json.optLong(key, 0L)
+                    if (key.isNotBlank() && value > 0L) put(key, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeFavoriteTimes(values: Map<String, Long>): String =
+        org.json.JSONObject().apply {
+            values.filterValues { it > 0L }.forEach { (key, value) -> put(key, value) }
+        }.toString()
 
     suspend fun pipEnabled(): Boolean = context.dataStore.data.first()[pipKey] ?: true
     suspend fun setPipEnabled(enabled: Boolean) { context.dataStore.edit { it[pipKey] = enabled } }
