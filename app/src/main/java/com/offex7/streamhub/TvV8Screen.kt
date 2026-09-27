@@ -499,7 +499,8 @@ fun TvV8Screen(
                 }
             },
             pipMode = pipMode,
-            onWeakNetworkNotice = { message -> notify(message, 5000L) }
+            onWeakNetworkNotice = { message -> notify(message, 5000L) },
+            switching = isSwitching
         )
         return
     }
@@ -1007,7 +1008,8 @@ private fun TvV9Player(
     onZoomChanged: (Float) -> Unit,
     onZoomReset: () -> Unit,
     pipMode: Boolean,
-    onWeakNetworkNotice: (String) -> Unit
+    onWeakNetworkNotice: (String) -> Unit,
+    switching: Boolean
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.activity.ComponentActivity
@@ -1109,7 +1111,9 @@ private fun TvV9Player(
         onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
-    androidx.compose.runtime.LaunchedEffect(channel.key) {
+    androidx.compose.runtime.LaunchedEffect(channel.key, switching) {
+        channelNotice = false
+        if (switching) return@LaunchedEffect
         player.resetWeakNetworkSession()
         channelNotice = true
         delay(3000L)
