@@ -132,6 +132,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1985,7 +1986,7 @@ private fun DonationCard() {
     val starTransition = rememberInfiniteTransition(label = "donation-star")
     val starPulse by starTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.1f,
+        targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
             animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -2247,6 +2248,7 @@ private fun LogoImage(
     ) {
         val imageModifier = Modifier
             .fillMaxSize()
+            .clip(RoundedCornerShape(12.dp))
             .alpha(if (dimmed) .4f else 1f)
             .then(
                 if (activeRadio) {

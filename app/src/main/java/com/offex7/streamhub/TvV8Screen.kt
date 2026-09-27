@@ -1025,6 +1025,7 @@ private fun TvV9Player(
     var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var menuInteractionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     val orientation = LocalConfiguration.current.orientation
     var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
@@ -1033,6 +1034,8 @@ private fun TvV9Player(
     var zoom by androidx.compose.runtime.remember(channel.key, initialZoom) {
         androidx.compose.runtime.mutableFloatStateOf(initialZoom?.coerceIn(1f, 3f) ?: 1f)
     }
+    var panX by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var panY by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
@@ -1154,9 +1157,12 @@ private fun TvV9Player(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(sleepMenu, sleepToken) {
-        if (sleepMenu) {
-            delay(5000L)
+    androidx.compose.runtime.LaunchedEffect(favoriteMenu, sleepMenu, menuInteractionToken) {
+        if (!favoriteMenu && !sleepMenu) return@LaunchedEffect
+        val token = menuInteractionToken
+        delay(10_000L)
+        if (token == menuInteractionToken) {
+            favoriteMenu = false
             sleepMenu = false
         }
     }
@@ -1202,15 +1208,25 @@ private fun TvV9Player(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(scaleX = zoom * formatScale, scaleY = zoom * formatScale)
+                .graphicsLayer {
+                    val baseScale = zoom * formatScale
+                    scaleX = baseScale
+                    scaleY = baseScale
+                    translationX = if (formatMode == 5) panX else 0f
+                    translationY = if (formatMode == 5) panY else 0f
+                }
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
                         detectTapGestures(
                             onTap = { controls = !controls },
                             onDoubleTap = {
-                                zoom = 1f
-                                onZoomReset()
-                            }
+                            zoom = 1f
+                            panX = 0f
+                            panY = 0f
+                            formatMode = 5
+                            onZoomReset()
+                            showPlayerToast("Пользовательский: 100%", 3000L)
+                        }
                         )
                     } else {
                         detectTapGestures(onTap = {})
@@ -1218,13 +1234,17 @@ private fun TvV9Player(
                 }
                 .pointerInput(locked, channel.key) {
                     if (!locked) {
-                        detectTransformGestures { _, _, gestureZoom, _ ->
+                        detectTransformGestures { pan, _, gestureZoom, _ ->
                             if (formatMode != 5) {
                                 formatMode = 5
                                 zoom = 1f
+                                panX = 0f
+                                panY = 0f
                                 onZoomReset()
                             }
                             zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
+                            panX += pan.x
+                            panY += pan.y
                             onZoomChanged(zoom)
                             showPlayerToast("Пользовательский масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
                         }
@@ -1270,6 +1290,7 @@ private fun TvV9Player(
                             val open = !sleepMenu
                             sleepMenu = open
                             if (open) favoriteMenu = false
+                            menuInteractionToken++
                             sleepToken++
                         }
                         TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
@@ -1277,6 +1298,8 @@ private fun TvV9Player(
                             sleepMenu = false
                             formatMode = (formatMode + 1) % 6
                             zoom = 1f
+                            panX = 0f
+                            panY = 0f
                             onZoomReset()
                             val nextLabel = when (formatMode) {
                                 1 -> "РАСТЯНУТЬ 25%"
@@ -1301,6 +1324,7 @@ private fun TvV9Player(
                             val open = !favoriteMenu
                             favoriteMenu = open
                             if (open) sleepMenu = false
+                            menuInteractionToken++
                         }
                         TvV9PlayerButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip)
                     }
@@ -1445,6 +1469,7 @@ private fun TvV9Player(
                                                                 when (event.nativeKeyEvent.keyCode) {
                                                                     KeyEvent.KEYCODE_DPAD_UP -> {
                                                                         if (focusIndex > 0) {
+                                                                            menuInteractionToken++
                                                                             favoriteFocusers[focusIndex - 1].requestFocus()
                                                                             playerScope.launch { favoriteListState.animateScrollToItem(focusIndex - 1) }
                                                                         }
@@ -1452,6 +1477,7 @@ private fun TvV9Player(
                                                                     }
                                                                     KeyEvent.KEYCODE_DPAD_DOWN -> {
                                                                         if (focusIndex + 1 < favoriteFocusers.size) {
+                                                                            menuInteractionToken++
                                                                             favoriteFocusers[focusIndex + 1].requestFocus()
                                                                             playerScope.launch { favoriteListState.animateScrollToItem(focusIndex + 1) }
                                                                         }
