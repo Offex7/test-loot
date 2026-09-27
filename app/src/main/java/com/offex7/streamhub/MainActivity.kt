@@ -220,7 +220,12 @@ private fun rememberSystemPowerSave(): Boolean {
                 if (intent?.action == android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED) read()
             }
         }
-        context.registerReceiver(receiver, android.content.IntentFilter(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            receiver,
+            android.content.IntentFilter(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
     return enabled
