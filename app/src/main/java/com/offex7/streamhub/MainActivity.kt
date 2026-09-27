@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager
@@ -116,6 +117,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -240,7 +242,7 @@ private val SleepOptions = listOf(
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
 )
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var store: SettingsStore
     private lateinit var tv: PlayerController
     private lateinit var radio: RadioMediaController
@@ -739,6 +741,7 @@ private fun HomeCard(
     borderColor: Color = Color.White,
     onClick: () -> Unit
 ) {
+    val energySaving = LocalEnergySaving.current
     Card(
         onClick = onClick,
         modifier = modifier,
@@ -874,7 +877,7 @@ internal fun fuzzyMatch(query: String, text: String): Boolean {
         else -> emptyList()
     }
     if (aliases.any { normalizedText.contains(it) }) return true
-    return normalizedText.split(Regex("[^\p{L}\p{Nd}]+"))
+    return normalizedText.split(Regex("[^\\p{L}\\p{Nd}]+"))
         .filter { it.isNotBlank() }
         .any { levenshtein(q, it) <= maxOf(1, q.length / 4) }
 }
@@ -1073,8 +1076,8 @@ private fun Radio(
         }
     }
 
-    LaunchedEffect(playing, current?.key, energySaving) {
-        if (!playing || current == null || energySaving) return@LaunchedEffect
+    LaunchedEffect(playing, player.currentIndex.value, energySaving) {
+        if (!playing || energySaving) return@LaunchedEffect
         val stationKey = RADIO_STATIONS.getOrNull(player.currentIndex.value)?.key ?: return@LaunchedEffect
         while (playing && !energySaving) {
             delay(Random.nextLong(30 * 60 * 1000L, 50 * 60 * 1000L + 1L))
@@ -2779,6 +2782,7 @@ private fun Disclaimer(onBack: () -> Unit) {
     }
 }
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun RadioEqualizerDialog(
     settings: SettingsStore.RadioEqualizerSettings,
     onDismiss: () -> Unit,
@@ -3204,9 +3208,6 @@ private fun SkeletonList() {
         }
     }
 }
-
-private fun fuzzyFilter(items: List<StreamItem>, query: String): List<StreamItem> =
-    if (query.isBlank()) items else items.filter { it.name.contains(query.trim(), ignoreCase = true) }
 
 @Composable
 private fun KeepSystemBarsVisible() {
