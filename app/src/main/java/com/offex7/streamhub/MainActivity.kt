@@ -839,6 +839,7 @@ private fun Radio(
     val network by rememberNetworkState()
     val list = rememberLazyListState()
     var favorites by remember { mutableStateOf(emptySet<String>()) }
+    var favoriteTimes by remember { mutableStateOf(emptyMap<String, Long>()) }
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
@@ -851,6 +852,7 @@ private fun Radio(
 
     LaunchedEffect(Unit) {
         favorites = store.favorites(Section.RADIO)
+        favoriteTimes = store.favoriteAddedAt(Section.RADIO)
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
         val timer = timerStore.state()
@@ -902,11 +904,13 @@ private fun Radio(
             .collect { current ->
                 store.saveScrollPosition(Section.RADIO, current.first, current.second)
                 if (current != previous) {
-                    val movingUp = current.first < previous.first ||
-                        (current.first == previous.first && current.second < previous.second)
-                    if (movingUp) {
+                    val movingDown = current.first > previous.first ||
+                        (current.first == previous.first && current.second > previous.second)
+                    if (movingDown && current.first >= 6) {
                         showScrollUp = true
                         scrollActivityToken += 1L
+                    } else if (movingUp) {
+                        showScrollUp = false
                     }
                     previous = current
                 }
@@ -962,9 +966,10 @@ private fun Radio(
     }
 
     val current = RADIO_STATIONS.getOrNull(index)
-    val orderedStations = remember(favorites) {
+    val orderedStations = remember(favorites, favoriteTimes) {
         RADIO_STATIONS.sortedWith(
             compareByDescending<StreamItem> { favorites.contains(it.key) }
+                .thenByDescending { favoriteTimes[it.key] ?: 0L }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
     }
@@ -1051,6 +1056,7 @@ private fun Radio(
                                     runCatching {
                                         store.setFavorite(Section.RADIO, station.key, !favorite)
                                         favorites = store.favorites(Section.RADIO)
+                                        favoriteTimes = store.favoriteAddedAt(Section.RADIO)
                                         notify(if (!favorite) "Добавлено в избранное" else "Удалено из избранного")
                                     }.onFailure {
                                         notify("Не удалось обновить избранное")
