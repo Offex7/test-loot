@@ -24,6 +24,7 @@ class RadioPlaybackService : MediaSessionService() {
     private lateinit var settingsStore: SettingsStore
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var wasPlaying = false
+    private var audioEffects: RadioAudioEffects? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -41,6 +42,10 @@ class RadioPlaybackService : MediaSessionService() {
                 true
             )
             .build()
+        audioEffects = runCatching { RadioAudioEffects(player.audioSessionId) }.getOrNull()
+        serviceScope.launch {
+            settingsStore.radioEqualizerFlow().collect { audioEffects?.apply(it) }
+        }
         player.setMediaItems(RADIO_STATIONS.map { station ->
             MediaItem.Builder()
                 .setMediaId(station.url)
@@ -98,6 +103,8 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         serviceScope.cancel()
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
+        audioEffects?.release()
+        audioEffects = null
         session?.run {
             player.release()
             release()
