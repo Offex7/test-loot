@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AColor
 import android.net.ConnectivityManager
@@ -139,10 +140,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -171,6 +174,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import okhttp3.OkHttpClient
@@ -179,6 +184,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
+import kotlin.random.Random
 
 private val Red = Color(0xFFE53935)
 private val Orange = Color(0xFFFF9800)
@@ -194,6 +200,26 @@ private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
 private val APP_VERSION = BuildConfig.VERSION_NAME
+val LocalEnergySaving = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+@Composable
+private fun rememberSystemPowerSave(): Boolean {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(false) }
+    DisposableEffect(context) {
+        val pm = context.getSystemService(android.os.PowerManager::class.java)
+        fun read() { enabled = pm?.isPowerSaveMode == true }
+        read()
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED) read()
+            }
+        }
+        context.registerReceiver(receiver, android.content.IntentFilter(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
+    return enabled
+}
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
 private val SleepOptions = listOf(
@@ -218,7 +244,7 @@ class MainActivity : ComponentActivity() {
         store = SettingsStore(applicationContext)
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
-        setContent { AppTheme { App(store, tv, radio, this) } }
+        setContent { AppTheme(store) { App(store, tv, radio, this) } }
     }
 
     override fun onStop() {
@@ -251,17 +277,24 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppTheme(content: @Composable () -> Unit) {
+private fun AppTheme(store: SettingsStore, content: @Composable () -> Unit) {
+    val systemPowerSave = rememberSystemPowerSave()
+    val energyMode by store.energySavingModeFlow().collectAsState(initial = "AUTO")
+    val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
+    val bg = if (energySaving) Color.Black else Bg
     MaterialTheme(
         colorScheme = androidx.compose.material3.darkColorScheme(
             primary = Red,
             secondary = Red,
-            background = Bg,
-            surface = Panel,
-            surfaceVariant = PanelAlt
-        ),
-        content = content
-    )
+            background = bg,
+            surface = if (energySaving) Color.Black else Panel,
+            surfaceVariant = if (energySaving) Color(0xFF101010) else PanelAlt
+        )
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalEnergySaving provides energySaving) {
+            content()
+        }
+    }
 }
 
 @Composable
@@ -749,6 +782,73 @@ private fun ScrollActionButton(
                 modifier = Modifier.size(28.dp)
             )
         }
+    }
+}
+
+internal fun fuzzyMatch(query: String, text: String): Boolean {
+    val q = query.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+    if (q.isBlank()) return true
+    val normalizedText = text.lowercase(Locale.ROOT)
+    if (normalizedText.contains(q)) return true
+    val aliases = when (q.removeSuffix("ы").removeSuffix("и")) {
+        "спорт" -> listOf("спорт", "sport")
+        "фильм", "кино" -> listOf("фильм", "кино", "movie")
+        "музык" -> listOf("музык", "music", "радио")
+        "новост" -> listOf("новост", "news")
+        "детск" -> listOf("детск", "children", "kids")
+        "познавател" -> listOf("познавател", "документ", "science")
+        "развлекател" -> listOf("развлекател", "entertainment")
+        else -> emptyList()
+    }
+    if (aliases.any { normalizedText.contains(it) }) return true
+    return normalizedText.split(Regex("[^\p{L}\p{Nd}]+"))
+        .filter { it.isNotBlank() }
+        .any { levenshtein(q, it) <= maxOf(1, q.length / 4) }
+}
+
+private fun levenshtein(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    var prev = IntArray(b.length + 1) { it }
+    for (i in a.indices) {
+        val cur = IntArray(b.length + 1)
+        cur[0] = i + 1
+        for (j in b.indices) {
+            cur[j + 1] = minOf(prev[j + 1] + 1, cur[j] + 1, prev[j] + if (a[i] == b[j]) 0 else 1)
+        }
+        prev = cur
+    }
+    return prev[b.length]
+}
+
+internal fun fuzzyFilter(items: List<StreamItem>, query: String): List<StreamItem> =
+    if (query.isBlank()) items else items.filter { fuzzyMatch(query, it.name) || fuzzyMatch(query, it.groupTitle.orEmpty()) }
+
+@Composable
+fun SearchHistoryPanel(
+    history: List<String>,
+    onPick: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    if (history.isEmpty()) return
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text("ПОСЛЕДНИЕ ПОИСКИ", color = Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        history.forEach { q ->
+            TextButton(
+                onClick = { onPick(q) },
+                modifier = Modifier.fillMaxWidth().height(34.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+            ) { Text(q, Modifier.fillMaxWidth(), textAlign = TextAlign.Start, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        TextButton(
+            onClick = onClear,
+            modifier = Modifier.align(Alignment.End).height(32.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        ) { Text("Очистить историю", color = Red, fontSize = 11.sp) }
     }
 }
 
