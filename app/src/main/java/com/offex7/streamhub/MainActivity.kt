@@ -942,6 +942,13 @@ private fun Radio(
     var scrollDirection by remember { mutableIntStateOf(0) } // 1=up, -1=down
     var showScrollAction by remember { mutableStateOf(false) }
     var scrollActivityToken by remember { mutableLongStateOf(0L) }
+    var availability by remember { mutableStateOf<Map<String, AvailabilityStatus>>(emptyMap()) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var searchStamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var searchHistory by remember { mutableStateOf(emptyList<String>()) }
+    var radioBumpNonce by remember { mutableIntStateOf(0) }
+    val energySaving = LocalEnergySaving.current
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
 
@@ -950,6 +957,7 @@ private fun Radio(
     LaunchedEffect(Unit) {
         favorites = store.favorites(Section.RADIO)
         favoriteTimes = store.favoriteAddedAt(Section.RADIO)
+        searchHistory = store.searchHistory(Section.RADIO)
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
         val timer = timerStore.state()
@@ -967,10 +975,22 @@ private fun Radio(
         }
     }
 
-    LaunchedEffect(playing, timerStartedAtMs) {
+    LaunchedEffect(Unit) {
+        availability = scanRadioAvailability(RADIO_STATIONS)
+    }
+
+    LaunchedEffect(energySaving) {
+        if (energySaving) return@LaunchedEffect
+        while (true) {
+            delay(40 * 60 * 1000L)
+            availability = availability + scanRadioAvailability(RADIO_STATIONS)
+        }
+    }
+
+    LaunchedEffect(playing, timerStartedAtMs, energySaving) {
         while (playing && timerStartedAtMs > 0L) {
             timerNowMs = System.currentTimeMillis()
-            delay(1000L)
+            delay(if (energySaving) 2000L else 1000L)
         }
         timerNowMs = System.currentTimeMillis()
     }
@@ -982,7 +1002,28 @@ private fun Radio(
             timerElapsedMs = state.elapsedMs
             timerStartedAtMs = state.startedAtMs
             timerNowMs = now
+            current?.let { availability = availability + (it.url to AvailabilityStatus.OFFLINE) }
             notify("Возникла проблема. Обсуждаем решения в Telegram.")
+        }
+    }
+
+    LaunchedEffect(playing, current?.key, energySaving) {
+        if (!playing || current == null || energySaving) return@LaunchedEffect
+        val stationKey = current.key
+        while (playing && !energySaving) {
+            delay(Random.nextLong(30 * 60 * 1000L, 50 * 60 * 1000L + 1L))
+            if (playing && RADIO_STATIONS.getOrNull(player.currentIndex.value)?.key == stationKey) radioBumpNonce += 1
+        }
+    }
+
+    LaunchedEffect(searchOpen, query, searchStamp) {
+        if (!searchOpen) return@LaunchedEffect
+        val token = searchStamp
+        delay(if (query.isBlank()) 5000L else 15000L)
+        if (token == searchStamp) {
+            if (query.isNotBlank()) store.rememberSearch(Section.RADIO, query)
+            searchOpen = false
+            query = ""
         }
     }
 
@@ -1072,6 +1113,7 @@ private fun Radio(
         if (i !in RADIO_STATIONS.indices) return
         startNewStationTimer()
         player.play(i)
+        availability = availability + (station.url to AvailabilityStatus.ONLINE)
         saveLast(station)
     }
 
@@ -1083,6 +1125,7 @@ private fun Radio(
         } else {
             resumeCurrentTimer()
             player.play(i)
+            availability = availability + (station.url to AvailabilityStatus.ONLINE)
             saveLast(station)
         }
     }
@@ -1095,6 +1138,8 @@ private fun Radio(
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
     }
+
+    val filteredStations = fuzzyFilter(orderedStations, query)
 
     val displayedTimerMs = (
         timerElapsedMs +
@@ -1112,14 +1157,42 @@ private fun Radio(
                 timer = "",
                 back = back,
                 settings = settings,
-                searchOpen = false,
-                query = "",
-                onSearchOpen = {},
-                onQuery = {},
-                onSearchClose = {},
-                showSearch = false,
+                searchOpen = searchOpen,
+                query = query,
+                onSearchOpen = {
+                    searchOpen = true
+                    searchStamp = System.currentTimeMillis()
+                    scope.launch { searchHistory = store.searchHistory(Section.RADIO) }
+                },
+                onQuery = {
+                    query = it
+                    searchStamp = System.currentTimeMillis()
+                },
+                onSearchClose = {
+                    if (query.isNotBlank()) scope.launch { store.rememberSearch(Section.RADIO, query) }
+                    searchOpen = false
+                    query = ""
+                    searchStamp = System.currentTimeMillis()
+                },
+                showSearch = true,
                 showTimer = false
             )
+
+            if (searchOpen && query.isBlank()) {
+                SearchHistoryPanel(
+                    history = searchHistory,
+                    onPick = {
+                        query = it
+                        searchStamp = System.currentTimeMillis()
+                    },
+                    onClear = {
+                        scope.launch {
+                            store.clearSearchHistory(Section.RADIO)
+                            searchHistory = emptyList()
+                        }
+                    }
+                )
+            }
 
             restore?.let { item ->
                 RestoreBanner(
@@ -1150,14 +1223,14 @@ private fun Radio(
                     contentPadding = PaddingValues(10.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    items(orderedStations, key = { it.key }) { station ->
+                    items(filteredStations, key = { it.key }) { station ->
                         val favorite = favorites.contains(station.key)
                         val active = station.url == current?.url
                         ChannelRow(
                             item = station,
                             favorite = favorite,
                             playing = active && playing,
-                            offline = false,
+                            offline = availability[station.url] == AvailabilityStatus.OFFLINE,
                             onPlay = {
                                 val i = RADIO_STATIONS.indexOf(station)
                                 if (i >= 0) {
@@ -1187,7 +1260,7 @@ private fun Radio(
                             },
                             logoSize = 96.dp,
                             isRadio = true,
-                            activeRadio = active,
+                            activeRadio = active && playing,
                             radioStatus = if (active) {
                                 when {
                                     error != null -> "ошибка"
@@ -1196,6 +1269,7 @@ private fun Radio(
                                 }
                             } else null,
                             radioTimer = if (active) formatTime(displayedTimerMs / 1000L) else null,
+                            radioBump = if (active && playing) radioBumpNonce else 0,
                             onToggle = if (active) {
                                 {
                                     val activeIndex = RADIO_STATIONS.indexOf(station)
@@ -2633,7 +2707,8 @@ private fun ChannelRow(
     radioStatus: String? = null,
     radioTimer: String? = null,
     onToggle: (() -> Unit)? = null,
-    preferRemoteLogo: Boolean = false
+    preferRemoteLogo: Boolean = false,
+    radioBump: Int = 0
 ) {
     val iconColor by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
     val scale by animateFloatAsState(if (favorite) 1.14f else 1f, animationSpec = spring(), label = "favorite-scale")
@@ -2644,7 +2719,7 @@ private fun ChannelRow(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio, isRadio = isRadio)
+            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio, isRadio = isRadio, radioBump = radioBump)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -2685,7 +2760,8 @@ private fun LogoImage(
     preferRemote: Boolean = false,
     overlayText: String? = null,
     activeRadio: Boolean = false,
-    isRadio: Boolean = false
+    isRadio: Boolean = false,
+    radioBump: Int = 0
 ) {
     val context = LocalContext.current
     val resourceName = localLogoName(item.name)
@@ -2707,7 +2783,15 @@ private fun LogoImage(
         label = "radio-logo-pulse-value"
     )
 
-    val targetScale = if (activeRadio) 1.05f + (0.03f * pulse) else 1f
+    var bumping by remember(item.name) { mutableStateOf(false) }
+    LaunchedEffect(radioBump) {
+        if (radioBump > 0 && activeRadio) {
+            bumping = true
+            delay(170L)
+            bumping = false
+        }
+    }
+    val targetScale = if (activeRadio) 1.05f + (0.03f * pulse) + if (bumping) 0.08f else 0f else 1f
     val scale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(),
@@ -2771,19 +2855,55 @@ private fun LogoImage(
         }
 
         overlayText?.let {
+            val outline = remember(localRadioImage) { averageTimerOutline(localRadioImage) }
             Text(
-                it,
-                color = Color(0xFF66BB6A),
-                fontSize = 10.sp,
+                "⏱ $it",
+                color = Red,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .border(1.dp, Color.Black, RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = .18f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                style = TextStyle(shadow = Shadow(outline, blurRadius = 2.5f)),
+                modifier = Modifier.padding(bottom = 2.dp),
                 maxLines = 1
             )
         }
     }
+}
+
+private fun averageTimerOutline(image: androidx.compose.ui.graphics.ImageBitmap?): Color {
+    if (image == null) return Color.White
+    return runCatching {
+        val bitmap = BitmapFactory.decodeByteArray(
+            ByteArray(0), 0, 0
+        ) ?: return@runCatching Color.White
+        Color.White
+    }.getOrDefault(Color.White)
+}
+
+private enum class AvailabilityStatus { UNKNOWN, ONLINE, OFFLINE }
+
+private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, AvailabilityStatus> = coroutineScope {
+    val result = ConcurrentHashMap<String, AvailabilityStatus>()
+    val semaphore = Semaphore(4)
+    items.map { item ->
+        launch(Dispatchers.IO) {
+            semaphore.withPermit {
+                val status = runCatching {
+                    logoHttpClient.newCall(
+                        Request.Builder()
+                            .url(item.url)
+                            .header("Range", "bytes=0-1024")
+                            .header("User-Agent", "Radio.TV/3.1")
+                            .build()
+                    ).execute().use { response ->
+                        if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
+                        else AvailabilityStatus.OFFLINE
+                    }
+                }.getOrDefault(AvailabilityStatus.OFFLINE)
+                result[item.url] = status
+            }
+        }
+    }.forEach { it.join() }
+    result.toMap()
 }
 
 @Composable
