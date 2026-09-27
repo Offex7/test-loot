@@ -580,10 +580,11 @@ private fun Home(
     settings: () -> Unit
 ) {
     val context = LocalContext.current
+    val energySaving = LocalEnergySaving.current
     val transition = rememberInfiniteTransition(label = "home-animations")
     val gearPulse by transition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.08f,
+        targetValue = if (energySaving) 1f else 1.08f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -638,7 +639,7 @@ private fun Home(
     }
     val recommendPulse by transition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.05f,
+        targetValue = if (energySaving) 1f else 1.05f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -748,15 +749,62 @@ private fun HomeCard(
                 Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Image(
-                    painter = painterResource(logo),
-                    contentDescription = title,
-                    modifier = Modifier
-                        .fillMaxHeight(0.82f)
-                        .aspectRatio(1f)
-                        .border(2.dp, borderColor, RoundedCornerShape(16.dp))
-                        .padding(3.dp)
-                )
+                val iconModifier = Modifier
+                    .fillMaxHeight(0.82f)
+                    .aspectRatio(1f)
+                Box(iconModifier) {
+                    Image(
+                        painter = painterResource(logo),
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize()
+                            .border(2.dp, borderColor, RoundedCornerShape(16.dp))
+                            .padding(3.dp)
+                    )
+                    if (!energySaving) {
+                        val accent = borderColor.copy(alpha = .70f)
+                        if (title == "ТЕЛЕВИЗОР") {
+                            val line by rememberInfiniteTransition(label = "tv-news-line").animateFloat(
+                                initialValue = 0.25f,
+                                targetValue = 0.75f,
+                                animationSpec = infiniteRepeatable(
+                                    tween(1700, easing = LinearEasing),
+                                    RepeatMode.Reverse
+                                ),
+                                label = "tv-news-line-progress"
+                            )
+                            Canvas(Modifier.matchParentSize().padding(18.dp)) {
+                                drawLine(
+                                    accent,
+                                    Offset(size.width * 0.22f, size.height * line),
+                                    Offset(size.width * 0.78f, size.height * line),
+                                    strokeWidth = 2f
+                                )
+                            }
+                        } else {
+                            val wave by rememberInfiniteTransition(label = "radio-wave").animateFloat(
+                                initialValue = 0.55f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    tween(900, easing = FastOutSlowInEasing),
+                                    RepeatMode.Reverse
+                                ),
+                                label = "radio-wave-progress"
+                            )
+                            Canvas(Modifier.matchParentSize().padding(20.dp)) {
+                                val center = Offset(size.width / 2f, size.height / 2f)
+                                drawArc(
+                                    accent,
+                                    220f,
+                                    100f,
+                                    false,
+                                    Stroke(2f),
+                                    center.x - 20f * wave,
+                                    center.y - 20f * wave
+                                )
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(2.dp))
             Text(
@@ -799,6 +847,10 @@ private fun ScrollActionButton(
             )
         }
     }
+}
+
+private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, constant: Int) {
+    if (enabled) view.performHapticFeedback(constant)
 }
 
 internal fun fuzzyMatch(query: String, text: String): Boolean {
@@ -2787,9 +2839,11 @@ private fun ChannelRow(
     radioBump: Int = 0
 ) {
     val iconColor by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
+    val hapticView = LocalView.current
+    val haptics = !LocalEnergySaving.current
     val scale by animateFloatAsState(if (favorite) 1.14f else 1f, animationSpec = spring(), label = "favorite-scale")
     Card(
-        onClick = onPlay,
+        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onPlay() },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = if (favorite) Red.copy(alpha = .08f) else Panel),
         shape = RoundedCornerShape(12.dp)
@@ -2813,15 +2867,15 @@ private fun ChannelRow(
             }
             if (isRadio && activeRadio && onToggle != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = onFavorite, Modifier.size(40.dp)) {
+                    IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() }, Modifier.size(40.dp))
                         Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor, modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale))
                     }
-                    IconButton(onClick = onToggle, Modifier.size(40.dp)) {
+                    IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onToggle() }, Modifier.size(40.dp))
                         Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Orange, modifier = Modifier.size(22.dp))
                     }
                 }
             } else {
-                IconButton(onClick = onFavorite, Modifier.graphicsLayer(scaleX = scale, scaleY = scale)) {
+                IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() }, Modifier.graphicsLayer(scaleX = scale, scaleY = scale))
                     Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor)
                 }
             }
