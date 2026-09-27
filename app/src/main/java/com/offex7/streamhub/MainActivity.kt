@@ -318,6 +318,7 @@ private fun App(
 ) {
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
+    val energySaving = LocalEnergySaving.current
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
     if (!pinUnlocked) {
@@ -410,7 +411,7 @@ private fun App(
         }
     }
 
-    Scaffold(containerColor = Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    Scaffold(containerColor = if (energySaving) Color.Black else Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         Box(
             Modifier.fillMaxSize().padding(padding).windowInsetsPadding(
                 WindowInsets.systemBars.union(WindowInsets.displayCutout)
