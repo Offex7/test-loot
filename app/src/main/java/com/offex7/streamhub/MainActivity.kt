@@ -71,6 +71,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -89,6 +91,7 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -153,6 +156,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -303,13 +307,6 @@ private fun App(
         }
     }
 
-    LaunchedEffect(disclaimer) {
-        if (disclaimer) {
-            delay(10_000L)
-            disclaimer = false
-        }
-    }
-
     LaunchedEffect(Unit) {
         pip = store.pipEnabled()
         activity.pipEnabled = pip
@@ -370,7 +367,7 @@ private fun App(
             )
         ) {
             when {
-                disclaimer -> Disclaimer { disclaimer = false }
+                disclaimer -> Disclaimer(onBack = { disclaimer = false })
                 settings -> Settings(
                     store = store,
                     pip = pip,
@@ -728,8 +725,9 @@ private fun HomeCard(
 }
 
 @Composable
-private fun ScrollUpButton(
+private fun ScrollActionButton(
     visible: Boolean,
+    direction: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -745,7 +743,12 @@ private fun ScrollUpButton(
                 .size(48.dp)
                 .background(Red, CircleShape)
         ) {
-            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(28.dp))
+            Icon(
+                if (direction == 1) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                if (direction == 1) "Вниз" else "Вверх",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
@@ -826,7 +829,8 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
-    var showScrollUp by remember { mutableStateOf(false) }
+    var scrollDirection by remember { mutableIntStateOf(0) } // 1=up, -1=down
+    var showScrollAction by remember { mutableStateOf(false) }
     var scrollActivityToken by remember { mutableLongStateOf(0L) }
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
@@ -883,30 +887,53 @@ private fun Radio(
 
     LaunchedEffect(list) {
         var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
-        snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
-            .collect { current ->
-                store.saveScrollPosition(Section.RADIO, current.first, current.second)
-                if (current != previous) {
-                    val movingUp = current.first < previous.first ||
-                        (current.first == previous.first && current.second < previous.second)
-                    val movingDown = current.first > previous.first ||
-                        (current.first == previous.first && current.second > previous.second)
-                    if (movingDown && current.first >= 6) {
-                        showScrollUp = true
+        var previousTime = System.currentTimeMillis()
+        snapshotFlow {
+            Triple(
+                list.firstVisibleItemIndex,
+                list.firstVisibleItemScrollOffset,
+                list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            )
+        }.collect { current ->
+            val now = System.currentTimeMillis()
+            store.saveScrollPosition(Section.RADIO, current.first, current.second)
+            if (current.first != previous.first || current.second != previous.second) {
+                val deltaIndex = current.first - previous.first
+                val deltaPx = current.second - previous.second
+                val elapsed = (now - previousTime).coerceAtLeast(1L)
+                val movingUp = deltaIndex < 0 || (deltaIndex == 0 && deltaPx < 0)
+                val movingDown = deltaIndex > 0 || (deltaIndex == 0 && deltaPx > 0)
+                val fast = kotlin.math.abs(deltaIndex) >= 2 ||
+                    (elapsed <= 140L && kotlin.math.abs(deltaPx) >= 96)
+                val total = orderedStations.size
+                val lastVisible = current.third
+                val canGoTop = current.first > 5
+                val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
+                when {
+                    current.first <= 0 && current.second <= 0 -> showScrollAction = false
+                    total > 0 && lastVisible >= total - 1 -> showScrollAction = false
+                    fast && movingDown && canGoTop -> {
+                        scrollDirection = 1
+                        showScrollAction = true
                         scrollActivityToken += 1L
-                    } else if (movingUp) {
-                        showScrollUp = false
                     }
-                    previous = current
+                    fast && movingUp && canGoBottom -> {
+                        scrollDirection = -1
+                        showScrollAction = true
+                        scrollActivityToken += 1L
+                    }
                 }
+                previous = current.first to current.second
+                previousTime = now
             }
+        }
     }
 
     LaunchedEffect(scrollActivityToken) {
         if (scrollActivityToken == 0L) return@LaunchedEffect
         val token = scrollActivityToken
         delay(5000L)
-        if (token == scrollActivityToken) showScrollUp = false
+        if (token == scrollActivityToken) showScrollAction = false
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -1068,12 +1095,17 @@ private fun Radio(
                         )
                     }
                 }
-                ScrollUpButton(
-                    visible = showScrollUp,
+                ScrollActionButton(
+                    visible = showScrollAction,
+                    direction = scrollDirection,
                     onClick = {
                         scope.launch {
-                            showScrollUp = false
-                            list.animateScrollToItem(0)
+                            showScrollAction = false
+                            if (scrollDirection == 1) {
+                                list.animateScrollToItem(0)
+                            } else {
+                                list.animateScrollToItem((orderedStations.lastIndex).coerceAtLeast(0))
+                            }
                         }
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
@@ -1556,6 +1588,9 @@ private fun Settings(
     val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
     val hiddenChannels by store.hiddenChannelsFlow().collectAsState(emptySet())
     val scope = rememberCoroutineScope()
+    val settingsContext = LocalContext.current.applicationContext
+    val tvRepo = remember(settingsContext, store) { TvPlaylistRepositoryV8(settingsContext, store) }
+    var tvCatalog by remember { mutableStateOf(emptyList<StreamItem>()) }
     var activeSourceKey by remember { mutableStateOf(builtinSourceKey(0)) }
     var userPlaylists by remember { mutableStateOf(emptyList<UserPlaylist>()) }
     var sourceDialog by remember { mutableStateOf(false) }
@@ -1569,6 +1604,14 @@ private fun Settings(
     LaunchedEffect(Unit) {
         activeSourceKey = store.activeSourceKey()
         userPlaylists = store.userPlaylists()
+    }
+    LaunchedEffect(hiddenChannels, activeSourceKey) {
+        if (hiddenChannels.isEmpty()) {
+            tvCatalog = emptyList()
+        } else {
+            val cached = runCatching { tvRepo.cached(activeSourceKey) }.getOrNull()
+            tvCatalog = cached?.items.orEmpty()
+        }
     }
 
     val selectedSourceName = when {
@@ -1620,7 +1663,7 @@ private fun Settings(
                         modifier = Modifier.height(40.dp).align(Alignment.Start),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
-                    ) { Text("Сбросить счётчик просмотров") }
+                    ) { Text("Сбросить счётчик просмотров", fontSize = 13.sp, maxLines = 1, softWrap = false) }
 
                     Spacer(Modifier.height(12.dp))
                     Text("РАДИО", color = Pink, fontWeight = FontWeight.SemiBold)
@@ -1635,7 +1678,7 @@ private fun Settings(
                         modifier = Modifier.height(40.dp).align(Alignment.Start),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
-                    ) { Text("Сбросить счётчик прослушивания") }
+                    ) { Text("Сбросить счётчик прослушивания", fontSize = 13.sp, maxLines = 1, softWrap = false) }
                 }
             }
         }
@@ -1672,41 +1715,62 @@ private fun Settings(
                 }
             }
         }
-        item {
-            Button(
-                onClick = onResetAll,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
-            ) { Text("СБРОСИТЬ НАСТРОЙКИ ДО ЗАВОДСКИХ") }
-        }
         if (hiddenChannels.isNotEmpty()) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("СКРЫТЫЕ КАНАЛЫ", color = Red, fontWeight = FontWeight.Bold)
                         hiddenChannels.sorted().forEach { key ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            val item = tvCatalog.firstOrNull { it.key == key }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
+                                    if (!item?.logoUrl.isNullOrBlank()) {
+                                        RemoteLogoImage(
+                                            item?.logoUrl,
+                                            item?.name ?: "Скрытый канал",
+                                            Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Box(
+                                            Modifier.fillMaxSize().background(PanelAlt, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) { Text("NO", color = Gray, fontSize = 8.sp) }
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
                                 Text(
-                                    key,
+                                    item?.name ?: "Скрытый канал",
                                     Modifier.weight(1f),
                                     color = Color.LightGray,
-                                    fontSize = 11.sp,
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                TextButton(onClick = { scope.launch { store.removeHiddenChannel(key) } }) {
-                                    Text("Восстановить", color = Red)
-                                }
+                                TextButton(
+                                    onClick = { scope.launch { store.removeHiddenChannel(key) } },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                ) { Text("Восстановить", color = Red, fontSize = 11.sp) }
                             }
                         }
                         Button(
                             onClick = { scope.launch { store.clearHiddenChannels() } },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(38.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
-                        ) { Text("ВОССТАНОВИТЬ ВСЕ") }
+                        ) { Text("ВОССТАНОВИТЬ ВСЕ", fontSize = 12.sp) }
                     }
                 }
             }
+        }
+        item {
+            Button(
+                onClick = onResetAll,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
+            ) { Text("СБРОСИТЬ НАСТРОЙКИ ДО ЗАВОДСКИХ") }
         }
         item {
             OutlinedButton(onClick = onDisclaimer, modifier = Modifier.fillMaxWidth()) {
@@ -2037,14 +2101,14 @@ private fun DonationCard() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
+                        Text("Telegram", color = Color.White, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             "★",
                             color = Color(0xFFFFD740),
                             fontSize = 22.sp,
                             modifier = Modifier.graphicsLayer(scaleX = starPulse, scaleY = starPulse)
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Telegram", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2084,8 +2148,43 @@ private fun DonationQrImage(
 @Composable
 private fun Disclaimer(onBack: () -> Unit) {
     val context = LocalContext.current
+    var interactionToken by remember { mutableLongStateOf(0L) }
+    var fingerDown by remember { mutableStateOf(false) }
+
+    LaunchedEffect(interactionToken, fingerDown) {
+        if (fingerDown) return@LaunchedEffect
+        val token = interactionToken
+        delay(10_000L)
+        if (!fingerDown && token == interactionToken) onBack()
+    }
+
+    val scrollConnection = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(
+                available: Offset,
+                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+            ): Offset {
+                interactionToken += 1L
+                return Offset.Zero
+            }
+        }
+    }
+
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollConnection)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        fingerDown = true
+                        interactionToken += 1L
+                        tryAwaitRelease()
+                        fingerDown = false
+                        interactionToken += 1L
+                    }
+                )
+            },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -2097,7 +2196,15 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
         item {
             Text(
-                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.\n\nПри использовании сторонних M3U/M3U8-плейлистов и других внешних источников возможны изменения, блокировки, недоступность, ошибки воспроизведения и прекращение отдельных трансляций. Пользователь самостоятельно принимает решение об использовании таких источников и несёт ответственность за свои действия и соблюдение применимых правил и законодательства.\n\nПриложение не хранит, не распространяет и не модифицирует транслируемый контент. Технически приложение только получает данные и пытается воспроизвести поток, предоставленный сторонним источником. Разработчик не контролирует содержание сторонних трансляций, их доступность, качество и стабильность и не гарантирует бесперебойную работу источников.\n\nФункциональность, внешний вид, источники, способы загрузки и другие возможности приложения могут изменяться или отключаться без предварительного уведомления. Используя приложение, пользователь подтверждает, что понимает эти ограничения.\n\nПользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
+                "Приложение работает с открытых источников трансляции, которые находятся в свободном доступе. Приложение является бесплатным и работает на добровольных пожертвованиях. Все авторские права сохранены за авторами контента.
+
+При использовании сторонних M3U/M3U8-плейлистов и других внешних источников возможны изменения, блокировки, недоступность, ошибки воспроизведения и прекращение отдельных трансляций. Пользователь самостоятельно принимает решение об использовании таких источников и несёт ответственность за свои действия и соблюдение применимых правил и законодательства.
+
+Приложение не хранит, не распространяет и не модифицирует транслируемый контент. Технически приложение только получает данные и пытается воспроизвести поток, предоставленный сторонним источником. Разработчик не контролирует содержание сторонних трансляций, их доступность, качество и стабильность и не гарантирует бесперебойную работу источников.
+
+Функциональность, внешний вид, источники, способы загрузки и другие возможности приложения могут изменяться или отключаться без предварительного уведомления. Используя приложение, пользователь подтверждает, что понимает эти ограничения.
+
+Пользование приложением разрешено только совершеннолетним. Используя приложение, вы подтверждаете свой возраст. Если вам нет 18 лет — позовите родителей.",
                 color = Color.LightGray,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
@@ -2123,7 +2230,6 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
     }
 }
-
 @Composable
 private fun ChannelRow(
     item: StreamItem,
