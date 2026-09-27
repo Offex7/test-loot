@@ -181,8 +181,21 @@ class SettingsStore(private val context: Context) {
         context.dataStore.data.first()[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet()
 
     suspend fun favoriteAddedAt(section: Section): Map<String, Long> {
-        val key = if (section == Section.TV) tvFavoriteTimesKey else radioFavoriteTimesKey
-        return decodeFavoriteTimes(context.dataStore.data.first()[key])
+        val prefs = context.dataStore.data.first()
+        val favoriteKey = if (section == Section.TV) tvFavoritesKey else radioFavoritesKey
+        val timeKey = if (section == Section.TV) tvFavoriteTimesKey else radioFavoriteTimesKey
+        val favorites = prefs[favoriteKey].orEmpty()
+        val existing = decodeFavoriteTimes(prefs[timeKey]).toMutableMap()
+        val missing = favorites.filterNot { existing.containsKey(it) }.sorted()
+        if (missing.isNotEmpty()) {
+            var next = maxOf(System.currentTimeMillis(), (existing.values.maxOrNull() ?: 0L) + 1L)
+            missing.forEach { id ->
+                existing[id] = next
+                next += 1L
+            }
+            context.dataStore.edit { it[timeKey] = encodeFavoriteTimes(existing) }
+        }
+        return existing
     }
 
     suspend fun setFavorite(section: Section, channelId: String, value: Boolean) {
