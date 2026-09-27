@@ -281,10 +281,6 @@ private fun App(
     var sleepUntil by remember { mutableLongStateOf(0L) }
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
-    val tvWeakNetwork by tv.weakNetwork.collectAsState()
-    val radioWeakNetwork by radio.weakNetwork.collectAsState()
-    val weakNetwork = tvWeakNetwork || radioWeakNetwork
-
     fun notify(message: String, durationMs: Long = 5000L) {
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
@@ -296,10 +292,6 @@ private fun App(
         val token = notificationToken
         delay(notificationDuration)
         if (token == notificationToken) notification = null
-    }
-
-    LaunchedEffect(weakNetwork) {
-        if (weakNetwork) notify("Нестабильное интернет-соединение. Попробую снизить качество видеопотока или переключу на другой канал.")
     }
 
     LaunchedEffect(Unit) {

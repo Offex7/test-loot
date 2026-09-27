@@ -498,7 +498,8 @@ fun TvV8Screen(
                     savedZooms = savedZooms - key
                 }
             },
-            pipMode = pipMode
+            pipMode = pipMode,
+            onWeakNetworkNotice = { message -> notify(message, 5000L) }
         )
         return
     }
@@ -1005,7 +1006,8 @@ private fun TvV9Player(
     initialZoom: Float?,
     onZoomChanged: (Float) -> Unit,
     onZoomReset: () -> Unit,
-    pipMode: Boolean
+    pipMode: Boolean,
+    onWeakNetworkNotice: (String) -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.activity.ComponentActivity
@@ -1041,6 +1043,10 @@ private fun TvV9Player(
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
     val playerScope = androidx.compose.runtime.rememberCoroutineScope()
     val playerWindow = activity?.window
+    val buffering by player.buffering.collectAsStateWithLifecycle()
+    val weakNetworkEvent by player.weakNetworkEvent.collectAsStateWithLifecycle()
+    val adaptiveBufferLevel by player.adaptiveBufferLevel.collectAsStateWithLifecycle()
+    var bufferPercent by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     val favoriteListState = rememberLazyListState()
     val favoriteFocusers = remember(favoriteChannels.map { it.first }) {
         favoriteChannels.map { FocusRequester() }
@@ -1104,9 +1110,29 @@ private fun TvV9Player(
     }
 
     androidx.compose.runtime.LaunchedEffect(channel.key) {
+        player.resetWeakNetworkSession()
         channelNotice = true
         delay(3000L)
         channelNotice = false
+    }
+
+    androidx.compose.runtime.LaunchedEffect(weakNetworkEvent) {
+        if (weakNetworkEvent <= 0L) return@LaunchedEffect
+        onWeakNetworkNotice(
+            "Нестабильное интернет-соединение. Попробую снизить качество трансляции или переключу на другой канал."
+        )
+    }
+
+    androidx.compose.runtime.LaunchedEffect(buffering, adaptiveBufferLevel, playerInstance) {
+        if (adaptiveBufferLevel < 3 || !buffering) {
+            if (!buffering) bufferPercent = 0
+            return@LaunchedEffect
+        }
+        while (buffering && adaptiveBufferLevel >= 3) {
+            bufferPercent = playerInstance.bufferedPercentage.coerceIn(0, 100)
+            delay(200L)
+        }
+        if (!buffering) bufferPercent = 100
     }
 
     androidx.compose.runtime.LaunchedEffect(orientation) {
@@ -1346,6 +1372,21 @@ private fun TvV9Player(
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (!pipMode && buffering && adaptiveBufferLevel >= 3) {
+                        Text(
+                            "Буферизация… $bufferPercent%",
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 140.dp)
+                                .background(Color.Black.copy(alpha = .35f), RoundedCornerShape(10.dp))
+                                .border(1.dp, Color.White.copy(alpha = .22f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
 
