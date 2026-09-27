@@ -197,6 +197,7 @@ fun TvV8Screen(
     var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playbackJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var scrollDirection by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) } // 1=up, -1=down
@@ -283,6 +284,7 @@ fun TvV8Screen(
 
     LaunchedEffect(searchOpen) {
         if (searchOpen) {
+            searchHistory = store.searchHistory(Section.TV)
             delay(80L)
             runCatching { focusRequester.requestFocus() }
             delay(40L)
@@ -552,10 +554,7 @@ fun TvV8Screen(
                 .thenByDescending { favoriteTimes[it.key] ?: 0L }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
-    val filtered = if (query.isBlank()) ordered else ordered.filter {
-        it.name.contains(query.trim(), true) ||
-            it.groupTitle.orEmpty().contains(query.trim(), true)
-    }
+    val filtered = fuzzyFilter(ordered, query)
 
     Column(Modifier.fillMaxSize().background(TvV9Bg)) {
         TvV9Header(
@@ -572,6 +571,7 @@ fun TvV8Screen(
                 searchStamp = System.currentTimeMillis()
             },
             onSearchClose = {
+                if (query.isNotBlank()) scope.launch { store.rememberSearch(Section.TV, query) }
                 searchOpen = false
                 query = ""
                 searchStamp = System.currentTimeMillis()
@@ -586,6 +586,22 @@ fun TvV8Screen(
             },
             onSettings = settings
         )
+
+        if (searchOpen && query.isBlank()) {
+            SearchHistoryPanel(
+                history = searchHistory,
+                onPick = {
+                    query = it
+                    searchStamp = System.currentTimeMillis()
+                },
+                onClear = {
+                    scope.launch {
+                        store.clearSearchHistory(Section.TV)
+                        searchHistory = emptyList()
+                    }
+                }
+            )
+        }
 
         restore?.let { item ->
             TvV9RestoreBanner(
@@ -776,12 +792,12 @@ private fun TvV9ChannelRow(
         animationSpec = tween(220, easing = FastOutSlowInEasing),
         label = "tv-v9-swipe-offset"
     )
+    val progress = (abs(dragOffset) / (rowWidth * 0.5f)).coerceIn(0f, 1f)
+
     LaunchedEffect(settling, settleTarget) {
         if (!settling) return@LaunchedEffect
         delay(220L)
-        if (settleTarget < 0f) {
-            onHide()
-        }
+        if (settleTarget < 0f) onHide()
         dragOffset = 0f
         settleTarget = 0f
         settling = false
@@ -792,88 +808,107 @@ private fun TvV9ChannelRow(
         enter = fadeIn(),
         exit = fadeOut(tween(180)) + shrinkVertically(tween(180))
     ) {
-        Card(
-            onClick = if (hiding) ({}) else onPlay,
-            modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { rowWidth = it.width.toFloat().coerceAtLeast(1f) }
-                .graphicsLayer {
-                    translationX = animatedOffset
-                    alpha = 1f - (abs(animatedOffset) / rowWidth).coerceIn(0f, 0.45f)
-                }
-                .pointerInput(item.key, rowWidth) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            if (!settling && !hiding) {
-                                dragOffset = (dragOffset + dragAmount).coerceIn(-rowWidth, 0f)
-                            }
-                        },
-                        onDragEnd = {
-                            if (hiding) return@detectHorizontalDragGestures
-                            val threshold = rowWidth * 0.5f
-                            settling = true
-                            if (dragOffset <= -threshold) {
-                                settleTarget = -rowWidth
-                                hiding = true
-                            } else {
-                                settleTarget = 0f
-                            }
-                        },
-                        onDragCancel = {
-                            if (!hiding) {
-                                settling = true
-                                settleTarget = 0f
-                            }
-                        }
-                    )
-                },
-            colors = CardDefaults.cardColors(
-                containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.name.uppercase(Locale.ROOT),
-                        color = if (offline) TvV9Gray else Color.White,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    item.groupTitle?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
-                }
-                IconButton(onClick = onFavorite) {
+        Box(Modifier.fillMaxWidth()) {
+            if (dragOffset < 0f) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            TvV9Red.copy(alpha = 0.10f + 0.50f * progress),
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
                     Icon(
-                        if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        "Избранное",
-                        tint = if (favorite) TvV9Red else Color.White
+                        Icons.Default.VisibilityOff,
+                        "Скрыть канал",
+                        tint = TvV9Red.copy(alpha = 0.65f + 0.35f * progress),
+                        modifier = Modifier.padding(end = 14.dp).size(30.dp)
                     )
                 }
-                if (showHideIcon) {
-                    IconButton(
-                        onClick = {
-                            if (!hiding) {
-                                settleTarget = -rowWidth
+            }
+            Card(
+                onClick = if (hiding) ({}) else onPlay,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { rowWidth = it.width.toFloat().coerceAtLeast(1f) }
+                    .graphicsLayer {
+                        translationX = animatedOffset
+                        alpha = 1f - (abs(animatedOffset) / rowWidth).coerceIn(0f, 0.45f)
+                    }
+                    .pointerInput(item.key, rowWidth) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (!settling && !hiding) {
+                                    dragOffset = (dragOffset + dragAmount).coerceIn(-rowWidth, 0f)
+                                    if (dragOffset <= -(rowWidth * 0.5f)) {
+                                        settleTarget = -rowWidth
+                                        settling = true
+                                        hiding = true
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                if (hiding) return@detectHorizontalDragGestures
+                                val threshold = rowWidth * 0.5f
                                 settling = true
-                                hiding = true
+                                if (dragOffset <= -threshold) {
+                                    settleTarget = -rowWidth
+                                    hiding = true
+                                } else {
+                                    settleTarget = 0f
+                                }
+                            },
+                            onDragCancel = {
+                                if (!hiding) {
+                                    settling = true
+                                    settleTarget = 0f
+                                }
                             }
-                        },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .border(1.dp, TvV9Red, CircleShape)
-                    ) {
-                        Icon(
-                            Icons.Default.VisibilityOff,
-                            "Скрыть канал",
-                            tint = TvV9Gray
                         )
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.name.uppercase(Locale.ROOT),
+                            color = if (offline) TvV9Gray else Color.White,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        item.groupTitle?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = TvV9Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
+                    }
+                    IconButton(onClick = onFavorite) {
+                        Icon(
+                            if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            "Избранное",
+                            tint = if (favorite) TvV9Red else Color.White
+                        )
+                    }
+                    if (showHideIcon) {
+                        IconButton(
+                            onClick = {
+                                if (!hiding) {
+                                    settleTarget = -rowWidth
+                                    settling = true
+                                    hiding = true
+                                }
+                            },
+                            modifier = Modifier.size(42.dp).border(1.dp, TvV9Red, CircleShape)
+                        ) {
+                            Icon(Icons.Default.VisibilityOff, "Скрыть канал", tint = TvV9Gray)
+                        }
                     }
                 }
             }
