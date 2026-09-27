@@ -34,6 +34,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -731,31 +733,19 @@ private fun ScrollUpButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "scroll-up-button")
-    val scale by transition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(650, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scroll-up-scale"
-    )
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-        exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
+        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.8f, animationSpec = tween(180)),
+        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.8f, animationSpec = tween(180))
     ) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(52.dp)
-                .graphicsLayer(scaleX = scale, scaleY = scale)
-                .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                .border(1.5.dp, Red, CircleShape)
+                .size(48.dp)
+                .background(Red, CircleShape)
         ) {
-            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(30.dp))
+            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(28.dp))
         }
     }
 }
