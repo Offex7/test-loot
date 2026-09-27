@@ -1719,8 +1719,13 @@ private fun TvV9PlayerButton(
     contentDescription: String,
     onClick: () -> Unit
 ) {
+    val hapticView = LocalView.current
+    val haptics = !LocalEnergySaving.current
     IconButton(
-        onClick = onClick,
+        onClick = {
+            if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
         modifier = Modifier
             .size(48.dp)
             .background(Color.Black.copy(alpha = .48f), CircleShape)
@@ -1737,8 +1742,13 @@ private fun TvV9PlayerButtonLarge(
     contentDescription: String,
     onClick: () -> Unit
 ) {
+    val hapticView = LocalView.current
+    val haptics = !LocalEnergySaving.current
     IconButton(
-        onClick = onClick,
+        onClick = {
+            if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
         modifier = Modifier
             .size(60.dp)
             .background(Color.Black.copy(alpha = .48f), CircleShape)
