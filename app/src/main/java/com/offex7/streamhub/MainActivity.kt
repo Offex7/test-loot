@@ -1068,14 +1068,14 @@ private fun Radio(
             timerElapsedMs = state.elapsedMs
             timerStartedAtMs = state.startedAtMs
             timerNowMs = now
-            current?.let { availability = availability + (it.url to AvailabilityStatus.OFFLINE) }
+            RADIO_STATIONS.getOrNull(index)?.let { availability = availability + (it.url to AvailabilityStatus.OFFLINE) }
             notify("Возникла проблема. Обсуждаем решения в Telegram.")
         }
     }
 
     LaunchedEffect(playing, current?.key, energySaving) {
         if (!playing || current == null || energySaving) return@LaunchedEffect
-        val stationKey = current.key
+        val stationKey = RADIO_STATIONS.getOrNull(player.currentIndex.value)?.key ?: return@LaunchedEffect
         while (playing && !energySaving) {
             delay(Random.nextLong(30 * 60 * 1000L, 50 * 60 * 1000L + 1L))
             if (playing && RADIO_STATIONS.getOrNull(player.currentIndex.value)?.key == stationKey) radioBumpNonce += 1
