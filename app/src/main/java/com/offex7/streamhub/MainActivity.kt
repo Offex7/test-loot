@@ -880,6 +880,7 @@ private fun Header(
     onQuery: (String) -> Unit,
     onSearchClose: () -> Unit,
     onRefresh: (() -> Unit)? = null,
+    extraAction: (@Composable () -> Unit)? = null,
     showSearch: Boolean = true,
     showTimer: Boolean = true
 ) {
@@ -891,6 +892,7 @@ private fun Header(
             if (!searchOpen) {
                 onRefresh?.let { IconButton(onClick = it) { Icon(Icons.Default.Refresh, "Обновить", tint = Red) } }
                 if (showSearch) IconButton(onClick = onSearchOpen) { Icon(Icons.Default.Search, "Поиск", tint = Red) }
+                extraAction?.invoke()
                 settings?.let { IconButton(onClick = it) { Icon(Icons.Default.Settings, "Настройки", tint = Red) } }
             } else if (showSearch) {
                 IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, "Закрыть", tint = Red) }
@@ -953,6 +955,8 @@ private fun Radio(
     var searchStamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by remember { mutableStateOf(emptyList<String>()) }
     var radioBumpNonce by remember { mutableIntStateOf(0) }
+    var eqDialog by remember { mutableStateOf(false) }
+    val eqSettings by store.radioEqualizerFlow().collectAsState(SettingsStore.RadioEqualizerSettings())
     val energySaving = LocalEnergySaving.current
     val radioTimerContext = LocalContext.current.applicationContext
     val timerStore = remember(radioTimerContext) { RadioTimerStore(radioTimerContext) }
@@ -1162,6 +1166,11 @@ private fun Radio(
                 timer = "",
                 back = back,
                 settings = settings,
+                extraAction = {
+                    IconButton(onClick = { eqDialog = true }) {
+                        Icon(Icons.Default.Equalizer, "Эквалайзер", tint = Red)
+                    }
+                },
                 searchOpen = searchOpen,
                 query = query,
                 onSearchOpen = {
@@ -1284,6 +1293,17 @@ private fun Radio(
                         )
                     }
                 }
+                if (eqDialog) {
+                    RadioEqualizerDialog(
+                        settings = eqSettings,
+                        onDismiss = { eqDialog = false },
+                        onSave = { updated ->
+                            scope.launch { store.setRadioEqualizer(updated) }
+                            eqDialog = false
+                        }
+                    )
+                }
+
                 ScrollActionButton(
                     visible = showScrollAction,
                     direction = scrollDirection,
@@ -2698,6 +2718,57 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
     }
 }
+@Composable
+private fun RadioEqualizerDialog(
+    settings: SettingsStore.RadioEqualizerSettings,
+    onDismiss: () -> Unit,
+    onSave: (SettingsStore.RadioEqualizerSettings) -> Unit
+) {
+    var bass by remember(settings) { mutableFloatStateOf(settings.bass.toFloat()) }
+    var mid by remember(settings) { mutableFloatStateOf(settings.mid.toFloat()) }
+    var treble by remember(settings) { mutableFloatStateOf(settings.treble.toFloat()) }
+    var preset by remember(settings) { mutableStateOf(settings.preset) }
+    val presets = listOf("Flat", "Bass Boost", "Rock", "Pop", "Jazz", "Virtualizer")
+    fun applyPreset(name: String) {
+        preset = name
+        when (name) {
+            "Flat" -> { bass = 0f; mid = 0f; treble = 0f }
+            "Bass Boost" -> { bass = 1100f; mid = 0f; treble = 350f }
+            "Rock" -> { bass = 900f; mid = 150f; treble = 800f }
+            "Pop" -> { bass = 500f; mid = -100f; treble = 500f }
+            "Jazz" -> { bass = 400f; mid = -150f; treble = 350f }
+            "Virtualizer" -> { bass = 0f; mid = 0f; treble = 0f }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ЭКВАЛАЙЗЕР РАДИО") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Bass", color = Gray, fontSize = 11.sp)
+                Slider(value = bass, onValueChange = { bass = it; preset = "Flat" }, valueRange = -1500f..1500f)
+                Text("Mid", color = Gray, fontSize = 11.sp)
+                Slider(value = mid, onValueChange = { mid = it; preset = "Flat" }, valueRange = -1500f..1500f)
+                Text("Treble", color = Gray, fontSize = 11.sp)
+                Slider(value = treble, onValueChange = { treble = it; preset = "Flat" }, valueRange = -1500f..1500f)
+                Text("Пресет", color = Gray, fontSize = 11.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    presets.forEach { name ->
+                        AssistChip(onClick = { applyPreset(name) }, label = { Text(name, fontSize = 9.sp) })
+                    }
+                }
+                Text("Нормализация громкости не включена: для разных интернет-потоков нет надёжной общей loudness-метрики.", color = Gray, fontSize = 9.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(SettingsStore.RadioEqualizerSettings(bass.toInt(), mid.toInt(), treble.toInt(), preset, false))
+            }) { Text("СОХРАНИТЬ", color = Red) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ОТМЕНА") } }
+    )
+}
+
 @Composable
 private fun ChannelRow(
     item: StreamItem,
