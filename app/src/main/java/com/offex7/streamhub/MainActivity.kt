@@ -904,6 +904,8 @@ private fun Radio(
             .collect { current ->
                 store.saveScrollPosition(Section.RADIO, current.first, current.second)
                 if (current != previous) {
+                    val movingUp = current.first < previous.first ||
+                        (current.first == previous.first && current.second < previous.second)
                     val movingDown = current.first > previous.first ||
                         (current.first == previous.first && current.second > previous.second)
                     if (movingDown && current.first >= 6) {
