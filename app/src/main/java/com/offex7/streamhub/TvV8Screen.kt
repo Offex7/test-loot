@@ -107,6 +107,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -787,6 +788,8 @@ private fun TvV9ChannelRow(
     var settleTarget by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     var settling by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     var hiding by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
+    val hapticView = LocalView.current
+    val haptics = !LocalEnergySaving.current
     val animatedOffset by animateFloatAsState(
         targetValue = if (settling) settleTarget else dragOffset,
         animationSpec = tween(220, easing = FastOutSlowInEasing),
@@ -889,7 +892,10 @@ private fun TvV9ChannelRow(
                         }
                         if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
                     }
-                    IconButton(onClick = onFavorite) {
+                    IconButton(onClick = {
+                        if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        onFavorite()
+                    }) {
                         Icon(
                             if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             "Избранное",
@@ -899,6 +905,7 @@ private fun TvV9ChannelRow(
                     if (showHideIcon) {
                         IconButton(
                             onClick = {
+                                if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                 if (!hiding) {
                                     settleTarget = -rowWidth
                                     settling = true
