@@ -7,7 +7,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 object LogExporter {
-    fun export(context: Context): File {
+    suspend fun export(context: Context, store: SettingsStore): File {
         val zip = File(context.filesDir, "Radio.TV. bagreport.zip")
         val logLines = synchronized(this) {
             val all = recentLines.toList()
@@ -39,7 +39,25 @@ object LogExporter {
             val start = (finalLines.size - 1000).coerceAtLeast(0)
             val finalLogs = finalLines.subList(start, finalLines.size).joinToString("\n")
             entry("logs.txt", finalLogs)
-            entry("settings.txt", "log_export=1")
+            val eq = store.radioEqualizerSettings()
+            val settingsSnapshot = buildString {
+                appendLine("app_version=" + BuildConfig.VERSION_NAME)
+                appendLine("app_version_code=" + BuildConfig.VERSION_CODE)
+                appendLine("energy_saving_mode=" + store.energySavingMode())
+                appendLine("haptics_enabled=" + store.hapticsEnabled())
+                appendLine("autostart_enabled=" + store.autoStartEnabled())
+                appendLine("pip_enabled=" + store.pipEnabled())
+                appendLine("active_tv_source=" + store.activeSourceKey())
+                appendLine("hidden_channels_count=" + store.hiddenChannels().size)
+                appendLine("tv_favorites_count=" + store.favorites(Section.TV).size)
+                appendLine("radio_favorites_count=" + store.favorites(Section.RADIO).size)
+                appendLine("radio_eq_bass=" + eq.bass)
+                appendLine("radio_eq_mid=" + eq.mid)
+                appendLine("radio_eq_treble=" + eq.treble)
+                appendLine("radio_eq_preset=" + eq.preset)
+                appendLine("radio_normalize=" + eq.normalize)
+            }
+            entry("settings.txt", settingsSnapshot.trimEnd())
         }
         return zip
     }
