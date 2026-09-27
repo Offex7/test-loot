@@ -2915,7 +2915,7 @@ private fun ChannelRow(
                 }
             } else {
                 IconButton(
-                    onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() },
+                    onClick = { performFavoriteHaptic(hapticView, haptics, adding = !favorite); onFavorite() },
                     modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                 ) {
                     Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor)
