@@ -795,7 +795,7 @@ private fun TvV9ChannelRow(
         animationSpec = tween(220, easing = FastOutSlowInEasing),
         label = "tv-v9-swipe-offset"
     )
-    val progress = (abs(dragOffset) / (rowWidth * 0.5f)).coerceIn(0f, 1f)
+    val progress = (abs(animatedOffset) / (rowWidth * 0.5f)).coerceIn(0f, 1f)
 
     LaunchedEffect(settling, settleTarget) {
         if (!settling) return@LaunchedEffect
