@@ -2085,11 +2085,13 @@ private fun Settings(
         item {
             Card(
                 onClick = {
-                    runCatching {
-                        val file = LogExporter.export(settingsContext)
-                        Toast.makeText(settingsContext, "Лог сохранён: " + file.name, Toast.LENGTH_LONG).show()
-                    }.onFailure {
-                        Toast.makeText(settingsContext, "Не удалось сохранить лог", Toast.LENGTH_LONG).show()
+                    scope.launch {
+                        runCatching {
+                            val file = LogExporter.export(settingsContext, store)
+                            Toast.makeText(settingsContext, "Лог сохранён: " + file.name, Toast.LENGTH_LONG).show()
+                        }.onFailure {
+                            Toast.makeText(settingsContext, "Не удалось сохранить лог", Toast.LENGTH_LONG).show()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
