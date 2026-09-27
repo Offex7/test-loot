@@ -84,6 +84,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -112,6 +113,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowInsetsCompat
@@ -1306,7 +1308,7 @@ private fun TvV9Player(
         } else {
             AnimatedVisibility(
                 visible = controls && !pipMode,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().zIndex(1f),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -1380,18 +1382,32 @@ private fun TvV9Player(
                     }
 
                     if (!pipMode && buffering && adaptiveBufferLevel >= 3) {
-                        Text(
-                            "Буферизация… $bufferPercent%",
-                            color = Color.White,
+                        Card(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 140.dp)
-                                .background(Color.Black.copy(alpha = .35f), RoundedCornerShape(10.dp))
-                                .border(1.dp, Color.White.copy(alpha = .22f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                                .padding(bottom = 140.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .35f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                Modifier.width(180.dp).padding(horizontal = 12.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "Буферизация… $bufferPercent%",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                LinearProgressIndicator(
+                                    progress = { bufferPercent / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    color = TvV9Red,
+                                    trackColor = Color.White.copy(alpha = .20f)
+                                )
+                            }
+                        }
                     }
 
                     if (channelNotice) {

@@ -2228,44 +2228,50 @@ private fun LogoImage(
         Modifier.size(size).graphicsLayer(scaleX = scale, scaleY = scale),
         contentAlignment = Alignment.BottomCenter
     ) {
-        val imageModifier = Modifier
-            .fillMaxSize()
+        val logoContainerModifier = Modifier
+            .size(size)
             .clip(RoundedCornerShape(12.dp))
-            .alpha(if (dimmed) .4f else 1f)
             .then(
-                if (activeRadio) {
-                    Modifier.border(2.dp, borderColor, RoundedCornerShape(12.dp))
-                } else Modifier
+                if (activeRadio) Modifier.border(2.dp, borderColor, RoundedCornerShape(12.dp))
+                else Modifier
             )
-
-        val remoteUrl = item.logoUrl ?: item.epgLogoUrl
-        if (localRadioImage != null) {
-            Image(
-                bitmap = localRadioImage,
-                contentDescription = item.name,
-                modifier = imageModifier
-            )
-        } else if (isRadio) {
-            Box(
-                imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
-            }
-        } else if (preferRemote && !remoteUrl.isNullOrBlank()) {
-            RemoteLogoImage(remoteUrl, item.name, imageModifier)
-        } else if (resourceId != 0) {
-            Image(
-                painter = painterResource(resourceId),
-                contentDescription = item.name,
-                modifier = imageModifier
-            )
-        } else {
-            Box(
-                imageModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+        Box(logoContainerModifier, contentAlignment = Alignment.Center) {
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .padding(if (activeRadio) 3.dp else 2.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .alpha(if (dimmed) .4f else 1f)
+            val remoteUrl = item.logoUrl ?: item.epgLogoUrl
+            if (localRadioImage != null) {
+                Image(
+                    bitmap = localRadioImage,
+                    contentDescription = item.name,
+                    modifier = contentModifier,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            } else if (isRadio) {
+                Box(
+                    contentModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(9.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+                }
+            } else if (preferRemote && !remoteUrl.isNullOrBlank()) {
+                RemoteLogoImage(remoteUrl, item.name, contentModifier)
+            } else if (resourceId != 0) {
+                Image(
+                    painter = painterResource(resourceId),
+                    contentDescription = item.name,
+                    modifier = contentModifier,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            } else {
+                Box(
+                    contentModifier.background(Color(0xFF2A2A2A), RoundedCornerShape(9.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("NO Image", color = Color.Gray, fontSize = 9.sp, textAlign = TextAlign.Center)
+                }
             }
         }
 
