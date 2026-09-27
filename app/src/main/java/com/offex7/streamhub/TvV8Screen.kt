@@ -68,6 +68,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -103,6 +104,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -197,8 +199,10 @@ fun TvV8Screen(
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playbackJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
-    var showScrollUp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var scrollDirection by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) } // 1=up, -1=down
+    var showScrollAction by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var scrollActivityToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var lastScrollSampleTime by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
     suspend fun reload() {
         loading = true
@@ -231,23 +235,46 @@ fun TvV8Screen(
         val saved = store.scrollPosition(Section.TV)
         runCatching { list.scrollToItem(saved.first.coerceAtLeast(0), saved.second) }
         var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
-        androidx.compose.runtime.snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
-            .collect { current ->
-                store.saveScrollPosition(Section.TV, current.first, current.second)
-                if (current != previous) {
-                    val movingUp = current.first < previous.first ||
-                        (current.first == previous.first && current.second < previous.second)
-                    val movingDown = current.first > previous.first ||
-                        (current.first == previous.first && current.second > previous.second)
-                    if (movingDown && current.first >= 6) {
-                        showScrollUp = true
+        var previousTime = System.currentTimeMillis()
+        androidx.compose.runtime.snapshotFlow {
+            Triple(
+                list.firstVisibleItemIndex,
+                list.firstVisibleItemScrollOffset,
+                list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            )
+        }.collect { current ->
+            val now = System.currentTimeMillis()
+            store.saveScrollPosition(Section.TV, current.first, current.second)
+            if (current.first != previous.first || current.second != previous.second) {
+                val deltaIndex = current.first - previous.first
+                val deltaPx = current.second - previous.second
+                val elapsed = (now - previousTime).coerceAtLeast(1L)
+                val movingUp = deltaIndex < 0 || (deltaIndex == 0 && deltaPx < 0)
+                val movingDown = deltaIndex > 0 || (deltaIndex == 0 && deltaPx > 0)
+                val fast = kotlin.math.abs(deltaIndex) >= 2 ||
+                    (elapsed <= 140L && kotlin.math.abs(deltaPx) >= 96)
+                val total = filtered.size
+                val lastVisible = current.third
+                val canGoTop = current.first > 5
+                val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
+                when {
+                    current.first <= 0 && current.second <= 0 -> showScrollAction = false
+                    total > 0 && lastVisible >= total - 1 -> showScrollAction = false
+                    fast && movingDown && canGoTop -> {
+                        scrollDirection = 1
+                        showScrollAction = true
                         scrollActivityToken += 1L
-                    } else if (movingUp) {
-                        showScrollUp = false
                     }
-                    previous = current
+                    fast && movingUp && canGoBottom -> {
+                        scrollDirection = -1
+                        showScrollAction = true
+                        scrollActivityToken += 1L
+                    }
                 }
+                previous = current.first to current.second
+                previousTime = now
             }
+        }
     }
 
     LaunchedEffect(searchOpen) {
@@ -300,7 +327,7 @@ fun TvV8Screen(
         if (scrollActivityToken == 0L) return@LaunchedEffect
         val token = scrollActivityToken
         delay(5000L)
-        if (token == scrollActivityToken) showScrollUp = false
+        if (token == scrollActivityToken) showScrollAction = false
     }
 
     LaunchedEffect(fullscreen) {
@@ -646,12 +673,17 @@ fun TvV8Screen(
                 }
             }
 
-            TvV9ScrollUpButton(
-                visible = showScrollUp,
+            TvV9ScrollActionButton(
+                visible = showScrollAction,
+                direction = scrollDirection,
                 onClick = {
                     scope.launch {
-                        showScrollUp = false
-                        list.animateScrollToItem(0)
+                        showScrollAction = false
+                        if (scrollDirection == 1) {
+                            list.animateScrollToItem(0)
+                        } else if (filtered.isNotEmpty()) {
+                            list.animateScrollToItem(filtered.lastIndex)
+                        }
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
@@ -876,39 +908,29 @@ private fun TvV9Logo(
 }
 
 @Composable
-private fun TvV9ScrollUpButton(
+private fun TvV9ScrollActionButton(
     visible: Boolean,
+    direction: Int,
     onClick: () -> Unit,
     modifier: Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "tv-v9-scroll-up")
-    val scale by transition.animateFloat(
-        initialValue = .92f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(650, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "tv-v9-scroll-scale"
-    )
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-        exit = fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 })
+        enter = fadeIn(tween(180)) + androidx.compose.animation.scaleIn(initialScale = .82f, animationSpec = tween(180)),
+        exit = fadeOut(tween(180)) + androidx.compose.animation.scaleOut(targetScale = .82f, animationSpec = tween(180))
     ) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
                 .size(52.dp)
-                .graphicsLayer(scaleX = scale, scaleY = scale)
                 .background(Color.Black.copy(alpha = .55f), CircleShape)
                 .border(1.5.dp, TvV9Red, CircleShape)
                 .focusable()
         ) {
             Icon(
-                Icons.Default.KeyboardArrowUp,
-                "Вверх",
+                if (direction == 1) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                if (direction == 1) "Вниз" else "Вверх",
                 tint = Color.White,
                 modifier = Modifier.size(30.dp)
             )
@@ -1042,6 +1064,8 @@ private fun TvV9Player(
     }
     var panX by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     var panY by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var viewportWidth by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(1) }
+    var viewportHeight by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(1) }
     var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
@@ -1067,7 +1091,7 @@ private fun TvV9Player(
     }
 
     val formatLabel = when (formatMode) {
-        1 -> "РАСТЯНУТЬ 25%"
+        1 -> "РАСТЯНУТЬ 125%"
         2 -> "РАСТЯНУТЬ 150%"
         3 -> "РАСТЯНУТЬ 200%"
         4 -> "ЗАПОЛНИТЬ"
@@ -1240,12 +1264,18 @@ private fun TvV9Player(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged {
+                    viewportWidth = it.width.coerceAtLeast(1)
+                    viewportHeight = it.height.coerceAtLeast(1)
+                }
                 .graphicsLayer {
                     val baseScale = zoom * formatScale
                     scaleX = baseScale
                     scaleY = baseScale
-                    translationX = if (formatMode == 5) panX else 0f
-                    translationY = if (formatMode == 5) panY else 0f
+                    val maxPanX = viewportWidth * (baseScale - 1f) / 2f
+                    val maxPanY = viewportHeight * (baseScale - 1f) / 2f
+                    translationX = panX.coerceIn(-maxPanX, maxPanX)
+                    translationY = panY.coerceIn(-maxPanY, maxPanY)
                 }
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
@@ -1274,11 +1304,15 @@ private fun TvV9Player(
                                 panY = 0f
                                 onZoomReset()
                             }
-                            zoom = (zoom * gestureZoom).coerceIn(1f, 3f)
-                            panX += pan.x
-                            panY += pan.y
-                            onZoomChanged(zoom)
-                            showPlayerToast("Пользовательский масштаб: " + (zoom * 100f).toInt() + "%", 3000L)
+                            val nextZoom = (zoom * gestureZoom).coerceIn(1f, 3f)
+                            zoom = nextZoom
+                            val effectiveScale = (nextZoom * formatScale).coerceAtLeast(1f)
+                            val maxPanX = viewportWidth * (effectiveScale - 1f) / 2f
+                            val maxPanY = viewportHeight * (effectiveScale - 1f) / 2f
+                            panX = (panX + pan.x).coerceIn(-maxPanX, maxPanX)
+                            panY = (panY + pan.y).coerceIn(-maxPanY, maxPanY)
+                            onZoomChanged(nextZoom)
+                            showPlayerToast("Пользовательский масштаб: " + (nextZoom * 100f).toInt() + "%", 3000L)
                         }
                     } else {
                         detectTransformGestures { _, _, _, _ -> }
@@ -1334,7 +1368,7 @@ private fun TvV9Player(
                             panY = 0f
                             onZoomReset()
                             val nextLabel = when (formatMode) {
-                                1 -> "РАСТЯНУТЬ 25%"
+                                1 -> "РАСТЯНУТЬ 125%"
                                 2 -> "РАСТЯНУТЬ 150%"
                                 3 -> "РАСТЯНУТЬ 200%"
                                 4 -> "ЗАПОЛНИТЬ"
