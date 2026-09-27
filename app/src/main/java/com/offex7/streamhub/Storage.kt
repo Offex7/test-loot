@@ -42,6 +42,16 @@ class SettingsStore(private val context: Context) {
     private val channelZoomsStorage = stringPreferencesKey("tv_channel_zooms_v1")
     private val firstLaunchKey = booleanPreferencesKey("first_launch_v2")
     private val hiddenChannelsKey = stringSetPreferencesKey("hiddenChannels")
+    private val tvSearchHistoryKey = stringPreferencesKey("search_history_tv_v1")
+    private val radioSearchHistoryKey = stringPreferencesKey("search_history_radio_v1")
+    private val energySavingModeKey = stringPreferencesKey("energy_saving_mode_v1")
+    private val hapticsKey = booleanPreferencesKey("haptics_enabled_v1")
+    private val autoStartKey = booleanPreferencesKey("autostart_android_tv_v1")
+    private val equalizerBassKey = intPreferencesKey("radio_eq_bass_v1")
+    private val equalizerMidKey = intPreferencesKey("radio_eq_mid_v1")
+    private val equalizerTrebleKey = intPreferencesKey("radio_eq_treble_v1")
+    private val equalizerPresetKey = stringPreferencesKey("radio_eq_preset_v1")
+    private val normalizeKey = booleanPreferencesKey("radio_normalize_v1")
 
     suspend fun disclaimerShown(): Boolean = context.dataStore.data.first()[firstLaunchKey] ?: false
     suspend fun setDisclaimerShown(shown: Boolean) { context.dataStore.edit { it[firstLaunchKey] = shown } }
@@ -362,6 +372,113 @@ class SettingsStore(private val context: Context) {
         org.json.JSONObject().apply {
             map.forEach { (id, zoom) -> put(id, zoom.toDouble()) }
         }.toString()
+
+
+    suspend fun searchHistory(section: Section): List<String> {
+        val key = if (section == Section.TV) tvSearchHistoryKey else radioSearchHistoryKey
+        return decodeSearchHistory(context.dataStore.data.first()[key])
+    }
+
+    suspend fun rememberSearch(section: Section, query: String) {
+        val clean = query.trim().replace(Regex("\\s+"), " ").take(80)
+        if (clean.isBlank()) return
+        val key = if (section == Section.TV) tvSearchHistoryKey else radioSearchHistoryKey
+        val current = decodeSearchHistory(context.dataStore.data.first()[key])
+        val updated = buildList {
+            add(clean)
+            current.filterNot { it.equals(clean, ignoreCase = true) }.forEach { add(it) }
+        }.take(4)
+        context.dataStore.edit { it[key] = org.json.JSONArray(updated).toString() }
+    }
+
+    suspend fun clearSearchHistory(section: Section) {
+        val key = if (section == Section.TV) tvSearchHistoryKey else radioSearchHistoryKey
+        context.dataStore.edit { it.remove(key) }
+    }
+
+    private fun decodeSearchHistory(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val json = org.json.JSONArray(raw)
+            buildList {
+                for (i in 0 until json.length()) {
+                    json.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }.distinctBy { it.lowercase(java.util.Locale.ROOT) }.take(4)
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun energySavingMode(): String =
+        context.dataStore.data.first()[energySavingModeKey] ?: "AUTO"
+
+    fun energySavingModeFlow(): Flow<String> =
+        context.dataStore.data.map { it[energySavingModeKey] ?: "AUTO" }
+
+    suspend fun setEnergySavingMode(mode: String) {
+        val normalized = mode.uppercase(java.util.Locale.ROOT)
+        if (normalized !in setOf("AUTO", "ON", "OFF")) return
+        context.dataStore.edit { it[energySavingModeKey] = normalized }
+    }
+
+    suspend fun hapticsEnabled(): Boolean =
+        context.dataStore.data.first()[hapticsKey] ?: true
+
+    fun hapticsFlow(): Flow<Boolean> =
+        context.dataStore.data.map { it[hapticsKey] ?: true }
+
+    suspend fun setHapticsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[hapticsKey] = enabled }
+    }
+
+    suspend fun autoStartEnabled(): Boolean =
+        context.dataStore.data.first()[autoStartKey] ?: false
+
+    fun autoStartFlow(): Flow<Boolean> =
+        context.dataStore.data.map { it[autoStartKey] ?: false }
+
+    suspend fun setAutoStartEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[autoStartKey] = enabled }
+    }
+
+    data class RadioEqualizerSettings(
+        val bass: Int = 0,
+        val mid: Int = 0,
+        val treble: Int = 0,
+        val preset: String = "Flat",
+        val normalize: Boolean = false
+    )
+
+    suspend fun radioEqualizerSettings(): RadioEqualizerSettings {
+        val prefs = context.dataStore.data.first()
+        return RadioEqualizerSettings(
+            bass = (prefs[equalizerBassKey] ?: 0).coerceIn(-1500, 1500),
+            mid = (prefs[equalizerMidKey] ?: 0).coerceIn(-1500, 1500),
+            treble = (prefs[equalizerTrebleKey] ?: 0).coerceIn(-1500, 1500),
+            preset = prefs[equalizerPresetKey] ?: "Flat",
+            normalize = prefs[normalizeKey] ?: false
+        )
+    }
+
+    fun radioEqualizerFlow(): Flow<RadioEqualizerSettings> =
+        context.dataStore.data.map { prefs ->
+            RadioEqualizerSettings(
+                bass = (prefs[equalizerBassKey] ?: 0).coerceIn(-1500, 1500),
+                mid = (prefs[equalizerMidKey] ?: 0).coerceIn(-1500, 1500),
+                treble = (prefs[equalizerTrebleKey] ?: 0).coerceIn(-1500, 1500),
+                preset = prefs[equalizerPresetKey] ?: "Flat",
+                normalize = prefs[normalizeKey] ?: false
+            )
+        }
+
+    suspend fun setRadioEqualizer(settings: RadioEqualizerSettings) {
+        context.dataStore.edit {
+            it[equalizerBassKey] = settings.bass.coerceIn(-1500, 1500)
+            it[equalizerMidKey] = settings.mid.coerceIn(-1500, 1500)
+            it[equalizerTrebleKey] = settings.treble.coerceIn(-1500, 1500)
+            it[equalizerPresetKey] = settings.preset.take(32)
+            it[normalizeKey] = settings.normalize
+        }
+    }
 
     suspend fun resetAll() { context.dataStore.edit { it.clear() } }
 }
