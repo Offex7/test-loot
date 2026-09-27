@@ -9,7 +9,7 @@ import java.util.zip.ZipOutputStream
 object LogExporter {
     fun export(context: Context): File {
         val zip = File(context.filesDir, "Radio.TV. bagreport.zip")
-        val logLines = synchronized(this) { recentLines.takeLast(1000).toList() }
+        val logLines = synchronized(this) { recentLines.toList().takeLast(1000) }
         ZipOutputStream(zip.outputStream().buffered()).use { out ->
             fun entry(name: String, content: String) {
                 out.putNextEntry(ZipEntry(name))
