@@ -183,6 +183,7 @@ fun TvV8Screen(
 
     var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
     var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
+    var favoriteTimes by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Long>()) }
     var health by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, AvailabilityStatus>()) }
     var loading by androidx.compose.runtime.remember(sourceKey) { androidx.compose.runtime.mutableStateOf(true) }
     var loadError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -219,6 +220,7 @@ fun TvV8Screen(
 
     LaunchedEffect(sourceKey) {
         favorites = store.favorites(Section.TV)
+        favoriteTimes = store.favoriteAddedAt(Section.TV)
         savedZooms = store.channelZooms()
         reload()
     }
@@ -233,9 +235,13 @@ fun TvV8Screen(
                 if (current != previous) {
                     val movingUp = current.first < previous.first ||
                         (current.first == previous.first && current.second < previous.second)
-                    if (movingUp) {
+                    val movingDown = current.first > previous.first ||
+                        (current.first == previous.first && current.second > previous.second)
+                    if (movingDown && current.first >= 6) {
                         showScrollUp = true
                         scrollActivityToken += 1L
+                    } else if (movingUp) {
+                        showScrollUp = false
                     }
                     previous = current
                 }
@@ -348,6 +354,7 @@ fun TvV8Screen(
             }
             .sortedWith(
                 compareByDescending<Int> { favorites.contains(channels[it].key) }
+                    .thenByDescending { favoriteTimes[channels[it].key] ?: 0L }
                     .thenBy { it }
             )
 
@@ -436,7 +443,10 @@ fun TvV8Screen(
             if (favorites.contains(channel.key) && !hiddenChannels.contains(channel.key)) {
                 Triple(index, channel, health[channel.url] ?: AvailabilityStatus.UNKNOWN)
             } else null
-        }
+        }.sortedWith(
+            compareByDescending<Triple<Int, StreamItem, AvailabilityStatus>> { favoriteTimes[it.second.key] ?: 0L }
+                .thenBy { it.second.name.lowercase(Locale.ROOT) }
+        )
         TvV9Player(
             player = player,
             playerInstance = playerInstance,
@@ -504,6 +514,7 @@ fun TvV8Screen(
         .filterNot { hiddenChannels.contains(it.key) }
         .sortedWith(
             compareByDescending<StreamItem> { favorites.contains(it.key) }
+                .thenByDescending { favoriteTimes[it.key] ?: 0L }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
     val filtered = if (query.isBlank()) ordered else ordered.filter {
@@ -616,6 +627,7 @@ fun TvV8Screen(
                                     scope.launch {
                                         store.setFavorite(Section.TV, channel.key, !favorite)
                                         favorites = store.favorites(Section.TV)
+                                        favoriteTimes = store.favoriteAddedAt(Section.TV)
                                     }
                                 },
                                 onHide = {
