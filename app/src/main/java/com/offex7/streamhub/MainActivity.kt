@@ -2855,7 +2855,7 @@ private fun LogoImage(
         }
 
         overlayText?.let {
-            val outline = remember(localRadioImage) { averageTimerOutline(localRadioImage) }
+            val outline = remember(item.name) { averageTimerOutline(item.name) }
             Text(
                 "⏱ $it",
                 color = Red,
@@ -2869,14 +2869,27 @@ private fun LogoImage(
     }
 }
 
-private fun averageTimerOutline(image: androidx.compose.ui.graphics.ImageBitmap?): Color {
-    if (image == null) return Color.White
-    return runCatching {
-        val keyBitmap = image.let { RadioLogoAssets.bitmap("") }
-        @Suppress("UNUSED_VARIABLE")
-        val unused = keyBitmap
-        Color.White
-    }.getOrDefault(Color.White)
+private fun averageTimerOutline(name: String): Color {
+    val bitmap = RadioLogoAssets.bitmap(name) ?: return Color.White
+    val startY = (bitmap.height * 0.62f).toInt().coerceAtLeast(0)
+    var sum = 0.0
+    var count = 0
+    val stepX = (bitmap.width / 24).coerceAtLeast(1)
+    val stepY = (bitmap.height / 12).coerceAtLeast(1)
+    var y = startY
+    while (y < bitmap.height) {
+        var x = 0
+        while (x < bitmap.width) {
+            val c = bitmap.getPixel(x, y)
+            sum += 0.2126 * android.graphics.Color.red(c) +
+                0.7152 * android.graphics.Color.green(c) +
+                0.0722 * android.graphics.Color.blue(c)
+            count++
+            x += stepX
+        }
+        y += stepY
+    }
+    return if (count > 0 && sum / count > 170.0) Color.Black else Color.White
 }
 
 
