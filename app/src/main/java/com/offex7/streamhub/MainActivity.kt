@@ -861,7 +861,7 @@ private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, cons
     if (enabled) view.performHapticFeedback(constant)
 }
 
-private fun performFavoriteHaptic(view: android.view.View, enabled: Boolean, adding: Boolean) {
+internal fun performFavoriteHaptic(view: android.view.View, enabled: Boolean, adding: Boolean) {
     if (!enabled) return
     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
     if (adding) {
