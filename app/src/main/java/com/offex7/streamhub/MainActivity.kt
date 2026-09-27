@@ -1342,8 +1342,9 @@ private fun Radio(
                                     else -> "пауза"
                                 }
                             } else null,
-                            radioTimer = if (active) formatTime(displayedTimerMs / 1000L) else null,
+                            radioTimer = if (active) formatShortTimer(displayedTimerMs / 1000L) else null,
                             radioBump = if (active && playing) radioBumpNonce else 0,
+                            radioPlaying = active && playing,
                             onToggle = if (active) {
                                 {
                                     val activeIndex = RADIO_STATIONS.indexOf(station)
@@ -2848,7 +2849,8 @@ private fun ChannelRow(
     radioTimer: String? = null,
     onToggle: (() -> Unit)? = null,
     preferRemoteLogo: Boolean = false,
-    radioBump: Int = 0
+    radioBump: Int = 0,
+    radioPlaying: Boolean = activeRadio
 ) {
     val iconColor by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
     val hapticView = LocalView.current
@@ -2861,7 +2863,7 @@ private fun ChannelRow(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio, isRadio = isRadio, radioBump = radioBump)
+            LogoImage(item = item, size = logoSize, dimmed = offline, preferRemote = preferRemoteLogo, overlayText = radioTimer, activeRadio = activeRadio, isRadio = isRadio, radioBump = radioBump, radioPlaying = radioPlaying)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -2917,7 +2919,8 @@ private fun LogoImage(
     overlayText: String? = null,
     activeRadio: Boolean = false,
     isRadio: Boolean = false,
-    radioBump: Int = 0
+    radioBump: Int = 0,
+    radioPlaying: Boolean = activeRadio
 ) {
     val context = LocalContext.current
     val resourceName = localLogoName(item.name)
@@ -2941,22 +2944,22 @@ private fun LogoImage(
 
     var bumping by remember(item.name) { mutableStateOf(false) }
     LaunchedEffect(radioBump) {
-        if (radioBump > 0 && activeRadio) {
+        if (radioBump > 0 && radioPlaying) {
             bumping = true
             delay(170L)
             bumping = false
         }
     }
-    val targetScale = if (activeRadio) 1.05f + (0.03f * pulse) + if (bumping) 0.08f else 0f else 1f
+    val targetScale = if (activeRadio) 1.05f + (if (radioPlaying) (0.03f * pulse) else 0f) + if (bumping) 0.08f else 0f else 1f
     val scale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(),
         label = "active-logo-scale"
     )
-    val borderColor = if (activeRadio) {
-        Red.copy(alpha = 0.45f + (0.25f * pulse))
-    } else {
-        Color.Transparent
+    val borderColor = when {
+        !activeRadio -> Color.Transparent
+        radioPlaying -> Red.copy(alpha = 0.45f + (0.25f * pulse))
+        else -> Red.copy(alpha = 0.70f)
     }
 
     Box(
@@ -3012,15 +3015,34 @@ private fun LogoImage(
 
         overlayText?.let {
             val outline = remember(item.name) { averageTimerOutline(item.name) }
-            Text(
-                "⏱ $it",
-                color = Red,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                style = TextStyle(shadow = Shadow(outline, blurRadius = 2.5f)),
-                modifier = Modifier.padding(bottom = 2.dp),
-                maxLines = 1
-            )
+            val timerText = "⏱ $it"
+            Box(
+                Modifier.padding(bottom = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val offsets = listOf(
+                    -1 to -1, 0 to -1, 1 to -1,
+                    -1 to 0, 1 to 0,
+                    -1 to 1, 0 to 1, 1 to 1
+                )
+                offsets.forEach { (dx, dy) ->
+                    Text(
+                        timerText,
+                        color = outline,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.offset(dx.dp, dy.dp),
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    timerText,
+                    color = Red,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -3219,6 +3241,11 @@ private fun KeepSystemBarsVisible() {
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
+}
+
+private fun formatShortTimer(seconds: Long): String {
+    val total = seconds.coerceAtLeast(0L)
+    return "%02d:%02d".format(total / 60L, total % 60L)
 }
 
 private fun formatTime(seconds: Long): String {
