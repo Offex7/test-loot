@@ -162,6 +162,7 @@ import androidx.compose.ui.hapticfeedback.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -2874,15 +2875,29 @@ private fun ChannelRow(
             }
             if (isRadio && activeRadio && onToggle != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() }, Modifier.size(40.dp))
-                        Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor, modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale))
+                    IconButton(
+                        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            "Избранное",
+                            tint = iconColor,
+                            modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+                        )
                     }
-                    IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onToggle() }, Modifier.size(40.dp))
+                    IconButton(
+                        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onToggle() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
                         Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Orange, modifier = Modifier.size(22.dp))
                     }
                 }
             } else {
-                IconButton(onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() }, Modifier.graphicsLayer(scaleX = scale, scaleY = scale))
+                IconButton(
+                    onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onFavorite() },
+                    modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+                ) {
                     Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor)
                 }
             }
