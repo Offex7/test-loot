@@ -9,7 +9,10 @@ import java.util.zip.ZipOutputStream
 object LogExporter {
     fun export(context: Context): File {
         val zip = File(context.filesDir, "Radio.TV. bagreport.zip")
-        val logLines = synchronized(this) { recentLines.toList().takeLast(1000) }
+        val logLines = synchronized(this) {
+            val all = recentLines.toList()
+            all.subList((all.size - 1000).coerceAtLeast(0), all.size)
+        }
         ZipOutputStream(zip.outputStream().buffered()).use { out ->
             fun entry(name: String, content: String) {
                 out.putNextEntry(ZipEntry(name))
@@ -30,11 +33,11 @@ object LogExporter {
                     .inputStream.bufferedReader()
                     .use { it.readText() }
             }.getOrDefault("")
-            val finalLogs = (systemLog.ifBlank { logLines.joinToString("\n") })
+            val finalLines = (systemLog.ifBlank { logLines.joinToString("\n") })
                 .lineSequence()
                 .toList()
-                .takeLast(1000)
-                .joinToString("\n")
+            val start = (finalLines.size - 1000).coerceAtLeast(0)
+            val finalLogs = finalLines.subList(start, finalLines.size).joinToString("\n")
             entry("logs.txt", finalLogs)
             entry("settings.txt", "log_export=1")
         }
