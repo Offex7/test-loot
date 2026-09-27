@@ -32,6 +32,7 @@ object LogExporter {
             }.getOrDefault("")
             val finalLogs = (systemLog.ifBlank { logLines.joinToString("\n") })
                 .lineSequence()
+                .toList()
                 .takeLast(1000)
                 .joinToString("\n")
             entry("logs.txt", finalLogs)
