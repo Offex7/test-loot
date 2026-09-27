@@ -23,7 +23,18 @@ object LogExporter {
                 appendLine("android=${Build.VERSION.RELEASE}")
                 appendLine("sdk=${Build.VERSION.SDK_INT}")
             })
-            entry("logs.txt", logLines.joinToString("\n"))
+            val systemLog = runCatching {
+                ProcessBuilder("logcat", "-d", "-t", "1000", "-v", "time")
+                    .redirectErrorStream(true)
+                    .start()
+                    .inputStream.bufferedReader()
+                    .use { it.readText() }
+            }.getOrDefault("")
+            val finalLogs = (systemLog.ifBlank { logLines.joinToString("\n") })
+                .lineSequence()
+                .takeLast(1000)
+                .joinToString("\n")
+            entry("logs.txt", finalLogs)
             entry("settings.txt", "log_export=1")
         }
         return zip
