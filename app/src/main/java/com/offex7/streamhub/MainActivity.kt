@@ -792,14 +792,15 @@ private fun HomeCard(
                             )
                             Canvas(Modifier.matchParentSize().padding(20.dp)) {
                                 val center = Offset(size.width / 2f, size.height / 2f)
+                                val diameter = minOf(size.width, size.height) * 0.38f * wave
                                 drawArc(
-                                    accent,
-                                    220f,
-                                    100f,
-                                    false,
-                                    Stroke(2f),
-                                    center.x - 20f * wave,
-                                    center.y - 20f * wave
+                                    color = accent,
+                                    startAngle = 220f,
+                                    sweepAngle = 100f,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
+                                    topLeft = Offset(center.x - diameter / 2f, center.y - diameter / 2f),
+                                    size = androidx.compose.ui.geometry.Size(diameter, diameter)
                                 )
                             }
                         }
