@@ -1884,6 +1884,9 @@ private fun Settings(
         } else {
             val cached = runCatching { tvRepo.cached(activeSourceKey) }.getOrNull()
             tvCatalog = cached?.items.orEmpty()
+            if (tvCatalog.isEmpty()) {
+                tvCatalog = runCatching { tvRepo.load(activeSourceKey).getOrNull()?.items.orEmpty() }.getOrDefault(emptyList())
+            }
         }
     }
 
