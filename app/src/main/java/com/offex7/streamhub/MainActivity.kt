@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AColor
@@ -18,6 +19,9 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateColorAsState
@@ -92,6 +96,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -306,6 +311,12 @@ private fun App(
 ) {
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
+    val pinStore = remember(appContext) { PinSecurityStore(appContext) }
+    var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
+    if (!pinUnlocked) {
+        PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
+        return
+    }
     val radioTimerStore = remember(appContext) { RadioTimerStore(appContext) }
     var notification by rememberSaveable { mutableStateOf<String?>(null) }
     var notificationDuration by remember { mutableLongStateOf(5000L) }
@@ -1697,6 +1708,17 @@ private fun Settings(
     var deleteCandidate by remember { mutableStateOf<UserPlaylist?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
+    val energyMode by store.energySavingModeFlow().collectAsState("AUTO")
+    val systemPowerSave = rememberSystemPowerSave()
+    val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
+    val hapticsEnabled by store.hapticsFlow().collectAsState(true)
+    val autoStart by store.autoStartFlow().collectAsState(false)
+    var pinEnabled by remember { mutableStateOf(false) }
+    var pinDialog by remember { mutableStateOf(false) }
+    var pinDisableDialog by remember { mutableStateOf(false) }
+    val pinStore = remember(settingsContext) { PinSecurityStore(settingsContext) }
+
+    LaunchedEffect(Unit) { pinEnabled = pinStore.isEnabled() }
 
     KeepSystemBarsVisible()
 
@@ -1811,6 +1833,112 @@ private fun Settings(
                             uncheckedTrackColor = Gray
                         )
                     )
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("ЭНЕРГОСБЕРЕЖЕНИЕ", color = if (energySaving) Red else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("AMOLED-чёрный фон и облегчённые анимации", fontSize = 11.sp, color = Gray)
+                        }
+                        Switch(
+                            checked = energySaving,
+                            onCheckedChange = { enabled ->
+                                scope.launch { store.setEnergySavingMode(if (enabled) "ON" else "OFF") }
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Режим: " + when (energyMode) {
+                                "ON" -> "ВКЛ"
+                                "OFF" -> "ВЫКЛ"
+                                else -> "АВТО"
+                            },
+                            color = Gray, fontSize = 10.sp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { scope.launch { store.setEnergySavingMode("AUTO") } }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text("АВТО", color = Red, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ТАКТИЛЬНАЯ ОБРАТНАЯ СВЯЗЬ", fontSize = 16.sp)
+                        Text("Выключается автоматически в энергосбережении", fontSize = 11.sp, color = Gray)
+                    }
+                    Switch(
+                        checked = hapticsEnabled && !energySaving,
+                        onCheckedChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
+                    )
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("АВТОЗАПУСК", fontSize = 16.sp)
+                        Text("Запуск Radio.TV после включения Android TV", fontSize = 11.sp, color = Gray)
+                    }
+                    Switch(
+                        checked = autoStart,
+                        onCheckedChange = { enabled -> scope.launch { store.setAutoStartEnabled(enabled) } },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
+                    )
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("ЗАЩИТА ПРИЛОЖЕНИЯ", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("PIN-код на вход", color = if (pinEnabled) Red else Color.White)
+                            Text(if (pinEnabled) "PIN + отпечаток/лицо" else "Запрос не используется", fontSize = 11.sp, color = Gray)
+                        }
+                        Switch(
+                            checked = pinEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) pinDialog = true else pinDisableDialog = true
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                onClick = {
+                    runCatching {
+                        val file = LogExporter.export(settingsContext)
+                        Toast.makeText(settingsContext, "Лог сохранён: " + file.name, Toast.LENGTH_LONG).show()
+                    }.onFailure {
+                        Toast.makeText(settingsContext, "Не удалось сохранить лог", Toast.LENGTH_LONG).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ЭКСПОРТ ЛОГОВ", fontSize = 16.sp)
+                        Text("Radio.TV. bagreport.zip", fontSize = 11.sp, color = Gray)
+                    }
+                    Text("ZIP", color = Red, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2023,7 +2151,169 @@ private fun Settings(
             dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Отмена") } }
         )
     }
+
+    if (pinDialog) {
+        PinSetupDialog(
+            onDismiss = { pinDialog = false },
+            onSave = { pin, hint ->
+                if (pinStore.enable(pin, hint)) {
+                    pinEnabled = true
+                    pinDialog = false
+                }
+            }
+        )
+    }
+
+    if (pinDisableDialog) {
+        PinDisableDialog(
+            onDismiss = { pinDisableDialog = false },
+            onDisable = {
+                pinStore.disable()
+                pinEnabled = false
+                pinDisableDialog = false
+            }
+        )
+    }
 }
+
+@Composable
+private fun PinSetupDialog(
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var hint by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("PIN-код на вход") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { pin = it.filter(Char::isDigit).take(4) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("4 цифры") }
+                )
+                OutlinedTextField(
+                    value = hint,
+                    onValueChange = { hint = it.take(15) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Подсказка (до 15 символов)") }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(pin, hint) }, enabled = pin.length == 4) {
+                Text("Сохранить", color = Red)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
+private fun PinDisableDialog(
+    onDismiss: () -> Unit,
+    onDisable: () -> Unit
+) {
+    val context = LocalContext.current
+    val store = remember(context) { PinSecurityStore(context) }
+    var pin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Отключить PIN") },
+        text = {
+            OutlinedTextField(
+                value = pin,
+                onValueChange = { pin = it.filter(Char::isDigit).take(4); error = false },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Текущий PIN") },
+                isError = error
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (store.verify(pin)) onDisable() else error = true
+                },
+                enabled = pin.length == 4
+            ) { Text("Отключить", color = Red) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
+private fun PinGate(
+    activity: MainActivity,
+    store: PinSecurityStore,
+    onUnlocked: () -> Unit
+) {
+    val context = LocalContext.current
+    var pin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    var biometricTried by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!biometricTried) {
+            biometricTried = true
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
+            if (BiometricManager.from(context).canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS) {
+                val executor = ContextCompat.getMainExecutor(context)
+                val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        onUnlocked()
+                    }
+                })
+                prompt.authenticate(
+                    BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Radio.TV")
+                        .setSubtitle("Подтвердите вход")
+                        .setNegativeButtonText("PIN-код")
+                        .build()
+                )
+            }
+        }
+    }
+
+    Surface(Modifier.fillMaxSize(), color = Color.Black) {
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(52.dp))
+            Spacer(Modifier.height(12.dp))
+            Text("Введите PIN-код", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = pin,
+                onValueChange = { pin = it.filter(Char::isDigit).take(4); error = false },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().height(58.dp),
+                label = { Text("4 цифры") },
+                isError = error
+            )
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = { Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show() }
+            ) { Text("Забыли PIN?", color = Red) }
+            Button(
+                onClick = {
+                    if (store.verify(pin)) onUnlocked() else error = true
+                },
+                enabled = pin.length == 4,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Red)
+            ) { Text("ВОЙТИ") }
+        }
+    }
+}
+
 @Composable
 private fun UsageLine(label: String, seconds: Long) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
