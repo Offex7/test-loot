@@ -822,6 +822,7 @@ private fun TvV9ChannelRow(
     var settleTarget by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     var settling by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     var hiding by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var thresholdReached by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     val feedbackContext = LocalContext.current
     val settledOffset by animateFloatAsState(
         targetValue = settleTarget,
@@ -880,28 +881,34 @@ private fun TvV9ChannelRow(
                                 change.consume()
                                 if (!settling && !hiding) {
                                     dragOffset = (dragOffset + dragAmount).coerceIn(-rowWidth, 0f)
-                                    if (dragOffset <= -(rowWidth * 0.5f)) {
-                                        settleTarget = -rowWidth
-                                        settling = true
-                                        hiding = true
+                                    val threshold = rowWidth * 0.70f
+                                    val reached = dragOffset <= -threshold
+                                    if (reached && !thresholdReached) {
+                                        thresholdReached = true
+                                        InteractionFeedback.threshold(feedbackContext, hapticsEnabled)
+                                    } else if (!reached) {
+                                        thresholdReached = false
                                     }
                                 }
                             },
                             onDragEnd = {
                                 if (hiding) return@detectHorizontalDragGestures
-                                val threshold = rowWidth * 0.5f
+                                val threshold = rowWidth * 0.70f
                                 settling = true
                                 if (dragOffset <= -threshold) {
                                     settleTarget = -rowWidth
                                     hiding = true
+                                    InteractionFeedback.success(feedbackContext, hapticsEnabled)
                                 } else {
                                     settleTarget = 0f
+                                    thresholdReached = false
                                 }
                             },
                             onDragCancel = {
                                 if (!hiding) {
                                     settling = true
                                     settleTarget = 0f
+                                    thresholdReached = false
                                 }
                             }
                         )
@@ -1234,7 +1241,7 @@ private fun TvV9Player(
     androidx.compose.runtime.LaunchedEffect(weakNetworkEvent) {
         if (weakNetworkEvent <= 0L) return@LaunchedEffect
         onWeakNetworkNotice(
-            "Нестабильное интернет-соединение. Попробую снизить качество трансляции или переключу на другой канал."
+            "Нестабильное интернет-соединение. Попробую снизить качество видеопотока или переключу на другой канал."
         )
     }
 
