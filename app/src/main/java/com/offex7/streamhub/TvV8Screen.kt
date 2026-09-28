@@ -264,18 +264,18 @@ fun TvV8Screen(
                 ).size
                 val total = visibleTotal
                 val lastVisible = current.third
-                val canGoTop = current.first > 5
+                val canGoTop = current.first > maxOf(5, favorites.size)
                 val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
                 when {
                     current.first <= 0 && current.second <= 0 -> showScrollAction = false
                     total > 0 && lastVisible >= total - 1 -> showScrollAction = false
                     fast && movingDown && canGoTop -> {
-                        scrollDirection = 1
+                        scrollDirection = -1
                         showScrollAction = true
                         scrollActivityToken += 1L
                     }
                     fast && movingUp && canGoBottom -> {
-                        scrollDirection = -1
+                        scrollDirection = 1
                         showScrollAction = true
                         scrollActivityToken += 1L
                     }
@@ -727,7 +727,7 @@ fun TvV8Screen(
                 onClick = {
                     scope.launch {
                         showScrollAction = false
-                        if (scrollDirection == 1) {
+                        if (scrollDirection == -1) {
                             list.animateScrollToItem(0)
                         } else if (filtered.isNotEmpty()) {
                             list.animateScrollToItem(filtered.lastIndex)
