@@ -88,7 +88,17 @@ jobs:
         run: gradle wrapper
 
       - name: Build debug APK (stability check)
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee build-debug.log
+
+      - name: Upload debug build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio-TV-v3.3-debug-build-log
+          path: build-debug.log
+          if-no-files-found: warn
 
       - name: Build signed release APK
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
