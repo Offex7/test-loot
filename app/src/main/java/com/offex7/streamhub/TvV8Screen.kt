@@ -428,12 +428,16 @@ fun TvV8Screen(
         return -1
     }
 
-        fun nextRawCandidate(start: Int): Int {
-        if (channels.size <= 1) return -1
+    fun nextRawCandidate(start: Int): Int {
+        if (channels.size <= 1 || start !in channels.indices) return -1
+        val currentName = channels[start].name
         for (step in 1 until channels.size) {
             val index = (start + step) % channels.size
             val item = channels[index]
-            if (!hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE) {
+            if (!hiddenChannels.contains(item.key) &&
+                health[item.url] != AvailabilityStatus.OFFLINE &&
+                !similarChannelNames(currentName, item.name)
+            ) {
                 return index
             }
         }
