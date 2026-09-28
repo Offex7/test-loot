@@ -1,4 +1,9 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi::class
+)
 package com.offex7.streamhub
 
 import android.app.PictureInPictureParams
@@ -2100,18 +2105,66 @@ private fun Settings(
             }
         }
         item {
-            val sharePulse by rememberInfiniteTransition(label="share-log-pulse").animateFloat(1f,1.1f,infiniteRepeatable(tween(750,easing=FastOutSlowInEasing),RepeatMode.Reverse),label="share-log-pulse-value")
-                Card(onClick={scope.launch{runCatching{
-                    val file=LogExporter.export(settingsContext,store)
-                    val uri=androidx.core.content.FileProvider.getUriForFile(settingsContext,settingsContext.packageName+".fileprovider",file)
-                    val intent=Intent(Intent.ACTION_SEND).apply{type="application/zip";putExtra(Intent.EXTRA_STREAM,uri);putExtra(Intent.EXTRA_TEXT,"Radio.TV — логи приложения");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);clipData=ClipData.newRawUri("Radio.TV logs",uri)}
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    settingsContext.startActivity(Intent.createChooser(intent,"Поделиться логами"))
-                }.onFailure{Toast.makeText(settingsContext,"Не удалось экспортировать лог",Toast.LENGTH_LONG).show()}},modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)){
-                    Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
-                        Column(Modifier.weight(1f)){Text("ЭКСПОРТ ЛОГОВ",fontSize=16.sp);Text("ZIP-файл для отправки",fontSize=11.sp,color=Gray)}
-                        Icon(Icons.Default.Share,"Поделиться логами",tint=Red,modifier=Modifier.graphicsLayer(scaleX=sharePulse,scaleY=sharePulse))
+            val sharePulse by rememberInfiniteTransition(label = "share-log-pulse").animateFloat(
+                initialValue = 1f,
+                targetValue = 1.1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(750, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "share-log-pulse-value"
+            )
+            Card(
+                onClick = {
+                    scope.launch {
+                        runCatching {
+                            val file = LogExporter.export(settingsContext, store)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                settingsContext,
+                                settingsContext.packageName + ".fileprovider",
+                                file
+                            )
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/zip"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                putExtra(Intent.EXTRA_TEXT, "Radio.TV — логи приложения")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                clipData = ClipData.newRawUri("Radio.TV logs", uri)
+                            }
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            settingsContext.startActivity(
+                                Intent.createChooser(intent, "Поделиться логами")
+                            )
+                        }.onFailure {
+                            Toast.makeText(
+                                settingsContext,
+                                "Не удалось экспортировать лог",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ЭКСПОРТ ЛОГОВ", fontSize = 16.sp)
+                        Text("ZIP-файл для отправки", fontSize = 11.sp, color = Gray)
+                    }
+                    Icon(
+                        Icons.Default.Share,
+                        "Поделиться логами",
+                        tint = Red,
+                        modifier = Modifier.graphicsLayer(
+                            scaleX = sharePulse,
+                            scaleY = sharePulse
+                        )
+                    )
                 }
             }
         }
