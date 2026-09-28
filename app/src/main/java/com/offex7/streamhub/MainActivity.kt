@@ -3012,6 +3012,7 @@ private fun LogoImage(
     radioPlaying: Boolean = activeRadio
 ) {
     val context = LocalContext.current
+    val energySaving = LocalEnergySaving.current
     val resourceName = localLogoName(item.name)
     val resourceId = remember(resourceName) {
         context.resources.getIdentifier(resourceName, "drawable", context.packageName)
