@@ -101,6 +101,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -323,8 +325,15 @@ private fun App(
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val energySaving = LocalEnergySaving.current
+    val hapticsEnabled by store.hapticsFlow().collectAsState(true)
+    val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
+    val autoStartEnabled by store.autoStartFlow().collectAsState(false)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
+    LaunchedEffect(autoStartEnabled) {
+        if (autoStartEnabled) activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
         return
@@ -337,6 +346,7 @@ private fun App(
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
+    var quickLockSetup by rememberSaveable { mutableStateOf(false) }
     var restore by remember { mutableStateOf<StreamItem?>(null) }
     var pip by remember { mutableStateOf(true) }
     var sleepUntil by remember { mutableLongStateOf(0L) }
@@ -460,6 +470,7 @@ private fun App(
                         }
                     },
                     onDisclaimer = { disclaimer = true },
+                    notify = ::notify,
                     onResetAll = {
                         scope.launch {
                             runCatching {
@@ -483,6 +494,8 @@ private fun App(
                 )
                 section == null -> Home(
                     activity = activity,
+                    hapticsEnabled = hapticsEnabled,
+                    onHaptic = { InteractionFeedback.click(appContext,hapticsEnabled,soundEnabled,false) },
                     open = {
                         section = it
                         scope.launch { store.setSection(it) }
@@ -516,7 +529,10 @@ private fun App(
                     },
                     notify = ::notify,
                     onViewingChanged = { activity.tvViewing = it },
-                    pipMode = activity.pipMode
+                    pipMode = activity.pipMode,
+                    hapticsEnabled = hapticsEnabled,
+                    soundEnabled = soundEnabled,
+                    radioPlaying = radio.isPlaying.collectAsState(false).value
                 )
                 else -> Radio(
                     player = radio,
@@ -529,7 +545,15 @@ private fun App(
                     },
                     back = ::leaveSection,
                     settings = { settings = true },
-                    notify = ::notify
+                    notify = ::notify,
+                    sleepRemaining = sleepRemaining,
+                    sleepUntil = sleepUntil,
+                    sleepMinutes = sleepMinutes,
+                    onSleep = { minutes -> sleepMinutes=minutes; sleepUntil=System.currentTimeMillis()+minutes*60_000L; notify("Таймер сна — запущен") },
+                    onCancelSleep = { sleepUntil=0L;sleepRemaining=0L;sleepMinutes=0L;notify("Таймер сна — отключён") },
+                    hapticsEnabled = hapticsEnabled,
+                    soundEnabled = soundEnabled,
+                    onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
                 )
             }
 
@@ -570,6 +594,8 @@ private fun App(
         }
     }
 
+    if(quickLockSetup){PinSetupDialog(onDismiss={quickLockSetup=false},onSave={pin,hint->if(pinStore.enable(pin,hint)){quickLockSetup=false;pinUnlocked=false;activity.moveTaskToBack(true)}})}
+
     if (exit) {
         AlertDialog(
             onDismissRequest = { exit = false },
@@ -583,6 +609,8 @@ private fun App(
 @Composable
 private fun Home(
     activity: MainActivity,
+    hapticsEnabled: Boolean,
+    onHaptic: () -> Unit,
     open: (Section) -> Unit,
     settings: () -> Unit
 ) {
@@ -598,7 +626,7 @@ private fun Home(
         ),
         label = "home-gear-pulse"
     )
-    val gearColor by transition.animateColor(
+    val gearColorAnimated by transition.animateColor(
         initialValue = Color.White,
         targetValue = Color.White,
         animationSpec = infiniteRepeatable(
@@ -613,38 +641,16 @@ private fun Home(
         ),
         label = "home-gear-color"
     )
+    val gearColor=if(energySaving)Color.White else gearColorAnimated
     var gearTurns by remember { mutableIntStateOf(0) }
     val gearRotation by animateFloatAsState(
         targetValue = gearTurns * 90f,
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "home-gear-rotation"
     )
-    val homeOutlineColors = listOf(
-        Color.White, Red, Orange, Color(0xFF4CAF50),
-        Color(0xFF2196F3), Color(0xFF9C27B0), Color(0xFFFFEB3B),
-        Color.Black, Color(0xFFFF4081)
-    )
-    var tvOutlineTarget by remember { mutableStateOf(Color.White) }
-    var radioOutlineTarget by remember { mutableStateOf(Color.White) }
-    val tvOutlineColor by animateColorAsState(
-        targetValue = tvOutlineTarget,
-        animationSpec = tween(1000, easing = FastOutSlowInEasing),
-        label = "home-tv-outline-color"
-    )
-    val radioOutlineColor by animateColorAsState(
-        targetValue = radioOutlineTarget,
-        animationSpec = tween(1000, easing = FastOutSlowInEasing),
-        label = "home-radio-outline-color"
-    )
-    LaunchedEffect(energySaving) {
-        if (energySaving) return@LaunchedEffect
-        while (true) {
-            delay(30_000L)
-            val next = homeOutlineColors.shuffled()
-            tvOutlineTarget = next[0]
-            radioOutlineTarget = next.first { it != next[0] }
-        }
-    }
+    val tvOutlineColor = Color.White
+    val radioOutlineColor = Color.White
+
     val recommendPulse by transition.animateFloat(
         initialValue = 1f,
         targetValue = if (energySaving) 1f else 1.05f,
@@ -672,6 +678,7 @@ private fun Home(
                 )
                 IconButton(
                     onClick = {
+                        onHaptic()
                         gearTurns += 1
                         settings()
                     }
@@ -695,8 +702,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f), tvOutlineColor) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.fillMaxWidth().weight(1f), radioOutlineColor) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.fillMaxWidth().weight(1f), tvOutlineColor) { onHaptic(); open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.fillMaxWidth().weight(1f), radioOutlineColor) { onHaptic(); open(Section.RADIO) }
                     }
                 }
                 else -> {
@@ -704,8 +711,8 @@ private fun Home(
                         Modifier.fillMaxWidth().weight(1f).padding(vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f), tvOutlineColor) { open(Section.TV) }
-                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.weight(1f), radioOutlineColor) { open(Section.RADIO) }
+                        HomeCard("ТЕЛЕВИЗОР", R.drawable.start_tv_final, Modifier.weight(1f), tvOutlineColor) { onHaptic(); open(Section.TV) }
+                        HomeCard("РАДИО", R.drawable.start_radio_v2, Modifier.weight(1f), radioOutlineColor) { onHaptic(); open(Section.RADIO) }
                     }
                 }
             }
@@ -743,7 +750,6 @@ private fun HomeCard(
     borderColor: Color = Color.White,
     onClick: () -> Unit
 ) {
-    val energySaving = LocalEnergySaving.current
     Card(
         onClick = onClick,
         modifier = modifier,
@@ -762,14 +768,10 @@ private fun HomeCard(
                     .fillMaxHeight(0.82f)
                     .aspectRatio(1f)
                 Box(iconModifier) {
-                    Image(
-                        painter = painterResource(logo),
-                        contentDescription = title,
-                        modifier = Modifier.fillMaxSize()
-                            .border(2.dp, borderColor, RoundedCornerShape(16.dp))
-                            .padding(3.dp)
-                    )
-                    if (!energySaving) {
+                    val painter=painterResource(logo)
+                    val outlineOffsets=listOf(Offset(-1.5f,0f),Offset(1.5f,0f),Offset(0f,-1.5f),Offset(0f,1.5f),Offset(-1.05f,-1.05f),Offset(1.05f,-1.05f),Offset(-1.05f,1.05f),Offset(1.05f,1.05f))
+                    outlineOffsets.forEach{shift->Image(painter=painter,contentDescription=null,modifier=Modifier.matchParentSize().offset(x=shift.x.dp,y=shift.y.dp),colorFilter=androidx.compose.ui.graphics.ColorFilter.tint(borderColor))}
+                    Image(painter=painter,contentDescription=title,modifier=Modifier.matchParentSize())
                         val accent = borderColor.copy(alpha = .70f)
                         if (title == "ТЕЛЕВИЗОР") {
                             val line by rememberInfiniteTransition(label = "tv-news-line").animateFloat(
@@ -859,6 +861,7 @@ private fun ScrollActionButton(
     }
 }
 
+private fun onHapticFeedback(context: Context,hapticsEnabled:Boolean,soundEnabled:Boolean){InteractionFeedback.click(context,hapticsEnabled,soundEnabled,false)}
 private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, constant: Int) {
     if (enabled) view.performHapticFeedback(constant)
 }
@@ -1006,9 +1009,19 @@ private fun Radio(
     saveLast: (StreamItem) -> Unit,
     back: () -> Unit,
     settings: () -> Unit,
-    notify: (String) -> Unit
+    notify: (String) -> Unit,
+    sleepRemaining: Long,
+    sleepUntil: Long,
+    sleepMinutes: Long,
+    onSleep: (Long) -> Unit,
+    onCancelSleep: () -> Unit,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    onQuickLock: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var sleepMenu by remember { mutableStateOf(false) }
     val index by player.currentIndex.collectAsState()
     val playing by player.isPlaying.collectAsState()
     val error by player.error.collectAsState()
@@ -1241,11 +1254,13 @@ private fun Radio(
                 back = back,
                 settings = settings,
                 extraAction = {
-                    IconButton(onClick = { eqDialog = true }) {
-                        Icon(Icons.Default.Equalizer, "Эквалайзер", tint = Red)
+                    Row(verticalAlignment=Alignment.CenterVertically){
+                        IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);eqDialog=true}){Icon(Icons.Default.Equalizer,"Эквалайзер",tint=Red)}
+                        IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);onQuickLock()}){Icon(Icons.Default.Lock,"Блокировка",tint=Red)}
+                        IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);sleepMenu=!sleepMenu}){Icon(Icons.Default.AccessTime,"Таймер сна",tint=Red)}
                     }
                 },
-                searchOpen = searchOpen,
+                searchOpen = false,
                 query = query,
                 onSearchOpen = {
                     searchOpen = true
@@ -1262,7 +1277,7 @@ private fun Radio(
                     query = ""
                     searchStamp = System.currentTimeMillis()
                 },
-                showSearch = true,
+                showSearch = false,
                 showTimer = false
             )
 
@@ -1348,6 +1363,8 @@ private fun Radio(
                             },
                             logoSize = 96.dp,
                             isRadio = true,
+                            hapticsEnabled = hapticsEnabled,
+                            soundEnabled = soundEnabled,
                             activeRadio = active,
                             radioStatus = if (active) {
                                 when {
@@ -1368,6 +1385,24 @@ private fun Radio(
                         )
                     }
                 }
+                if(sleepMenu){
+                    Popup(alignment=Alignment.TopEnd,onDismissRequest={sleepMenu=false},properties=PopupProperties(focusable=true,dismissOnClickOutside=true,dismissOnBackPress=true)){
+                        androidx.compose.material3.Surface(color=Color.Black.copy(alpha=.88f),shape=RoundedCornerShape(14.dp),modifier=Modifier.padding(top=52.dp,end=8.dp).width(240.dp)){
+                            Column(Modifier.padding(10.dp).heightIn(max=380.dp).verticalScroll(rememberScrollState())){
+                                Text("Таймер сна",color=Color.White,fontWeight=FontWeight.Bold);Spacer(Modifier.height(6.dp))
+                                FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+                                    SleepOptions.forEach{(minutes,label)->
+                                        val active=minutes==sleepMinutes&&sleepUntil>System.currentTimeMillis()
+                                        Card(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);if(active)onCancelSleep()else onSleep(minutes);sleepMenu=false},modifier=Modifier.size(68.dp),colors=CardDefaults.cardColors(containerColor=if(active)Red else PanelAlt),shape=CircleShape,border=BorderStroke(1.dp,if(active)Red else Gray)){
+                                            Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text(if(active)formatTimerCircle(sleepRemaining)else label,color=Color.White,fontSize=11.sp,textAlign=TextAlign.Center)}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (eqDialog) {
                     RadioEqualizerDialog(
                         settings = eqSettings,
@@ -1864,6 +1899,7 @@ private fun Settings(
     onResetStats: (Section) -> Unit,
     onSource: (String) -> Unit,
     onDisclaimer: () -> Unit,
+    notify: (String, Long) -> Unit,
     onResetAll: () -> Unit
 ) {
     val tvUsage by store.usageFlow(Section.TV).collectAsState(0L)
@@ -1886,6 +1922,7 @@ private fun Settings(
     val systemPowerSave = rememberSystemPowerSave()
     val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
+    val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
     val autoStart by store.autoStartFlow().collectAsState(false)
     var pinEnabled by remember { mutableStateOf(false) }
     var pinDialog by remember { mutableStateOf(false) }
@@ -2051,10 +2088,10 @@ private fun Settings(
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("ТАКТИЛЬНАЯ ОБРАТНАЯ СВЯЗЬ", fontSize = 16.sp)
-                        Text("Выключается автоматически в энергосбережении", fontSize = 11.sp, color = Gray)
+                        Text("Общий виброотклик для кнопок и действий",fontSize=11.sp,color=Gray)
                     }
                     Switch(
-                        checked = hapticsEnabled && !energySaving,
+                        checked = hapticsEnabled,
                         onCheckedChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
                     )
@@ -2066,13 +2103,21 @@ private fun Settings(
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("АВТОЗАПУСК", fontSize = 16.sp)
-                        Text("Запуск Radio.TV после включения Android TV", fontSize = 11.sp, color = Gray)
+                        Text("Запуск после включения. Экран не будет блокироваться, пока приложение активно",fontSize=11.sp,color=Gray)
                     }
                     Switch(
                         checked = autoStart,
                         onCheckedChange = { enabled -> scope.launch { store.setAutoStartEnabled(enabled) } },
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
                     )
+                }
+            }
+        }
+        item {
+            Card(colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)){
+                Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
+                    Column(Modifier.weight(1f)){Text("ЗВУКОВОЙ ОТКЛИК",fontSize=16.sp);Text("Короткий сигнал на ТВ/устройствах без вибрации",fontSize=11.sp,color=Gray)}
+                    Switch(checked=soundEnabled,onCheckedChange={enabled->scope.launch{store.setSoundFeedbackEnabled(enabled)}},colors=SwitchDefaults.colors(checkedThumbColor=Color.White,checkedTrackColor=Red,uncheckedThumbColor=Color.White,uncheckedTrackColor=Gray))
                 }
             }
         }
@@ -2097,27 +2142,18 @@ private fun Settings(
             }
         }
         item {
-            Card(
-                onClick = {
-                    scope.launch {
-                        runCatching {
-                            val file = LogExporter.export(settingsContext, store)
-                            Toast.makeText(settingsContext, "Лог сохранён: " + file.name, Toast.LENGTH_LONG).show()
-                        }.onFailure {
-                            Toast.makeText(settingsContext, "Не удалось сохранить лог", Toast.LENGTH_LONG).show()
-                        }
+            item {
+                val sharePulse by rememberInfiniteTransition(label="share-log-pulse").animateFloat(1f,1.1f,infiniteRepeatable(tween(750,easing=FastOutSlowInEasing),RepeatMode.Reverse),label="share-log-pulse-value")
+                Card(onClick={scope.launch{runCatching{
+                    val file=LogExporter.export(settingsContext,store)
+                    val uri=androidx.core.content.FileProvider.getUriForFile(settingsContext,settingsContext.packageName+".fileprovider",file)
+                    val intent=Intent(Intent.ACTION_SEND).apply{type="application/zip";putExtra(Intent.EXTRA_STREAM,uri);putExtra(Intent.EXTRA_TEXT,"Radio.TV — логи приложения");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);clipData=ClipData.newRawUri("Radio.TV logs",uri)}
+                    settingsContext.startActivity(Intent.createChooser(intent,"Поделиться логами"))
+                }.onFailure{Toast.makeText(settingsContext,"Не удалось экспортировать лог",Toast.LENGTH_LONG).show()}},modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)){
+                    Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
+                        Column(Modifier.weight(1f)){Text("ЭКСПОРТ ЛОГОВ",fontSize=16.sp);Text("ZIP-файл для отправки",fontSize=11.sp,color=Gray)}
+                        Icon(Icons.Default.Share,"Поделиться логами",tint=Red,modifier=Modifier.graphicsLayer(scaleX=sharePulse,scaleY=sharePulse))
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Panel),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("ЭКСПОРТ ЛОГОВ", fontSize = 16.sp)
-                        Text("Radio.TV. bagreport.zip", fontSize = 11.sp, color = Gray)
-                    }
-                    Text("ZIP", color = Red, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2156,13 +2192,13 @@ private fun Settings(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 TextButton(
-                                    onClick = { scope.launch { store.removeHiddenChannel(key) } },
+                                    onClick = { scope.launch { store.removeHiddenChannel(key); notify("Канал восстановлен",3000L) } },
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                                 ) { Text("Восстановить", color = Red, fontSize = 11.sp) }
                             }
                         }
                         Button(
-                            onClick = { scope.launch { store.clearHiddenChannels() } },
+                            onClick = { scope.launch { store.clearHiddenChannels(); notify("Канал восстановлен",3000L) } },
                             modifier = Modifier.fillMaxWidth().height(38.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
@@ -2436,12 +2472,18 @@ private fun PinGate(
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     var biometricTried by rememberSaveable { mutableStateOf(false) }
+    var biometricAvailable by rememberSaveable { mutableStateOf(false) }
+    val feedbackContext=LocalContext.current
+    val pinSettingsStore=remember(feedbackContext){SettingsStore(feedbackContext.applicationContext)}
+    val pinHapticsEnabled by pinSettingsStore.hapticsFlow().collectAsState(true)
+    val pinSoundEnabled by pinSettingsStore.soundFeedbackFlow().collectAsState(true)
 
     LaunchedEffect(Unit) {
         if (!biometricTried) {
             biometricTried = true
             val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
-            if (BiometricManager.from(context).canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS) {
+            biometricAvailable=BiometricManager.from(context).canAuthenticate(authenticators)==BiometricManager.BIOMETRIC_SUCCESS
+            if(biometricAvailable){
                 val executor = ContextCompat.getMainExecutor(context)
                 val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -2450,7 +2492,7 @@ private fun PinGate(
                 })
                 prompt.authenticate(
                     BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Radio.TV")
+                        .setTitle("Разблокировать")
                         .setSubtitle("Подтвердите вход")
                         .setNegativeButtonText("PIN-код")
                         .build()
@@ -2459,6 +2501,8 @@ private fun PinGate(
         }
     }
 
+    val redFlash by animateColorAsState(if(error)Color(0xFF5A1111).copy(alpha=.72f)else Color.Transparent,animationSpec=tween(220),label="pin-error-flash")
+    LaunchedEffect(error){if(error){delay(1200L);error=false}}
     Surface(Modifier.fillMaxSize(), color = Color.Black) {
         Column(
             Modifier.fillMaxSize().padding(24.dp),
@@ -2471,7 +2515,12 @@ private fun PinGate(
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = pin,
-                onValueChange = { pin = it.filter(Char::isDigit).take(4); error = false },
+                onValueChange = { value ->
+                    pin=value.filter(Char::isDigit).take(4);error=false
+                    if(pin.length==4){
+                        if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}
+                    }
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().height(58.dp),
                 label = { Text("4 цифры") },
@@ -2481,15 +2530,16 @@ private fun PinGate(
             TextButton(
                 onClick = { Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show() }
             ) { Text("Забыли PIN?", color = Red) }
-            Button(
-                onClick = {
-                    if (store.verify(pin)) onUnlocked() else error = true
-                },
-                enabled = pin.length == 4,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Red)
-            ) { Text("ВОЙТИ") }
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                Button(onClick={if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}},enabled=pin.length==4,modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Red)){Text("ВОЙТИ")}
+                if(biometricAvailable)IconButton(onClick={
+                    val executor=ContextCompat.getMainExecutor(context)
+                    val prompt=BiometricPrompt(activity,executor,object:BiometricPrompt.AuthenticationCallback(){override fun onAuthenticationSucceeded(result:BiometricPrompt.AuthenticationResult){onUnlocked()}})
+                    prompt.authenticate(BiometricPrompt.PromptInfo.Builder().setTitle("Разблокировать").setSubtitle("Подтвердите вход").setNegativeButtonText("PIN-код").build())
+                }){Icon(Icons.Default.Fingerprint,"Вход по отпечатку или лицу",tint=Red,modifier=Modifier.size(30.dp))}
+            }
         }
+        Box(Modifier.fillMaxSize().background(redFlash))
     }
 }
 
@@ -2567,8 +2617,9 @@ private fun SleepGrid(
 @Composable
 private fun DonationCard() {
     val context = LocalContext.current
+    val energySaving = LocalEnergySaving.current
     val transition = rememberInfiniteTransition(label = "donation-heart-transition")
-    val heartColor by transition.animateColor(
+    val heartColorAnimated by transition.animateColor(
         initialValue = Color.White,
         targetValue = Color.White,
         animationSpec = infiniteRepeatable(
@@ -2583,9 +2634,10 @@ private fun DonationCard() {
         ),
         label = "donation-heart-color"
     )
+    val heartColor=if(energySaving)Color.White else heartColorAnimated
     val pulse by transition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.15f,
+        targetValue = if(energySaving)1f else 1.15f,
         animationSpec = infiniteRepeatable(
             animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -2600,7 +2652,7 @@ private fun DonationCard() {
     val starTransition = rememberInfiniteTransition(label = "donation-star")
     val starPulse by starTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.2f,
+        targetValue = if(energySaving)1f else 1.2f,
         animationSpec = infiniteRepeatable(
             animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -2659,7 +2711,7 @@ private fun DonationCard() {
             Spacer(Modifier.height(10.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Card(
-                    onClick = { openUrl(context, TELEGRAM_DONATION) },
+                    onClick = { InteractionFeedback.click(context,true,false,false); openUrl(context, TELEGRAM_DONATION) },
                     modifier = Modifier.height(46.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
                     shape = RoundedCornerShape(14.dp)
@@ -2809,7 +2861,7 @@ private fun RadioEqualizerDialog(
     var mid by remember(settings) { mutableFloatStateOf(settings.mid.toFloat()) }
     var treble by remember(settings) { mutableFloatStateOf(settings.treble.toFloat()) }
     var preset by remember(settings) { mutableStateOf(settings.preset) }
-    val presets = listOf("Flat", "Bass Boost", "Rock", "Pop", "Jazz", "Virtualizer")
+    val presets = listOf("Flat","Rock","Pop","Jazz","Classical","Dance","Bass Boost","Treble Boost","Vocal","Hip-Hop","Lounge","Live","Virtualizer")
     fun applyPreset(name: String) {
         preset = name
         when (name) {
@@ -2817,8 +2869,15 @@ private fun RadioEqualizerDialog(
             "Bass Boost" -> { bass = 1100f; mid = 0f; treble = 350f }
             "Rock" -> { bass = 900f; mid = 150f; treble = 800f }
             "Pop" -> { bass = 500f; mid = -100f; treble = 500f }
-            "Jazz" -> { bass = 400f; mid = -150f; treble = 350f }
-            "Virtualizer" -> { bass = 0f; mid = 0f; treble = 0f }
+            "Jazz" -> { bass=400f;mid=-150f;treble=350f }
+            "Classical" -> { bass=250f;mid=0f;treble=450f }
+            "Dance" -> { bass=900f;mid=100f;treble=700f }
+            "Treble Boost" -> { bass=100f;mid=0f;treble=950f }
+            "Vocal" -> { bass=-150f;mid=550f;treble=250f }
+            "Hip-Hop" -> { bass=850f;mid=50f;treble=500f }
+            "Lounge" -> { bass=300f;mid=100f;treble=250f }
+            "Live" -> { bass=650f;mid=150f;treble=500f }
+            "Virtualizer" -> { bass=0f;mid=0f;treble=0f }
         }
     }
     AlertDialog(
@@ -2835,10 +2894,9 @@ private fun RadioEqualizerDialog(
                 Text("Пресет", color = Gray, fontSize = 11.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     presets.forEach { name ->
-                        AssistChip(onClick = { applyPreset(name) }, label = { Text(name, fontSize = 9.sp) })
+                        AssistChip(onClick={applyPreset(name)},label={Text(name,color=if(preset==name)Color(0xFFB6FF5C)else Color.White,fontSize=9.sp)})
                     }
                 }
-                Text("Нормализация громкости не включена: для разных интернет-потоков нет надёжной общей loudness-метрики.", color = Gray, fontSize = 9.sp)
             }
         },
         confirmButton = {
@@ -2866,14 +2924,18 @@ private fun ChannelRow(
     onToggle: (() -> Unit)? = null,
     preferRemoteLogo: Boolean = false,
     radioBump: Int = 0,
-    radioPlaying: Boolean = activeRadio
+    radioPlaying: Boolean = activeRadio,
+    hapticsEnabled: Boolean = true,
+    soundEnabled: Boolean = true
 ) {
-    val iconColor by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
-    val hapticView = LocalView.current
-    val haptics = !LocalEnergySaving.current
-    val scale by animateFloatAsState(if (favorite) 1.14f else 1f, animationSpec = spring(), label = "favorite-scale")
+    val energySaving=LocalEnergySaving.current
+    val iconColorAnimated by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
+    val iconColor=if(energySaving)if(favorite)Red else Color.White else iconColorAnimated
+    val scaleAnimated by animateFloatAsState(if(favorite)1.14f else 1f,animationSpec=spring(),label="favorite-scale")
+    val scale=if(energySaving)1f else scaleAnimated
+    val feedbackContext=LocalContext.current
     Card(
-        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onPlay() },
+        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onPlay() },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = if (favorite) Red.copy(alpha = .08f) else Panel),
         shape = RoundedCornerShape(12.dp)
@@ -2898,7 +2960,7 @@ private fun ChannelRow(
             if (isRadio && activeRadio && onToggle != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IconButton(
-                        onClick = { performFavoriteHaptic(hapticView, haptics, adding = !favorite); onFavorite() },
+                        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onFavorite() },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
@@ -3098,7 +3160,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.1")
+                            .header("User-Agent", "Radio.TV/3.3")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

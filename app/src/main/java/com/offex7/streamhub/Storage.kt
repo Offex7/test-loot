@@ -47,6 +47,7 @@ class SettingsStore(private val context: Context) {
     private val energySavingModeKey = stringPreferencesKey("energy_saving_mode_v1")
     private val hapticsKey = booleanPreferencesKey("haptics_enabled_v1")
     private val autoStartKey = booleanPreferencesKey("autostart_android_tv_v1")
+    private val soundFeedbackKey = booleanPreferencesKey("sound_feedback_enabled_v1")
     private val equalizerBassKey = intPreferencesKey("radio_eq_bass_v1")
     private val equalizerMidKey = intPreferencesKey("radio_eq_mid_v1")
     private val equalizerTrebleKey = intPreferencesKey("radio_eq_treble_v1")
@@ -438,6 +439,13 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setAutoStartEnabled(enabled: Boolean) {
         context.dataStore.edit { it[autoStartKey] = enabled }
+    }
+
+    fun soundFeedbackFlow(): Flow<Boolean> =
+        context.dataStore.data.map { it[soundFeedbackKey] ?: true }
+
+    suspend fun setSoundFeedbackEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[soundFeedbackKey] = enabled }
     }
 
     data class RadioEqualizerSettings(
