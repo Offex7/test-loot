@@ -636,7 +636,8 @@ private fun Home(
         animationSpec = tween(1000, easing = FastOutSlowInEasing),
         label = "home-radio-outline-color"
     )
-    LaunchedEffect(Unit) {
+    LaunchedEffect(energySaving) {
+        if (energySaving) return@LaunchedEffect
         while (true) {
             delay(30_000L)
             val next = homeOutlineColors.shuffled()
@@ -1347,7 +1348,7 @@ private fun Radio(
                             },
                             logoSize = 96.dp,
                             isRadio = true,
-                            activeRadio = active && playing,
+                            activeRadio = active,
                             radioStatus = if (active) {
                                 when {
                                     error != null -> "ошибка"
