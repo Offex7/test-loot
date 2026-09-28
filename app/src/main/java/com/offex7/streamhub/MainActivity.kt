@@ -3039,7 +3039,7 @@ private fun LogoImage(
             bumping = false
         }
     }
-    val targetScale = if (activeRadio) 1.05f + (if (radioPlaying) (0.03f * pulse) else 0f) + if (bumping) 0.08f else 0f else 1f
+    val targetScale = if (activeRadio && !energySaving) 1.05f + (if (radioPlaying) (0.03f * pulse) else 0f) + if (bumping) 0.08f else 0f else 1f
     val scale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(),
@@ -3047,7 +3047,7 @@ private fun LogoImage(
     )
     val borderColor = when {
         !activeRadio -> Color.Transparent
-        radioPlaying -> Red.copy(alpha = 0.45f + (0.25f * pulse))
+        radioPlaying && !energySaving -> Red.copy(alpha = 0.45f + (0.25f * pulse))
         else -> Red.copy(alpha = 0.70f)
     }
 
@@ -3103,35 +3103,19 @@ private fun LogoImage(
         }
 
         overlayText?.let {
-            val outline = remember(item.name) { averageTimerOutline(item.name) }
-            val timerText = "⏱ $it"
-            Box(
-                Modifier.padding(bottom = 2.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                val offsets = listOf(
-                    -1 to -1, 0 to -1, 1 to -1,
-                    -1 to 0, 1 to 0,
-                    -1 to 1, 0 to 1, 1 to 1
-                )
-                offsets.forEach { (dx, dy) ->
-                    Text(
-                        timerText,
-                        color = outline,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.offset(dx.dp, dy.dp),
-                        maxLines = 1
-                    )
-                }
-                Text(
-                    timerText,
-                    color = Red,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
+            val energySaving = LocalEnergySaving.current
+            val timerText = it
+            Text(
+                timerText,
+                color = Red,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                style = TextStyle(
+                    shadow = Shadow(Color.Black.copy(alpha = if (energySaving) .35f else .55f), blurRadius = 2.2f)
+                ),
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
         }
     }
 }
@@ -3252,8 +3236,8 @@ private fun RestoreBanner(item: StreamItem, onContinue: () -> Unit, onClose: () 
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text("Продолжить [${item.name}]?", fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Продолжить [${item.name}]?", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Button(onClick = onContinue, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Red)) {
                     Text("Продолжить", maxLines = 1)
                 }
