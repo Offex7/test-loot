@@ -1117,6 +1117,8 @@ private fun TvV9Player(
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
     val playerScope = androidx.compose.runtime.rememberCoroutineScope()
     val playerWindow = activity?.window
+    val hapticView = LocalView.current
+    val hapticsEnabled = !LocalEnergySaving.current
     val buffering by player.buffering.collectAsStateWithLifecycle()
     val weakNetworkEvent by player.weakNetworkEvent.collectAsStateWithLifecycle()
     val adaptiveBufferLevel by player.adaptiveBufferLevel.collectAsStateWithLifecycle()
@@ -1399,6 +1401,7 @@ private fun TvV9Player(
                     ) {
                         TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", onBack)
                         TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна") {
+                            if (hapticsEnabled) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                             val open = !sleepMenu
                             sleepMenu = open
                             if (open) favoriteMenu = false
@@ -1433,6 +1436,7 @@ private fun TvV9Player(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
                             "Избранное"
                         ) {
+                            if (hapticsEnabled) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                             val open = !favoriteMenu
                             favoriteMenu = open
                             if (open) sleepMenu = false
