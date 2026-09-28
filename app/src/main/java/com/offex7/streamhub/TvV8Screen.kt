@@ -1464,14 +1464,18 @@ private fun TvV9Player(
                         }
                         TvV9PlayerButton(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
-                            "Избранное", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying
-                        ) {
-                            InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound=!player.isPlaying.value&&!radioPlaying)
-                            val open = !favoriteMenu
-                            favoriteMenu = open
-                            if (open) sleepMenu = false
-                            menuInteractionToken++
-                        }
+                            "Избранное",
+                            hapticsEnabled,
+                            soundEnabled,
+                            allowSound = !player.isPlaying.value && !radioPlaying,
+                            onClick = {
+                                InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound=!player.isPlaying.value&&!radioPlaying)
+                                val open = !favoriteMenu
+                                favoriteMenu = open
+                                if (open) sleepMenu = false
+                                menuInteractionToken++
+                            }
+                        )
                         TvV9PlayerButton(
     Icons.Default.PictureInPictureAlt,
     "PiP",
