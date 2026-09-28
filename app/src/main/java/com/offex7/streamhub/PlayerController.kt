@@ -129,11 +129,11 @@ class PlayerController(context: Context) {
                                         generation == bufferingGeneration &&
                                         newPlayer === currentPlayer &&
                                         currentPlayer.playbackState == Player.STATE_BUFFERING &&
-                                        System.currentTimeMillis() - bufferingStartedAt >= 4_000L
+                                        System.currentTimeMillis() - bufferingStartedAt >= 7_000L
                                     ) {
                                         handleWeakNetworkEvent()
                                     }
-                                }, 4_000L)
+                                }, 7_000L)
                             }
                             Player.STATE_READY -> {
                                 bufferingGeneration++

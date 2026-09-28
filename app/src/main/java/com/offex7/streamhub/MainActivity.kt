@@ -719,7 +719,7 @@ private fun Home(
 
             Spacer(Modifier.height(18.dp))
             Card(
-                onClick = { openUrl(context, TELEGRAM) },
+                onClick = { InteractionFeedback.click(context,hapticsEnabled,soundEnabled,allowSound=false); openUrl(context, TELEGRAM) },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
@@ -2142,12 +2142,12 @@ private fun Settings(
             }
         }
         item {
-            item {
-                val sharePulse by rememberInfiniteTransition(label="share-log-pulse").animateFloat(1f,1.1f,infiniteRepeatable(tween(750,easing=FastOutSlowInEasing),RepeatMode.Reverse),label="share-log-pulse-value")
+            val sharePulse by rememberInfiniteTransition(label="share-log-pulse").animateFloat(1f,1.1f,infiniteRepeatable(tween(750,easing=FastOutSlowInEasing),RepeatMode.Reverse),label="share-log-pulse-value")
                 Card(onClick={scope.launch{runCatching{
                     val file=LogExporter.export(settingsContext,store)
                     val uri=androidx.core.content.FileProvider.getUriForFile(settingsContext,settingsContext.packageName+".fileprovider",file)
                     val intent=Intent(Intent.ACTION_SEND).apply{type="application/zip";putExtra(Intent.EXTRA_STREAM,uri);putExtra(Intent.EXTRA_TEXT,"Radio.TV — логи приложения");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);clipData=ClipData.newRawUri("Radio.TV logs",uri)}
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     settingsContext.startActivity(Intent.createChooser(intent,"Поделиться логами"))
                 }.onFailure{Toast.makeText(settingsContext,"Не удалось экспортировать лог",Toast.LENGTH_LONG).show()}},modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)){
                     Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){

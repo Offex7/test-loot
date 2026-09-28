@@ -163,7 +163,10 @@ fun TvV8Screen(
     onCancelSleep: () -> Unit,
     notify: (String, Long) -> Unit,
     onViewingChanged: (Boolean) -> Unit,
-    pipMode: Boolean
+    pipMode: Boolean,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    radioPlaying: Boolean
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -382,35 +385,50 @@ fun TvV8Screen(
         if (pending.isNotEmpty()) health = health + scanTvV9(pending, repo)
     }
 
+    fun normalizedChannelTitle(name: String): String = name.lowercase(Locale.ROOT)
+        .replace(Regex("\\b(hd|uhd|fhd|4k|sd)\\b"), " ")
+        .replace(Regex("[+_\\-()]\\s*\\d+$"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    fun similarChannelNames(a: String, b: String): Boolean {
+        val na = normalizedChannelTitle(a)
+        val nb = normalizedChannelTitle(b)
+        if (na.isBlank() || nb.isBlank()) return false
+        return na == nb || na.startsWith(nb + " ") || nb.startsWith(na + " ")
+    }
+
     fun navigationOrder(): List<Int> =
-        channels.indices
-            .filter { index ->
-                val item = channels[index]
-                !hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE
-            }
-            .sortedWith(
-                compareByDescending<Int> { favorites.contains(channels[it].key) }
-                    .thenByDescending { favoriteTimes[channels[it].key] ?: 0L }
-                    .thenBy { it }
-            )
+        channels.indices.filter { index ->
+            val item = channels[index]
+            !hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE
+        }
 
     fun previousIndex(start: Int): Int {
         val order = navigationOrder()
-        if (order.size <= 1) return -1
-        val pos = order.indexOf(start)
-        val base = if (pos >= 0) pos else 0
-        return order[(base - 1 + order.size) % order.size]
+        if (order.size <= 1 || start !in channels.indices) return -1
+        val pos = order.indexOf(start).let { if (it >= 0) it else order.size }
+        val currentName = channels[start].name
+        for (step in 1..order.size) {
+            val candidate = order[(pos - step + order.size * 2) % order.size]
+            if (!similarChannelNames(currentName, channels[candidate].name)) return candidate
+        }
+        return -1
     }
 
     fun nextIndex(start: Int): Int {
         val order = navigationOrder()
-        if (order.size <= 1) return -1
-        val pos = order.indexOf(start)
-        val base = if (pos >= 0) pos else -1
-        return order[(base + 1) % order.size]
+        if (order.size <= 1 || start !in channels.indices) return -1
+        val pos = order.indexOf(start).let { if (it >= 0) it else -1 }
+        val currentName = channels[start].name
+        for (step in 1..order.size) {
+            val candidate = order[(pos + step + order.size) % order.size]
+            if (!similarChannelNames(currentName, channels[candidate].name)) return candidate
+        }
+        return -1
     }
 
-    fun nextRawCandidate(start: Int): Int {
+        fun nextRawCandidate(start: Int): Int {
         if (channels.size <= 1) return -1
         for (step in 1 until channels.size) {
             val index = (start + step) % channels.size
@@ -425,6 +443,7 @@ fun TvV8Screen(
     fun startPlayback(start: Int) {
         if (start !in channels.indices || hiddenChannels.contains(channels[start].key)) return
         playbackJob?.cancel()
+        selectedIndex = start
         fullscreen = true
         notice = null
         isSwitching = true
@@ -489,7 +508,7 @@ fun TvV8Screen(
             channel = channels[selectedIndex],
             favoriteChannels = favoriteChannels,
             error = if (notice == null && !isSwitching) error else null,
-            waiting = if (isSwitching) false else (waiting || !network),
+            waiting = isSwitching || waiting || !network,
             isPlaying = if (isSwitching) true else isPlaying,
             noticeMessage = notice,
             sleepRemaining = sleepRemaining,
@@ -536,7 +555,10 @@ fun TvV8Screen(
             },
             pipMode = pipMode,
             onWeakNetworkNotice = { message -> notify(message, 5000L) },
-            switching = isSwitching
+            switching = isSwitching,
+            hapticsEnabled = hapticsEnabled,
+            soundEnabled = soundEnabled,
+            radioPlaying = radioPlaying
         )
         return
     }
@@ -670,6 +692,9 @@ fun TvV8Screen(
                                 logoCache = logoCache,
                                 offline = offline,
                                 showHideIcon = showHideIcon,
+                                hapticsEnabled = hapticsEnabled,
+                                soundEnabled = soundEnabled,
+                                allowSound = !player.isPlaying.value && !radioPlaying,
                                 onPlay = {
                                     channels.indexOfFirst { it.key == channel.key }
                                         .takeIf { it >= 0 }
@@ -677,9 +702,11 @@ fun TvV8Screen(
                                 },
                                 onFavorite = {
                                     scope.launch {
-                                        store.setFavorite(Section.TV, channel.key, !favorite)
+                                        val newFavorite = !favorite
+                                        store.setFavorite(Section.TV, channel.key, newFavorite)
                                         favorites = store.favorites(Section.TV)
                                         favoriteTimes = store.favoriteAddedAt(Section.TV)
+                                        notify(if (newFavorite) "Канал добавлен в избранное" else "Канал удалён из избранного", 3000L)
                                     }
                                 },
                                 onHide = {
@@ -779,6 +806,9 @@ private fun TvV9ChannelRow(
     logoCache: TvLogoCache,
     offline: Boolean,
     showHideIcon: Boolean,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    allowSound: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
     onHide: () -> Unit
@@ -788,14 +818,15 @@ private fun TvV9ChannelRow(
     var settleTarget by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
     var settling by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     var hiding by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
-    val hapticView = LocalView.current
-    val haptics = !LocalEnergySaving.current
-    val animatedOffset by animateFloatAsState(
-        targetValue = if (settling) settleTarget else dragOffset,
+    val feedbackContext = LocalContext.current
+    val settledOffset by animateFloatAsState(
+        targetValue = settleTarget,
         animationSpec = tween(220, easing = FastOutSlowInEasing),
-        label = "tv-v9-swipe-offset"
+        label = "tv-v9-swipe-settle-offset"
     )
-    val progress = (abs(animatedOffset) / (rowWidth * 0.5f)).coerceIn(0f, 1f)
+    val displayOffset = if (settling) settledOffset else dragOffset
+    val threshold = rowWidth * 0.70f
+    val progress = (abs(displayOffset) / threshold.coerceAtLeast(1f)).coerceIn(0f, 1f)
 
     LaunchedEffect(settling, settleTarget) {
         if (!settling) return@LaunchedEffect
@@ -836,8 +867,8 @@ private fun TvV9ChannelRow(
                     .fillMaxWidth()
                     .onSizeChanged { rowWidth = it.width.toFloat().coerceAtLeast(1f) }
                     .graphicsLayer {
-                        translationX = animatedOffset
-                        alpha = 1f - (abs(animatedOffset) / rowWidth).coerceIn(0f, 0.45f)
+                        translationX = displayOffset
+                        alpha = 1f - (abs(displayOffset) / rowWidth).coerceIn(0f, 0.45f)
                     }
                     .pointerInput(item.key, rowWidth) {
                         detectHorizontalDragGestures(
@@ -893,7 +924,7 @@ private fun TvV9ChannelRow(
                         if (offline) Text("• временно недоступен", color = TvV9Gray, fontSize = 10.sp)
                     }
                     IconButton(onClick = {
-                        if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)
                         onFavorite()
                     }) {
                         Icon(
@@ -905,7 +936,7 @@ private fun TvV9ChannelRow(
                     if (showHideIcon) {
                         IconButton(
                             onClick = {
-                                if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)
                                 if (!hiding) {
                                     settleTarget = -rowWidth
                                     settling = true
@@ -1079,7 +1110,10 @@ private fun TvV9Player(
     onZoomReset: () -> Unit,
     pipMode: Boolean,
     onWeakNetworkNotice: (String) -> Unit,
-    switching: Boolean
+    switching: Boolean,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    radioPlaying: Boolean
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.activity.ComponentActivity
@@ -1100,7 +1134,7 @@ private fun TvV9Player(
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     var menuInteractionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
-    var formatMode by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var formatMode by androidx.compose.runtime.remember(channel.key, initialZoom) { androidx.compose.runtime.mutableIntStateOf(if (initialZoom != null) 5 else 0) }
     val orientation = LocalConfiguration.current.orientation
     var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
     var channelNotice by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
@@ -1117,8 +1151,7 @@ private fun TvV9Player(
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
     val playerScope = androidx.compose.runtime.rememberCoroutineScope()
     val playerWindow = activity?.window
-    val hapticView = LocalView.current
-    val hapticsEnabled = !LocalEnergySaving.current
+    val feedbackContext = LocalContext.current
     val buffering by player.buffering.collectAsStateWithLifecycle()
     val weakNetworkEvent by player.weakNetworkEvent.collectAsStateWithLifecycle()
     val adaptiveBufferLevel by player.adaptiveBufferLevel.collectAsStateWithLifecycle()
@@ -1320,10 +1353,8 @@ private fun TvV9Player(
                     val baseScale = zoom * formatScale
                     scaleX = baseScale
                     scaleY = baseScale
-                    val maxPanX = viewportWidth * (baseScale - 1f) / 2f
-                    val maxPanY = viewportHeight * (baseScale - 1f) / 2f
-                    translationX = panX.coerceIn(-maxPanX, maxPanX)
-                    translationY = panY.coerceIn(-maxPanY, maxPanY)
+                    translationX = panX
+                    translationY = panY
                 }
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
@@ -1347,10 +1378,9 @@ private fun TvV9Player(
                         detectTransformGestures { pan, _, gestureZoom, _ ->
                             if (formatMode != 5) {
                                 formatMode = 5
-                                zoom = 1f
+                                zoom = initialZoom?.coerceIn(1f, 3f) ?: 1f
                                 panX = 0f
                                 panY = 0f
-                                onZoomReset()
                             }
                             val nextZoom = (zoom * gestureZoom).coerceIn(1f, 3f)
                             zoom = nextZoom
@@ -1399,16 +1429,16 @@ private fun TvV9Player(
                         Modifier.align(Alignment.TopStart).padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", onBack)
-                        TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна") {
-                            if (hapticsEnabled) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onClick = onBack)
+                        TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying) {
+                            InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound=!player.isPlaying.value&&!radioPlaying)
                             val open = !sleepMenu
                             sleepMenu = open
                             if (open) favoriteMenu = false
                             menuInteractionToken++
                             sleepToken++
                         }
-                        TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel) {
+                        TvV9PlayerButton(Icons.Default.AspectRatio, formatLabel, hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying) {
                             favoriteMenu = false
                             sleepMenu = false
                             formatMode = (formatMode + 1) % 6
@@ -1426,7 +1456,7 @@ private fun TvV9Player(
                             }
                             showPlayerToast("Формат: " + nextLabel, 5000L)
                         }
-                        TvV9PlayerButton(Icons.Default.Lock, "Заблокировать") {
+                        TvV9PlayerButton(Icons.Default.Lock, "Заблокировать", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying) {
                             favoriteMenu = false
                             sleepMenu = false
                             locked = true
@@ -1434,9 +1464,9 @@ private fun TvV9Player(
                         }
                         TvV9PlayerButton(
                             if (favoriteMenu) Icons.Default.Star else Icons.Default.StarBorder,
-                            "Избранное"
+                            "Избранное", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying
                         ) {
-                            if (hapticsEnabled) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                            InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound=!player.isPlaying.value&&!radioPlaying)
                             val open = !favoriteMenu
                             favoriteMenu = open
                             if (open) sleepMenu = false
@@ -1527,13 +1557,16 @@ private fun TvV9Player(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", onPrev)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onPrev)
                         TvV9PlayerButtonLarge(
                             if (isPlaying) androidx.compose.material.icons.Icons.Default.Pause else androidx.compose.material.icons.Icons.Default.PlayArrow,
                             "Пауза / Старт",
-                            onPause
+                            hapticsEnabled,
+                            soundEnabled,
+                            allowSound = !player.isPlaying.value && !radioPlaying,
+                            onClick = onPause
                         )
-                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", onNext)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onNext)
                     }
 
                     if (!pipMode) noticeMessage?.let {
@@ -1721,13 +1754,15 @@ private fun TvV9Player(
 private fun TvV9PlayerButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    allowSound: Boolean,
     onClick: () -> Unit
 ) {
-    val hapticView = LocalView.current
-    val haptics = !LocalEnergySaving.current
+    val feedbackContext = LocalContext.current
     IconButton(
         onClick = {
-            if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)
             onClick()
         },
         modifier = Modifier
@@ -1744,13 +1779,15 @@ private fun TvV9PlayerButton(
 private fun TvV9PlayerButtonLarge(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
+    hapticsEnabled: Boolean,
+    soundEnabled: Boolean,
+    allowSound: Boolean,
     onClick: () -> Unit
 ) {
-    val hapticView = LocalView.current
-    val haptics = !LocalEnergySaving.current
+    val feedbackContext = LocalContext.current
     IconButton(
         onClick = {
-            if (haptics) hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)
             onClick()
         },
         modifier = Modifier
