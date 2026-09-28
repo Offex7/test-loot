@@ -1472,7 +1472,14 @@ private fun TvV9Player(
                             if (open) sleepMenu = false
                             menuInteractionToken++
                         }
-                        TvV9PlayerButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip)
+                        TvV9PlayerButton(
+    Icons.Default.PictureInPictureAlt,
+    "PiP",
+    hapticsEnabled,
+    soundEnabled,
+    allowSound = !player.isPlaying.value && !radioPlaying,
+    onClick = onEnterPip
+)
                     }
 
                     AnimatedVisibility(

@@ -719,7 +719,7 @@ private fun Home(
 
             Spacer(Modifier.height(18.dp))
             Card(
-                onClick = { InteractionFeedback.click(context,hapticsEnabled,soundEnabled,allowSound=false); openUrl(context, TELEGRAM) },
+                onClick = { InteractionFeedback.click(context,hapticsEnabled,false,allowSound=false); openUrl(context, TELEGRAM) },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
@@ -764,70 +764,28 @@ private fun HomeCard(
                 Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                val iconModifier = Modifier
-                    .fillMaxHeight(0.82f)
-                    .aspectRatio(1f)
+                val iconModifier = Modifier.fillMaxHeight(0.82f).aspectRatio(1f)
                 Box(iconModifier) {
-                    val painter=painterResource(logo)
-                    val outlineOffsets=listOf(Offset(-1.5f,0f),Offset(1.5f,0f),Offset(0f,-1.5f),Offset(0f,1.5f),Offset(-1.05f,-1.05f),Offset(1.05f,-1.05f),Offset(-1.05f,1.05f),Offset(1.05f,1.05f))
-                    outlineOffsets.forEach{shift->Image(painter=painter,contentDescription=null,modifier=Modifier.matchParentSize().offset(x=shift.x.dp,y=shift.y.dp),colorFilter=androidx.compose.ui.graphics.ColorFilter.tint(borderColor))}
-                    Image(painter=painter,contentDescription=title,modifier=Modifier.matchParentSize())
-                        val accent = borderColor.copy(alpha = .70f)
-                        if (title == "ТЕЛЕВИЗОР") {
-                            val line by rememberInfiniteTransition(label = "tv-news-line").animateFloat(
-                                initialValue = 0.25f,
-                                targetValue = 0.75f,
-                                animationSpec = infiniteRepeatable(
-                                    tween(1700, easing = LinearEasing),
-                                    RepeatMode.Reverse
-                                ),
-                                label = "tv-news-line-progress"
-                            )
-                            Canvas(Modifier.matchParentSize().padding(18.dp)) {
-                                drawLine(
-                                    accent,
-                                    Offset(size.width * 0.22f, size.height * line),
-                                    Offset(size.width * 0.78f, size.height * line),
-                                    strokeWidth = 2f
-                                )
-                            }
-                        } else {
-                            val wave by rememberInfiniteTransition(label = "radio-wave").animateFloat(
-                                initialValue = 0.55f,
-                                targetValue = 1f,
-                                animationSpec = infiniteRepeatable(
-                                    tween(900, easing = FastOutSlowInEasing),
-                                    RepeatMode.Reverse
-                                ),
-                                label = "radio-wave-progress"
-                            )
-                            Canvas(Modifier.matchParentSize().padding(20.dp)) {
-                                val center = Offset(size.width / 2f, size.height / 2f)
-                                val diameter = minOf(size.width, size.height) * 0.38f * wave
-                                drawArc(
-                                    color = accent,
-                                    startAngle = 220f,
-                                    sweepAngle = 100f,
-                                    useCenter = false,
-                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
-                                    topLeft = Offset(center.x - diameter / 2f, center.y - diameter / 2f),
-                                    size = androidx.compose.ui.geometry.Size(diameter, diameter)
-                                )
-                            }
-                        }
+                    val painter = painterResource(logo)
+                    val outlineOffsets = listOf(
+                        Offset(-1.5f, 0f), Offset(1.5f, 0f),
+                        Offset(0f, -1.5f), Offset(0f, 1.5f),
+                        Offset(-1.05f, -1.05f), Offset(1.05f, -1.05f),
+                        Offset(-1.05f, 1.05f), Offset(1.05f, 1.05f)
+                    )
+                    outlineOffsets.forEach { shift ->
+                        Image(
+                            painter = painter,
+                            contentDescription = null,
+                            modifier = Modifier.matchParentSize().offset(x = shift.x.dp, y = shift.y.dp),
+                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(borderColor)
+                        )
                     }
+                    Image(painter = painter, contentDescription = title, modifier = Modifier.matchParentSize())
                 }
             }
             Spacer(Modifier.height(2.dp))
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                softWrap = false,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
+            Text(title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -2971,7 +2929,7 @@ private fun ChannelRow(
                         )
                     }
                     IconButton(
-                        onClick = { performRadioTvHaptic(hapticView, haptics, android.view.HapticFeedbackConstants.KEYBOARD_TAP); onToggle() },
+                        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onToggle() },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Orange, modifier = Modifier.size(22.dp))
@@ -2979,7 +2937,7 @@ private fun ChannelRow(
                 }
             } else {
                 IconButton(
-                    onClick = { performFavoriteHaptic(hapticView, haptics, adding = !favorite); onFavorite() },
+                    onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onFavorite() },
                     modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                 ) {
                     Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Избранное", tint = iconColor)
