@@ -204,7 +204,7 @@ class PlayerController(context: Context) {
         if (previous >= 5) return
         val count = previous + 1
         _weakNetworkNoticeCount.value = count
-        _weakNetworkEvent.value += 1L
+        if (previous == 0) _weakNetworkEvent.value += 1L
         _weakNetwork.value = true
         when (count) {
             1, 2 -> lowerVideoQuality()
