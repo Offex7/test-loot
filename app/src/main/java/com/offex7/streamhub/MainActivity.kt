@@ -649,7 +649,7 @@ private fun Home(
     val gearColor=if(energySaving)Color.White else gearColorAnimated
     var gearTurns by remember { mutableIntStateOf(0) }
     val gearRotation by animateFloatAsState(
-        targetValue = gearTurns * 90f,
+        targetValue = if (energySaving) 0f else gearTurns * 90f,
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "home-gear-rotation"
     )
@@ -2629,6 +2629,7 @@ private fun SleepGrid(
 private fun DonationCard() {
     val context = LocalContext.current
     val energySaving = LocalEnergySaving.current
+    val hapticsEnabled by SettingsStore(context.applicationContext).hapticsFlow().collectAsState(true)
     val transition = rememberInfiniteTransition(label = "donation-heart-transition")
     val heartColorAnimated by transition.animateColor(
         initialValue = Color.White,
@@ -2722,7 +2723,7 @@ private fun DonationCard() {
             Spacer(Modifier.height(10.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Card(
-                    onClick = { InteractionFeedback.click(context,true,false,false); openUrl(context, TELEGRAM_DONATION) },
+                    onClick = { InteractionFeedback.click(context,hapticsEnabled,false,false); openUrl(context, TELEGRAM_DONATION) },
                     modifier = Modifier.height(46.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
                     shape = RoundedCornerShape(14.dp)
