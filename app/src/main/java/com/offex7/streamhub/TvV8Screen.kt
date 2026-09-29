@@ -954,7 +954,7 @@ private fun TvV9ChannelRow(
                                     hiding = true
                                 }
                             },
-                            modifier = if (horizontal) Modifier.size(34.dp) else Modifier.size(42.dp)
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(Icons.Default.VisibilityOff, "Скрыть канал", tint = TvV9Gray)
                         }
