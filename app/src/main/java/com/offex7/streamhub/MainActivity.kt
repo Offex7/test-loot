@@ -571,17 +571,8 @@ private fun App(
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
-                    onSleep = {
-                        sleepMinutes = it
-                        sleepUntil = System.currentTimeMillis() + it * 60_000L
-                        notify("Таймер сна — запущен")
-                    },
-                    onCancelSleep = {
-                        sleepUntil = 0L
-                        sleepRemaining = 0L
-                        sleepMinutes = 0L
-                        notify("Таймер сна — отключён")
-                    },
+                    onSleep = ::armSleep,
+                    onCancelSleep = ::cancelSleep,
                     notify = ::notify,
                     onViewingChanged = { activity.tvViewing = it },
                     pipMode = activity.pipMode,
