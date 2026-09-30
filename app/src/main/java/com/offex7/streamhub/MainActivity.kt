@@ -20,6 +20,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
@@ -214,6 +216,7 @@ private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/9"
+private const val RECOMMEND_MESSAGE = """Приветствую! Слушай, хочу поделиться находкой, которая реально заслуживает внимания — приложением Radio.TV. Представь: куча ТВ-каналов, Радио и всё, что нужно для досуга, в одном месте. И всё это абсолютно бесплатно! Дизайн минималистичный и приятный, ничего лишнего. Приложение активно развивается, так что скучать не придётся. Работает на Android 12 и новее. Я уже пользуюсь — и мне очень зашло. Держи ссылку на блог разработчика, устанавливай скорее: [https://t.me/TvRadioOnline](https://t.me/TvRadioOnline). Не пожалеешь! И да, я пишу это осознанно: это не спам, а искренняя рекомендация.  """
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
@@ -255,7 +258,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var tv: PlayerController
     private lateinit var radio: RadioMediaController
     internal var pipEnabled = true
-    internal var tvViewing = false
+    internal var tvViewing by mutableStateOf(false)
     internal var pipMode by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -335,9 +338,26 @@ private fun App(
     val autoStartEnabled by store.autoStartFlow().collectAsState(false)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
-    LaunchedEffect(autoStartEnabled) {
-        if (autoStartEnabled) activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    DisposableEffect(autoStartEnabled, activity.tvViewing) {
+        val handler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
+            override fun run() {
+                val active = activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                if (active && (autoStartEnabled || activity.tvViewing)) {
+                    activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    handler.postDelayed(this, 8_000L)
+                } else {
+                    activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+        runnable.run()
+        onDispose {
+            handler.removeCallbacks(runnable)
+            if (!activity.tvViewing) {
+                activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
@@ -357,6 +377,7 @@ private fun App(
     var sleepUntil by remember { mutableLongStateOf(0L) }
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
+    var sleepWarningFor by remember { mutableLongStateOf(0L) }
     fun notify(message: String, durationMs: Long = 5000L) {
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
@@ -388,28 +409,58 @@ private fun App(
         }
     }
 
+    fun armSleep(minutes: Long) {
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
+        sleepMinutes = minutes.coerceAtLeast(1L)
+        sleepUntil = System.currentTimeMillis() + sleepMinutes * 60_000L
+        sleepWarningFor = 0L
+        notify("Таймер сна — запущен")
+    }
+
+    fun cancelSleep() {
+        sleepUntil = 0L
+        sleepRemaining = 0L
+        sleepMinutes = 0L
+        sleepWarningFor = 0L
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
+        notify("Таймер сна — отключён")
+    }
+
     LaunchedEffect(sleepUntil) {
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
         if (sleepUntil <= 0L) {
             sleepRemaining = 0L
             return@LaunchedEffect
         }
+        var warningShown = false
         while (true) {
             val left = sleepUntil - System.currentTimeMillis()
+            if (left <= 15_000L && !warningShown) {
+                warningShown = true
+                sleepWarningFor = sleepUntil
+                notify("Таймер сна сработает через 15 секунд", 3_000L)
+                val fadeDuration = left.coerceAtLeast(1L)
+                tv.fadeOut(fadeDuration)
+                radio.fadeOut(fadeDuration)
+            }
             if (left <= 0L) {
-                sleepUntil = 0L
                 sleepRemaining = 0L
                 sleepMinutes = 0L
-                tv.stop()
-                radio.stop()
+                tv.pause()
+                radio.pause()
                 radioTimerStore.pause(System.currentTimeMillis())
-                notify("Таймер сна — отключён")
+                sleepUntil = 0L
+                delay(250L)
+                activity.finishAndRemoveTask()
                 break
             }
             sleepRemaining = left
-            delay(1000L)
+            delay(250L)
         }
     }
-
     fun leaveSection() {
         section = null
         settings = false
@@ -452,14 +503,10 @@ private fun App(
                     },
                     onSleep = {
                         sleepMinutes = it
-                        sleepUntil = System.currentTimeMillis() + it * 60_000L
-                        notify("Таймер сна — запущен")
+                        armSleep(it)
                     },
                     onCancelSleep = {
-                        sleepUntil = 0L
-                        sleepRemaining = 0L
-                        sleepMinutes = 0L
-                        notify("Таймер сна — отключён")
+                        cancelSleep()
                     },
                     onResetStats = { target ->
                         scope.launch {
@@ -554,8 +601,8 @@ private fun App(
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
-                    onSleep = { minutes -> sleepMinutes=minutes; sleepUntil=System.currentTimeMillis()+minutes*60_000L; notify("Таймер сна — запущен") },
-                    onCancelSleep = { sleepUntil=0L;sleepRemaining=0L;sleepMinutes=0L;notify("Таймер сна — отключён") },
+                    onSleep = ::armSleep,
+                    onCancelSleep = ::cancelSleep,
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
                     onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
@@ -724,7 +771,10 @@ private fun Home(
 
             Spacer(Modifier.height(18.dp))
             Card(
-                onClick = { InteractionFeedback.click(context,hapticsEnabled,false,allowSound=false); openUrl(context, TELEGRAM) },
+                onClick = {
+                    InteractionFeedback.click(context, hapticsEnabled, false, allowSound = false)
+                    shareText(context, RECOMMEND_MESSAGE, "Рекомендовать Radio.TV")
+                },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
