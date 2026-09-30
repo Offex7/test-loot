@@ -248,6 +248,19 @@ private fun rememberSystemPowerSave(): Boolean {
 }
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
+private fun shareText(context: Context, text: String, chooserTitle: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, chooserTitle))
+    }.onFailure {
+        Toast.makeText(context, "Не удалось открыть меню «Поделиться»", Toast.LENGTH_LONG).show()
+    }
+}
+
 private val SleepOptions = listOf(
     5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч",
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
