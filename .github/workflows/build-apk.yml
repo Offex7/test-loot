@@ -43,11 +43,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate final release 3.3 project
+      - name: Validate final release 3.5 project
         run: |
           set -e
-          grep -q 'versionCode = 6' app/build.gradle.kts
-          grep -q 'versionName = "3.3"' app/build.gradle.kts
+          grep -q 'versionCode = 8' app/build.gradle.kts
+          grep -q 'versionName = "3.5"' app/build.gradle.kts
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'minSdk = 29' app/build.gradle.kts
@@ -69,7 +69,7 @@ jobs:
           grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssets.kt
-          grep -q 'versionCode = 6' app/build.gradle.kts
+          grep -q 'versionCode = 8' app/build.gradle.kts
           grep -q 'ГАМАЮН' app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/signing/radio-tv-v5-debug.keystore
 
@@ -96,7 +96,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.3-debug-build-log
+          name: Radio-TV-v3.5-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -108,33 +108,33 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" radio-tv-release-3.3.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.3.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.3.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" radio-tv-release-3.5.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.5.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.5.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.3.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.5.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
           echo "$APK_PACKAGE" | grep -q "versionCode='6'"
           echo "$APK_PACKAGE" | grep -q "versionName='3.3'"
-          sha256sum radio-tv-release-3.3.apk
-          ls -lh radio-tv-release-3.3.apk
+          sha256sum radio-tv-release-3.5.apk
+          ls -lh radio-tv-release-3.5.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-Release-3.3-APK
-          path: radio-tv-release-3.3.apk
+          name: Radio-TV-Release-3.5-APK
+          path: radio-tv-release-3.5.apk
           if-no-files-found: error
 
       - name: Package source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v3.3-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v3.5-source.zip
 
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.3-Source
-          path: Radio-TV-v3.3-source.zip
+          name: Radio-TV-v3.5-Source
+          path: Radio-TV-v3.5-source.zip
           if-no-files-found: error
