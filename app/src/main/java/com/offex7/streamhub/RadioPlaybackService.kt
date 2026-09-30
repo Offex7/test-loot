@@ -74,10 +74,20 @@ class RadioPlaybackService : MediaSessionService() {
             }
 
             override fun onPlayWhenReadyChanged(isReady: Boolean, reason: Int) {
-                if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
-                    userPaused = !isReady
-                    userStopped = false
-                    resumeAfterInterruption = false
+                when (reason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> {
+                        userPaused = !isReady
+                        if (isReady) userStopped = false
+                        resumeAfterInterruption = false
+                    }
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> {
+                        if (!isReady && !userStopped) {
+                            userPaused = false
+                            resumeAfterInterruption = true
+                            LogExporter.log("Radio playWhenReady lost due system interruption; auto-resume armed: reason="+reason)
+                        }
+                    }
                 }
             }
 
