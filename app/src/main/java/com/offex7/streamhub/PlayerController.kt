@@ -152,6 +152,25 @@ class PlayerController(context: Context) {
                         }
                     }
 
+                    override fun onPlayWhenReadyChanged(isReady: Boolean, reason: Int) {
+                        if (newPlayer !== currentPlayer) return
+                        when (reason) {
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> {
+                                userPaused = !isReady
+                                if (isReady) userStopped = false
+                                resumeAfterInterruption = false
+                            }
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> {
+                                if (!isReady && lastUrl != null && !userStopped) {
+                                    resumeAfterInterruption = true
+                                    userPaused = false
+                                    LogExporter.log("TV playWhenReady lost due system interruption; auto-resume armed: reason=$reason")
+                                }
+                            }
+                        }
+                    }
+
                     override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
                         if (newPlayer !== currentPlayer) return
                         if (
