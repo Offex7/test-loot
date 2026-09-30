@@ -8,7 +8,7 @@ import java.util.zip.ZipOutputStream
 
 object LogExporter {
     suspend fun export(context: Context, store: SettingsStore): File {
-        val zip = File(context.filesDir, "Radio.TV. bagreport.zip")
+        val zip = File(context.cacheDir, "radio-tv-logs-${System.currentTimeMillis()}.zip")
         val logLines = synchronized(this) {
             val all = recentLines.toList()
             all.subList((all.size - 1000).coerceAtLeast(0), all.size)
