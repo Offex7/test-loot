@@ -3335,7 +3335,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.3")
+                            .header("User-Agent", "Radio.TV/3.5")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
