@@ -1,9 +1,12 @@
 package com.offex7.streamhub
 
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.ComponentName
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.view.animation.LinearInterpolator
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -16,6 +19,7 @@ import java.util.concurrent.Executors
 
 class RadioMediaController(context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
     private var controller: MediaController? = null
     private var future: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
     @Volatile private var pendingPlayIndex: Int? = null
@@ -28,12 +32,16 @@ class RadioMediaController(context: Context) {
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
-
     private val _weakNetwork = MutableStateFlow(false)
     val weakNetwork: StateFlow<Boolean> = _weakNetwork.asStateFlow()
+    private val _buffering = MutableStateFlow(false)
+    val buffering: StateFlow<Boolean> = _buffering.asStateFlow()
+    private val _bufferPercent = MutableStateFlow(0)
+    val bufferPercent: StateFlow<Int> = _bufferPercent.asStateFlow()
 
-    private val handler = Handler(Looper.getMainLooper())
     private var bufferingGeneration = 0L
+    private var fadeAnimator: ValueAnimator? = null
+    private var fadeRestoreVolume = 1f
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -48,22 +56,44 @@ class RadioMediaController(context: Context) {
             when (playbackState) {
                 Player.STATE_BUFFERING -> {
                     val generation = ++bufferingGeneration
+                    _buffering.value = true
+                    _bufferPercent.value = 0
                     handler.postDelayed({
                         if (
                             generation == bufferingGeneration &&
                             controller?.playbackState == Player.STATE_BUFFERING
                         ) {
-                            _weakNetwork.value = true
+                            controller?.playWhenReady = false
+                            _buffering.value = false
+                            _bufferPercent.value = 0
+                            _error.value = "Буферизация не завершилась за 15 секунд. Переключите станцию."
+                            LogExporter.log("Radio buffering timeout after 15s")
                         }
-                    }, 4_000L)
+                    }, 15_000L)
+                    handler.post(object : Runnable {
+                        override fun run() {
+                            if (
+                                generation != bufferingGeneration ||
+                                controller?.playbackState != Player.STATE_BUFFERING
+                            ) return
+                            val target = controller ?: return
+                            val bufferedMs = (target.bufferedPosition - target.currentPosition).coerceAtLeast(0L)
+                            _bufferPercent.value = ((bufferedMs.toDouble() / 6_000.0) * 100.0).toInt().coerceIn(0, 99)
+                            handler.postDelayed(this, 200L)
+                        }
+                    })
                 }
                 Player.STATE_READY -> {
                     bufferingGeneration++
+                    _buffering.value = false
+                    _bufferPercent.value = 100
                     _weakNetwork.value = false
                     _error.value = null
                 }
                 Player.STATE_IDLE, Player.STATE_ENDED -> {
                     bufferingGeneration++
+                    _buffering.value = false
+                    _bufferPercent.value = 0
                     _weakNetwork.value = false
                 }
             }
@@ -71,6 +101,8 @@ class RadioMediaController(context: Context) {
 
         override fun onPlayerError(error: PlaybackException) {
             bufferingGeneration++
+            _buffering.value = false
+            _bufferPercent.value = 0
             _weakNetwork.value = false
             _error.value = "Поток недоступен"
         }
@@ -105,6 +137,7 @@ class RadioMediaController(context: Context) {
         val target = controller ?: return
         val safeIndex = index.coerceIn(0, RADIO_STATIONS.lastIndex)
         _error.value = null
+        cancelFadeOut(restore = false)
         _currentIndex.value = safeIndex
         target.seekToDefaultPosition(safeIndex)
         target.prepare()
@@ -127,7 +160,7 @@ class RadioMediaController(context: Context) {
 
     fun toggle() {
         controller?.let {
-            if (it.isPlaying) {
+            if (it.isPlaying || it.playWhenReady) {
                 it.pause()
             } else {
                 _error.value = null
@@ -139,10 +172,13 @@ class RadioMediaController(context: Context) {
 
     fun stop() {
         pendingPlayIndex = null
+        cancelFadeOut(restore = false)
         controller?.stop()
         _error.value = null
         _currentIndex.value = -1
         _isPlaying.value = false
+        _buffering.value = false
+        _bufferPercent.value = 0
     }
 
     fun next() {
@@ -165,17 +201,25 @@ class RadioMediaController(context: Context) {
 
     fun fadeOut(durationMs: Long, onEnd: (() -> Unit)? = null) {
         val target = controller ?: return
-        val start = target.volume.coerceIn(0f, 1f)
-        android.animation.ValueAnimator.ofFloat(start, 0f).apply {
-            duration = durationMs
+        fadeAnimator?.cancel()
+        fadeRestoreVolume = target.volume.coerceIn(0f, 1f)
+        fadeAnimator = ValueAnimator.ofFloat(fadeRestoreVolume, 0f).apply {
+            duration = durationMs.coerceAtLeast(1L)
+            interpolator = LinearInterpolator()
             addUpdateListener { target.volume = it.animatedValue as Float }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
+            addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     onEnd?.invoke()
                 }
             })
             start()
         }
+    }
+
+    fun cancelFadeOut(restore: Boolean = true) {
+        fadeAnimator?.cancel()
+        fadeAnimator = null
+        if (restore) controller?.volume = fadeRestoreVolume.coerceIn(0f, 1f)
     }
 
     fun release() {
@@ -186,8 +230,11 @@ class RadioMediaController(context: Context) {
         future = null
         _connected.value = false
         bufferingGeneration++
+        _buffering.value = false
+        _bufferPercent.value = 0
         _weakNetwork.value = false
         handler.removeCallbacksAndMessages(null)
+        fadeAnimator?.cancel()
         executor.shutdownNow()
     }
 }

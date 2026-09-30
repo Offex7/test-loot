@@ -20,6 +20,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
@@ -214,6 +216,7 @@ private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/9"
+private const val RECOMMEND_MESSAGE = """Приветствую! Слушай, хочу поделиться находкой, которая реально заслуживает внимания — приложением Radio.TV. Представь: куча ТВ-каналов, Радио и всё, что нужно для досуга, в одном месте. И всё это абсолютно бесплатно! Дизайн минималистичный и приятный, ничего лишнего. Приложение активно развивается, так что скучать не придётся. Работает на Android 12 и новее. Я уже пользуюсь — и мне очень зашло. Держи ссылку на блог разработчика, устанавливай скорее: [https://t.me/TvRadioOnline](https://t.me/TvRadioOnline). Не пожалеешь! И да, я пишу это осознанно: это не спам, а искренняя рекомендация.  """
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
@@ -245,6 +248,19 @@ private fun rememberSystemPowerSave(): Boolean {
 }
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
+private fun shareText(context: Context, text: String, chooserTitle: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, chooserTitle))
+    }.onFailure {
+        Toast.makeText(context, "Не удалось открыть меню «Поделиться»", Toast.LENGTH_LONG).show()
+    }
+}
+
 private val SleepOptions = listOf(
     5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч",
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
@@ -255,7 +271,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var tv: PlayerController
     private lateinit var radio: RadioMediaController
     internal var pipEnabled = true
-    internal var tvViewing = false
+    internal var tvViewing by mutableStateOf(false)
     internal var pipMode by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -335,9 +351,26 @@ private fun App(
     val autoStartEnabled by store.autoStartFlow().collectAsState(false)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
-    LaunchedEffect(autoStartEnabled) {
-        if (autoStartEnabled) activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    DisposableEffect(autoStartEnabled, activity.tvViewing) {
+        val handler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
+            override fun run() {
+                val active = activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                if (active && (autoStartEnabled || activity.tvViewing)) {
+                    activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    handler.postDelayed(this, 8_000L)
+                } else {
+                    activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+        runnable.run()
+        onDispose {
+            handler.removeCallbacks(runnable)
+            if (!activity.tvViewing) {
+                activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
@@ -357,6 +390,7 @@ private fun App(
     var sleepUntil by remember { mutableLongStateOf(0L) }
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
+    var sleepWarningFor by remember { mutableLongStateOf(0L) }
     fun notify(message: String, durationMs: Long = 5000L) {
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
@@ -388,28 +422,58 @@ private fun App(
         }
     }
 
+    fun armSleep(minutes: Long) {
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
+        sleepMinutes = minutes.coerceAtLeast(1L)
+        sleepUntil = System.currentTimeMillis() + sleepMinutes * 60_000L
+        sleepWarningFor = 0L
+        notify("Таймер сна — запущен")
+    }
+
+    fun cancelSleep() {
+        sleepUntil = 0L
+        sleepRemaining = 0L
+        sleepMinutes = 0L
+        sleepWarningFor = 0L
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
+        notify("Таймер сна — отключён")
+    }
+
     LaunchedEffect(sleepUntil) {
+        tv.cancelFadeOut()
+        radio.cancelFadeOut()
         if (sleepUntil <= 0L) {
             sleepRemaining = 0L
             return@LaunchedEffect
         }
+        var warningShown = false
         while (true) {
             val left = sleepUntil - System.currentTimeMillis()
+            if (left <= 15_000L && !warningShown) {
+                warningShown = true
+                sleepWarningFor = sleepUntil
+                notify("Таймер сна сработает через 15 секунд", 3_000L)
+                val fadeDuration = left.coerceAtLeast(1L)
+                tv.fadeOut(fadeDuration)
+                radio.fadeOut(fadeDuration)
+            }
             if (left <= 0L) {
-                sleepUntil = 0L
                 sleepRemaining = 0L
                 sleepMinutes = 0L
-                tv.stop()
-                radio.stop()
+                tv.pause()
+                radio.pause()
                 radioTimerStore.pause(System.currentTimeMillis())
-                notify("Таймер сна — отключён")
+                sleepUntil = 0L
+                delay(250L)
+                activity.finishAndRemoveTask()
                 break
             }
             sleepRemaining = left
-            delay(1000L)
+            delay(250L)
         }
     }
-
     fun leaveSection() {
         section = null
         settings = false
@@ -431,10 +495,13 @@ private fun App(
     }
 
     Scaffold(containerColor = if (energySaving) Color.Black else Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        val screenRoot = Modifier.fillMaxSize().padding(padding)
         Box(
-            Modifier.fillMaxSize().padding(padding).windowInsetsPadding(
-                WindowInsets.systemBars.union(WindowInsets.displayCutout)
-            )
+            if (section == Section.TV && activity.tvViewing) {
+                screenRoot
+            } else {
+                screenRoot.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+            }
         ) {
             when {
                 disclaimer -> Disclaimer(onBack = { disclaimer = false })
@@ -452,14 +519,10 @@ private fun App(
                     },
                     onSleep = {
                         sleepMinutes = it
-                        sleepUntil = System.currentTimeMillis() + it * 60_000L
-                        notify("Таймер сна — запущен")
+                        armSleep(it)
                     },
                     onCancelSleep = {
-                        sleepUntil = 0L
-                        sleepRemaining = 0L
-                        sleepMinutes = 0L
-                        notify("Таймер сна — отключён")
+                        cancelSleep()
                     },
                     onResetStats = { target ->
                         scope.launch {
@@ -521,17 +584,8 @@ private fun App(
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
-                    onSleep = {
-                        sleepMinutes = it
-                        sleepUntil = System.currentTimeMillis() + it * 60_000L
-                        notify("Таймер сна — запущен")
-                    },
-                    onCancelSleep = {
-                        sleepUntil = 0L
-                        sleepRemaining = 0L
-                        sleepMinutes = 0L
-                        notify("Таймер сна — отключён")
-                    },
+                    onSleep = ::armSleep,
+                    onCancelSleep = ::cancelSleep,
                     notify = ::notify,
                     onViewingChanged = { activity.tvViewing = it },
                     pipMode = activity.pipMode,
@@ -554,8 +608,8 @@ private fun App(
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
-                    onSleep = { minutes -> sleepMinutes=minutes; sleepUntil=System.currentTimeMillis()+minutes*60_000L; notify("Таймер сна — запущен") },
-                    onCancelSleep = { sleepUntil=0L;sleepRemaining=0L;sleepMinutes=0L;notify("Таймер сна — отключён") },
+                    onSleep = ::armSleep,
+                    onCancelSleep = ::cancelSleep,
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
                     onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
@@ -724,7 +778,12 @@ private fun Home(
 
             Spacer(Modifier.height(18.dp))
             Card(
-                onClick = { InteractionFeedback.click(context,hapticsEnabled,false,allowSound=false); openUrl(context, TELEGRAM) },
+                onClick = {
+                    InteractionFeedback.click(context, hapticsEnabled, false, allowSound = false)
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV", RECOMMEND_MESSAGE))
+                    shareText(context, RECOMMEND_MESSAGE, "Рекомендовать Radio.TV")
+                },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
@@ -798,31 +857,51 @@ private fun HomeCard(
 @Composable
 private fun ScrollActionButton(
     visible: Boolean,
-    direction: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var variant by remember { mutableIntStateOf(0) }
+    val glyphs = listOf("🢁", "🔝", "🔼")
+
+    LaunchedEffect(visible) {
+        if (!visible) {
+            variant = 0
+            return@LaunchedEffect
+        }
+        while (visible) {
+            delay(700L)
+            variant = (variant + 1) % glyphs.size
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.8f, animationSpec = tween(180)),
-        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.8f, animationSpec = tween(180))
+        enter = fadeIn(tween(220)) + scaleIn(initialScale = .82f, animationSpec = tween(220)),
+        exit = fadeOut(tween(220)) + scaleOut(targetScale = .82f, animationSpec = tween(220))
     ) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(48.dp)
+                .size(52.dp)
                 .background(Red, CircleShape)
         ) {
-            Icon(
-                if (direction == 1) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                if (direction == 1) "Вниз" else "Вверх",
-                tint = Color.White,
-                modifier = Modifier.size(28.dp)
-            )
+            androidx.compose.animation.Crossfade(
+                targetState = variant,
+                animationSpec = tween(220),
+                label = "scroll-arrow-glyph"
+            ) { i ->
+                Text(
+                    glyphs[i],
+                    color = Color.White,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
+
 
 private fun onHapticFeedback(context: Context,hapticsEnabled:Boolean,soundEnabled:Boolean){InteractionFeedback.click(context,hapticsEnabled,soundEnabled,false)}
 private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, constant: Int) {
@@ -996,9 +1075,9 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
-    var scrollDirection by remember { mutableIntStateOf(0) } // 1=up, -1=down
     var showScrollAction by remember { mutableStateOf(false) }
-    var scrollActivityToken by remember { mutableLongStateOf(0L) }
+    val buffering by player.buffering.collectAsState()
+    val bufferPercent by player.bufferPercent.collectAsState()
     var availability by remember { mutableStateOf<Map<String, AvailabilityStatus>>(emptyMap()) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -1062,7 +1141,7 @@ private fun Radio(
             timerStartedAtMs = state.startedAtMs
             timerNowMs = now
             RADIO_STATIONS.getOrNull(index)?.let { availability = availability + (it.url to AvailabilityStatus.OFFLINE) }
-            notify("Возникла проблема. Обсуждаем решения в Telegram.")
+            notify(error ?: "Поток недоступен")
         }
     }
 
@@ -1095,55 +1174,31 @@ private fun Radio(
         ).run()
     }
 
-    LaunchedEffect(list) {
-        var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
-        var previousTime = System.currentTimeMillis()
+    LaunchedEffect(Unit) {
         snapshotFlow {
-            Triple(
-                list.firstVisibleItemIndex,
-                list.firstVisibleItemScrollOffset,
-                list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            )
+            list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
         }.collect { current ->
-            val now = System.currentTimeMillis()
             store.saveScrollPosition(Section.RADIO, current.first, current.second)
-            if (current.first != previous.first || current.second != previous.second) {
-                val deltaIndex = current.first - previous.first
-                val deltaPx = current.second - previous.second
-                val elapsed = (now - previousTime).coerceAtLeast(1L)
-                val movingUp = deltaIndex < 0 || (deltaIndex == 0 && deltaPx < 0)
-                val movingDown = deltaIndex > 0 || (deltaIndex == 0 && deltaPx > 0)
-                val fast = kotlin.math.abs(deltaIndex) >= 2 ||
-                    (elapsed <= 140L && kotlin.math.abs(deltaPx) >= 96)
-                val total = RADIO_STATIONS.size
-                val lastVisible = current.third
-                val canGoTop = current.first > maxOf(5, favorites.size)
-                val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
-                when {
-                    current.first <= 0 && current.second <= 0 -> showScrollAction = false
-                    total > 0 && lastVisible >= total - 1 -> showScrollAction = false
-                    fast && movingDown && canGoTop -> {
-                        scrollDirection = -1
-                        showScrollAction = true
-                        scrollActivityToken += 1L
-                    }
-                    fast && movingUp && canGoBottom -> {
-                        scrollDirection = 1
-                        showScrollAction = true
-                        scrollActivityToken += 1L
-                    }
-                }
-                previous = current.first to current.second
-                previousTime = now
-            }
         }
     }
 
-    LaunchedEffect(scrollActivityToken) {
-        if (scrollActivityToken == 0L) return@LaunchedEffect
-        val token = scrollActivityToken
-        delay(5000L)
-        if (token == scrollActivityToken) showScrollAction = false
+    LaunchedEffect(list.isScrollInProgress) {
+        if (!list.isScrollInProgress) {
+            showScrollAction = false
+            return@LaunchedEffect
+        }
+        val started = System.currentTimeMillis()
+        while (list.isScrollInProgress && System.currentTimeMillis() - started < 4_000L) {
+            delay(100L)
+        }
+        if (
+            list.isScrollInProgress &&
+            (list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0)
+        ) {
+            showScrollAction = true
+        }
+        while (list.isScrollInProgress) delay(100L)
+        showScrollAction = false
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -1283,6 +1338,32 @@ private fun Radio(
             }
 
             Box(Modifier.fillMaxSize()) {
+                if (buffering) {
+                    Card(
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .78f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            Modifier.width(190.dp).padding(horizontal = 12.dp, vertical = 7.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Буферизация… $bufferPercent%",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { bufferPercent / 100f },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                color = Red,
+                                trackColor = Color.White.copy(alpha = .20f)
+                            )
+                        }
+                    }
+                }
                 LazyColumn(
                     state = list,
                     modifier = Modifier.fillMaxSize(),
@@ -1379,15 +1460,10 @@ private fun Radio(
 
                 ScrollActionButton(
                     visible = showScrollAction,
-                    direction = scrollDirection,
                     onClick = {
                         scope.launch {
                             showScrollAction = false
-                            if (scrollDirection == -1) {
-                                list.animateScrollToItem(0)
-                            } else {
-                                list.animateScrollToItem((orderedStations.lastIndex).coerceAtLeast(0))
-                            }
+                            list.animateScrollToItem(0)
                         }
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
@@ -2119,6 +2195,7 @@ private fun Settings(
                     scope.launch {
                         runCatching {
                             val file = LogExporter.export(settingsContext, store)
+                            require(file.exists() && file.length() > 0L) { "ZIP-файл логов не создан" }
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 settingsContext,
                                 settingsContext.packageName + ".fileprovider",
@@ -2482,77 +2559,191 @@ private fun PinGate(
     val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
-    var biometricTried by rememberSaveable { mutableStateOf(false) }
     var biometricAvailable by rememberSaveable { mutableStateOf(false) }
-    val feedbackContext=LocalContext.current
-    val pinSettingsStore=remember(feedbackContext){SettingsStore(feedbackContext.applicationContext)}
-    val pinHapticsEnabled by pinSettingsStore.hapticsFlow().collectAsState(true)
-    val pinSoundEnabled by pinSettingsStore.soundFeedbackFlow().collectAsState(true)
+    var failedAttempts by remember { mutableIntStateOf(store.failedAttempts()) }
+    var lockoutUntil by remember { mutableLongStateOf(store.lockoutUntil()) }
+    var lockoutRemaining by remember { mutableLongStateOf(store.lockoutRemainingMs()) }
+    val settingsStore = remember(context) { SettingsStore(context.applicationContext) }
+    val hapticsEnabled by settingsStore.hapticsFlow().collectAsState(true)
+    val soundEnabled by settingsStore.soundFeedbackFlow().collectAsState(true)
 
-    LaunchedEffect(Unit) {
-        if (!biometricTried) {
-            biometricTried = true
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
-            biometricAvailable=BiometricManager.from(context).canAuthenticate(authenticators)==BiometricManager.BIOMETRIC_SUCCESS
-            if(biometricAvailable){
-                val executor = ContextCompat.getMainExecutor(context)
-                val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        onUnlocked()
-                    }
-                })
-                prompt.authenticate(
-                    BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Разблокировать")
-                        .setSubtitle("Подтвердите вход")
-                        .setNegativeButtonText("PIN-код")
-                        .build()
-                )
+    LaunchedEffect(lockoutUntil) {
+        while (true) {
+            lockoutRemaining = store.lockoutRemainingMs()
+            if (lockoutRemaining <= 0L) {
+                lockoutUntil = 0L
+                failedAttempts = store.failedAttempts()
+                break
             }
+            delay(250L)
         }
     }
 
-    val redFlash by animateColorAsState(if(error)Color(0xFF5A1111).copy(alpha=.72f)else Color.Transparent,animationSpec=tween(220),label="pin-error-flash")
-    LaunchedEffect(error){if(error){delay(1200L);error=false}}
+    fun promptBiometric() {
+        if (!biometricAvailable || lockoutRemaining > 0L) return
+        val executor = ContextCompat.getMainExecutor(context)
+        BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(
+                    result: BiometricPrompt.AuthenticationResult
+                ) {
+                    store.registerSuccess()
+                    failedAttempts = 0
+                    onUnlocked()
+                }
+            }
+        ).authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Вход в Radio.TV")
+                .setSubtitle("Подтвердите вход разблокировав биометрией или введя PIN")
+                .setNegativeButtonText("Ввести PIN")
+                .build()
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        val authenticators =
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.BIOMETRIC_WEAK
+        biometricAvailable =
+            BiometricManager.from(context).canAuthenticate(authenticators) ==
+                BiometricManager.BIOMETRIC_SUCCESS
+        if (biometricAvailable) {
+            promptBiometric()
+        }
+    }
+
+    fun tryPin(value: String) {
+        if (lockoutRemaining > 0L || value.length != 4) return
+        if (store.verify(value)) {
+            store.registerSuccess()
+            failedAttempts = 0
+            lockoutUntil = 0L
+            pin = ""
+            onUnlocked()
+        } else {
+            pin = ""
+            error = true
+            failedAttempts = store.registerFailure()
+            lockoutUntil = store.lockoutUntil()
+            lockoutRemaining = store.lockoutRemainingMs()
+            InteractionFeedback.error(context, hapticsEnabled)
+            InteractionFeedback.beep(context, soundEnabled)
+        }
+    }
+
+    val redFlash by animateColorAsState(
+        targetValue = if (error) Color(0xFF5A1111).copy(alpha = .72f) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "pin-error-flash"
+    )
+    LaunchedEffect(error) {
+        if (error) {
+            delay(1200L)
+            error = false
+        }
+    }
+
     Surface(Modifier.fillMaxSize(), color = Color.Black) {
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(52.dp))
-            Spacer(Modifier.height(12.dp))
-            Text("Введите PIN-код", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(12.dp))
+            Icon(
+                Icons.Default.Lock,
+                null,
+                tint = Red,
+                modifier = Modifier.size(46.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("Введите PIN-код", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Подтвердите вход разблокировав биометрией или введя PIN",
+                color = Gray,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = pin,
                 onValueChange = { value ->
-                    pin=value.filter(Char::isDigit).take(4);error=false
-                    if(pin.length==4){
-                        if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}
+                    if (lockoutRemaining <= 0L) {
+                        val next = value.filter(Char::isDigit).take(4)
+                        pin = next
+                        error = false
+                        if (next.length == 4) tryPin(next)
                     }
                 },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().height(58.dp),
+                enabled = lockoutRemaining <= 0L,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 label = { Text("4 цифры") },
                 isError = error
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
+            if (lockoutRemaining > 0L) {
+                val seconds = (lockoutRemaining + 999L) / 1000L
+                Text(
+                    "Ввод заблокирован на 5 минут • %02d:%02d".format(seconds / 60L, seconds % 60L),
+                    color = Red,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    "Неверных попыток: $failedAttempts/5",
+                    color = if (failedAttempts > 0) Red else Gray,
+                    fontSize = 11.sp
+                )
+            }
             TextButton(
-                onClick = { Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show() }
-            ) { Text("Забыли PIN?", color = Red) }
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}},enabled=pin.length==4,modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Red)){Text("ВОЙТИ")}
-                if(biometricAvailable)IconButton(onClick={
-                    val executor=ContextCompat.getMainExecutor(context)
-                    val prompt=BiometricPrompt(activity,executor,object:BiometricPrompt.AuthenticationCallback(){override fun onAuthenticationSucceeded(result:BiometricPrompt.AuthenticationResult){onUnlocked()}})
-                    prompt.authenticate(BiometricPrompt.PromptInfo.Builder().setTitle("Разблокировать").setSubtitle("Подтвердите вход").setNegativeButtonText("PIN-код").build())
-                }){Icon(Icons.Default.Fingerprint,"Вход по отпечатку или лицу",tint=Red,modifier=Modifier.size(30.dp))}
+                onClick = {
+                    Toast.makeText(
+                        context,
+                        "Подсказка: " + store.hint(),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            ) {
+                Text("Забыли PIN?", color = Red)
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { tryPin(pin) },
+                    enabled = pin.length == 4 && lockoutRemaining <= 0L,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Red)
+                ) {
+                    Text("ВОЙТИ")
+                }
+                if (biometricAvailable) {
+                    IconButton(
+                        onClick = { promptBiometric() },
+                        enabled = lockoutRemaining <= 0L
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            "Вход по биометрии",
+                            tint = Red,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
             }
         }
         Box(Modifier.fillMaxSize().background(redFlash))
     }
 }
+
 
 @Composable
 private fun UsageLine(label: String, seconds: Long) {
@@ -3157,7 +3348,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.3")
+                            .header("User-Agent", "Radio.TV/3.5")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

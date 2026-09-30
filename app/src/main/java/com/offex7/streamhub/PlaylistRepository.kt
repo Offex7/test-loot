@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -66,26 +67,17 @@ class PlaylistRepository(
     }
 
     suspend fun loadSource(sourceKey: String): Result<List<StreamItem>> = withContext(Dispatchers.IO) {
-        val sources = allSources()
-        if (sources.isEmpty()) return@withContext Result.failure(IllegalStateException("Нет источников ТВ-плейлиста"))
-        val selectedIndex = sources.indexOfFirst { it.key == sourceKey }.let { if (it >= 0) it else 0 }
-        var lastError: Throwable? = null
-
-        for (step in sources.indices) {
-            val source = sources[(selectedIndex + step) % sources.size]
-            try {
-                val downloaded = download(source.url)
-                val items = parse(downloaded.text, downloaded.finalUrl)
-                if (items.isNotEmpty()) {
-                    writeCache(source, items)
-                    return@withContext Result.success(items)
-                }
-                lastError = IllegalStateException("${source.name}: плейлист пуст")
-            } catch (t: Throwable) {
-                lastError = t
-            }
+        val source = allSources().firstOrNull { it.key == sourceKey }
+            ?: return@withContext Result.failure(IllegalStateException("Источник не найден"))
+        val downloaded = withTimeoutOrNull(15_000L) {
+            runCatching { download(source.url) }.getOrNull()
+        } ?: return@withContext Result.failure(IllegalStateException("Таймаут загрузки источника"))
+        runCatching {
+            val items = parse(downloaded.text, downloaded.finalUrl)
+            if (items.isEmpty()) error("Пустой плейлист")
+            writeCache(source, items)
+            items
         }
-        Result.failure(lastError ?: IllegalStateException("Не удалось загрузить ТВ-плейлист"))
     }
 
     suspend fun warmFallbacks() {

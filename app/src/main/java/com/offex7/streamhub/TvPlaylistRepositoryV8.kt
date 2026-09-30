@@ -46,34 +46,21 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
     }
 
     suspend fun load(activeSourceKey: String): Result<TvLoadedPlaylist> = withContext(Dispatchers.IO) {
-        val all = sources()
-        if (all.isEmpty()) {
-            return@withContext Result.failure(IllegalStateException("Нет источников ТВ-плейлиста"))
+        val source = sources().firstOrNull { it.key == activeSourceKey }
+            ?: return@withContext Result.failure(IllegalStateException("Источник не найден"))
+        val loaded = runCatching {
+            withTimeoutOrNull(15_000L) { loadSingle(source) }
+                ?: throw IllegalStateException("Таймаут загрузки источника")
+        }.getOrElse { return@withContext Result.failure(it) }
+
+        if (loaded.isEmpty()) {
+            return@withContext Result.failure(
+                IllegalStateException(source.name + ": пустой плейлист")
+            )
         }
 
-        val start = all.indexOfFirst { it.key == activeSourceKey }.let { if (it >= 0) it else 0 }
-        var lastError: Throwable? = null
-
-        for (offset in all.indices) {
-            val source = all[(start + offset) % all.size]
-            val loaded = runCatching {
-                withTimeoutOrNull(15_000L) { loadSingle(source) }
-                    ?: throw IllegalStateException("Таймаут загрузки источника")
-            }.getOrElse {
-                lastError = it
-                null
-            }
-
-            if (!loaded.isNullOrEmpty()) {
-                cache(source, loaded)
-                return@withContext Result.success(TvLoadedPlaylist(source.key, source.name, loaded))
-            }
-            if (loaded != null) {
-                lastError = IllegalStateException(source.name + ": пустой плейлист")
-            }
-        }
-
-        Result.failure(lastError ?: IllegalStateException("Не удалось загрузить ТВ-плейлист"))
+        cache(source, loaded)
+        Result.success(TvLoadedPlaylist(source.key, source.name, loaded))
     }
 
     suspend fun cached(activeSourceKey: String): TvLoadedPlaylist? = withContext(Dispatchers.IO) {
