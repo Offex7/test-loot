@@ -142,6 +142,8 @@ private val TvV9PanelAlt = Color(0xFF232323)
 private val TvV9Gray = Color(0xFF808080)
 private val TvV9Bg = Color(0xFF121212)
 
+private enum class TvNavigationMode { FAVORITES_THEN_GENERAL, GENERAL }
+
 private val TvV9SleepOptions = listOf(
     5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин",
     60L to "1 ч", 120L to "2 ч", 240L to "4 ч", 480L to "8 ч",
@@ -208,6 +210,9 @@ fun TvV8Screen(
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playbackJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
+    var navigationSession by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<Int>()) }
+    var navigationMode by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(TvNavigationMode.GENERAL) }
+    var zoomSaveJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var showScrollAction by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     suspend fun reload() {
@@ -382,54 +387,51 @@ fun TvV8Screen(
         return na == nb || na.startsWith(nb + " ") || nb.startsWith(na + " ")
     }
 
-    fun navigationOrder(): List<Int> =
-        channels.indices.filter { index ->
-            val item = channels[index]
-            !hiddenChannels.contains(item.key) && health[item.url] != AvailabilityStatus.OFFLINE
-        }
+    fun isNavigable(index: Int): Boolean {
+        if (index !in channels.indices) return false
+        val item = channels[index]
+        return !hiddenChannels.contains(item.key) &&
+            health[item.url] != AvailabilityStatus.OFFLINE
+    }
 
-    fun previousIndex(start: Int): Int {
-        val order = navigationOrder()
+    fun buildNavigationSession(start: Int, fromFavorites: Boolean): List<Int> {
+        val general = channels.indices.filter(::isNavigable)
+        if (!fromFavorites) return general
+        val favoritesOnly = general
+            .filter { favorites.contains(channels[it].key) }
+            .sortedWith(
+                compareByDescending<Int> { favoriteTimes[channels[it].key] ?: 0L }
+                    .thenBy { channels[it].name.lowercase(Locale.ROOT) }
+            )
+        if (favoritesOnly.isEmpty()) return general
+        val pivot = favoritesOnly.indexOf(start).let { if (it >= 0) it else 0 }
+        val rotatedFavorites = favoritesOnly.drop(pivot) + favoritesOnly.take(pivot)
+        val remainder = general.filterNot { favoritesOnly.contains(it) }
+        return rotatedFavorites + remainder
+    }
+
+    fun adjacentIndex(start: Int, delta: Int): Int {
+        val order = navigationSession
         if (order.size <= 1 || start !in channels.indices) return -1
-        val pos = order.indexOf(start).let { if (it >= 0) it else order.size }
-        val currentName = channels[start].name
-        for (step in 1..order.size) {
-            val candidate = order[(pos - step + order.size * 2) % order.size]
-            if (!similarChannelNames(currentName, channels[candidate].name)) return candidate
-        }
-        return -1
+        val pos = order.indexOf(start)
+        if (pos < 0) return -1
+        return order[(pos + delta + order.size) % order.size]
     }
 
-    fun nextIndex(start: Int): Int {
-        val order = navigationOrder()
-        if (order.size <= 1 || start !in channels.indices) return -1
-        val pos = order.indexOf(start).let { if (it >= 0) it else -1 }
-        val currentName = channels[start].name
-        for (step in 1..order.size) {
-            val candidate = order[(pos + step + order.size) % order.size]
-            if (!similarChannelNames(currentName, channels[candidate].name)) return candidate
-        }
-        return -1
-    }
-
-    fun nextRawCandidate(start: Int): Int {
-        if (channels.size <= 1 || start !in channels.indices) return -1
-        val currentName = channels[start].name
-        for (step in 1 until channels.size) {
-            val index = (start + step) % channels.size
-            val item = channels[index]
-            if (!hiddenChannels.contains(item.key) &&
-                health[item.url] != AvailabilityStatus.OFFLINE &&
-                !similarChannelNames(currentName, item.name)
-            ) {
-                return index
-            }
-        }
-        return -1
-    }
-
-    fun startPlayback(start: Int) {
+    fun startPlayback(start: Int, fromFavorites: Boolean? = null) {
         if (start !in channels.indices || hiddenChannels.contains(channels[start].key)) return
+        if (fromFavorites != null || navigationSession.isEmpty() || start !in navigationSession) {
+            navigationMode =
+                if (fromFavorites == true) {
+                    TvNavigationMode.FAVORITES_THEN_GENERAL
+                } else {
+                    TvNavigationMode.GENERAL
+                }
+            navigationSession = buildNavigationSession(
+                start,
+                navigationMode == TvNavigationMode.FAVORITES_THEN_GENERAL
+            )
+        }
         playbackJob?.cancel()
         selectedIndex = start
         fullscreen = true
@@ -439,39 +441,50 @@ fun TvV8Screen(
             var cursor = start
             var attempts = 0
             try {
-                while (attempts < channels.size) {
-                attempts++
-                if (cursor !in channels.indices || hiddenChannels.contains(channels[cursor].key)) {
-                    cursor = nextIndex(cursor)
+                while (attempts < channels.size.coerceAtLeast(1)) {
+                    attempts++
+                    if (!isNavigable(cursor)) {
+                        cursor = adjacentIndex(cursor, 1)
+                        if (cursor < 0) break
+                        continue
+                    }
+
+                    val candidate = channels[cursor]
+                    val result = player.playWithFallback(listOf(candidate.url))
+                    if (result >= 0) {
+                        selectedIndex = cursor
+                        health = health + (candidate.url to AvailabilityStatus.ONLINE)
+                        saveLast(candidate)
+                        val neighbors = listOf(
+                            adjacentIndex(cursor, -1),
+                            adjacentIndex(cursor, 1)
+                        ).filter { it >= 0 }.distinct()
+                        if (neighbors.isNotEmpty()) {
+                            scope.launch {
+                                val pending = neighbors
+                                    .mapNotNull { channels.getOrNull(it) }
+                                    .filter { health[it.url] == null }
+                                if (pending.isNotEmpty()) {
+                                    health = health + scanTvV9(pending, repo)
+                                }
+                            }
+                        }
+                        return@launch
+                    }
+
+                    health = health + (candidate.url to AvailabilityStatus.OFFLINE)
+                    cursor = adjacentIndex(cursor, 1)
                     if (cursor < 0) break
-                    continue
                 }
-                val candidate = channels[cursor]
-                if (health[candidate.url] == AvailabilityStatus.OFFLINE) {
-                    cursor = nextIndex(cursor)
-                    if (cursor < 0) break
-                    continue
-                }
-                val result = player.playWithFallback(listOf(candidate.url))
-                if (result >= 0) {
-                    selectedIndex = cursor
-                    health = health + (candidate.url to AvailabilityStatus.ONLINE)
-                    saveLast(candidate)
-                    return@launch
-                }
-                health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                cursor = nextRawCandidate(cursor)
-                if (cursor < 0) break
-            }
-            isSwitching = false
-            fullscreen = false
-            notify("Не удалось найти рабочий канал", 2500L)
+
+                isSwitching = false
+                fullscreen = false
+                notify("Не удалось найти рабочий канал", 2500L)
             } finally {
                 isSwitching = false
             }
         }
     }
-
     fun closePlayer() {
         playbackJob?.cancel()
         player.stop()
@@ -504,16 +517,16 @@ fun TvV8Screen(
             sleepMinutes = sleepMinutes,
             onBack = ::closePlayer,
             onPrev = {
-                val i = previousIndex(selectedIndex)
+                val i = adjacentIndex(selectedIndex, -1)
                 if (i >= 0) startPlayback(i)
             },
             onNext = {
-                val i = nextIndex(selectedIndex)
+                val i = adjacentIndex(selectedIndex, 1)
                 if (i >= 0) startPlayback(i)
             },
             onPause = { player.toggle() },
             onFavoriteSelected = { index ->
-                if (index in channels.indices) startPlayback(index)
+                if (index in channels.indices) startPlayback(index, true)
             },
             onEnterPip = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -529,9 +542,11 @@ fun TvV8Screen(
             initialZoom = savedZooms[channels[selectedIndex].key],
             onZoomChanged = { value ->
                 val key = channels[selectedIndex].key
-                scope.launch {
+                savedZooms = savedZooms + (key to value)
+                zoomSaveJob?.cancel()
+                zoomSaveJob = scope.launch {
+                    delay(250L)
                     store.setChannelZoom(key, value)
-                    savedZooms = savedZooms + (key to value)
                 }
             },
             onZoomReset = {
@@ -621,7 +636,7 @@ fun TvV8Screen(
                     val i = channels.indexOfFirst {
                         it.url == item.url || it.name.equals(item.name, true)
                     }
-                    if (i >= 0) startPlayback(i) else notify("Сохранённый канал больше не найден", 5000L)
+                    if (i >= 0) startPlayback(i, false) else notify("Сохранённый канал больше не найден", 5000L)
                 },
                 onClose = dismissRestore
             )
@@ -686,7 +701,7 @@ fun TvV8Screen(
                                 onPlay = {
                                     channels.indexOfFirst { it.key == channel.key }
                                         .takeIf { it >= 0 }
-                                        ?.let(::startPlayback)
+                                        ?.let { index -> startPlayback(index, favorite) }
                                 },
                                 onFavorite = {
                                     scope.launch {
@@ -1374,14 +1389,17 @@ private fun TvV9Player(
                 if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        menuInteractionToken++
                         if (!locked) onPrev()
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        menuInteractionToken++
                         if (!locked) onNext()
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_SPACE -> {
+                        menuInteractionToken++
                         if (!locked) onPause()
                         true
                     }
@@ -1484,7 +1502,7 @@ private fun TvV9Player(
                         Modifier.align(Alignment.TopStart).padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onClick = onBack)
+                        TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onClick = { menuInteractionToken++; onBack() })
                         TvV9PlayerButton(Icons.Default.AccessTime, "Таймер сна", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying) {
                             InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound=!player.isPlaying.value&&!radioPlaying)
                             val open = !sleepMenu
@@ -1517,6 +1535,7 @@ private fun TvV9Player(
                             showPlayerToast("Формат: " + nextLabel, 5000L)
                         }
                         TvV9PlayerButton(Icons.Default.Lock, "Заблокировать", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying) {
+                            menuInteractionToken++
                             favoriteMenu = false
                             sleepMenu = false
                             locked = true
@@ -1542,7 +1561,7 @@ private fun TvV9Player(
     hapticsEnabled,
     soundEnabled,
     allowSound = !player.isPlaying.value && !radioPlaying,
-    onClick = onEnterPip
+    onClick = { menuInteractionToken++; onEnterPip() }
 )
                     }
 
@@ -1628,16 +1647,16 @@ private fun TvV9Player(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onPrev)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipPrevious, "Предыдущий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, { menuInteractionToken++; onPrev() })
                         TvV9PlayerButtonLarge(
                             if (isPlaying) androidx.compose.material.icons.Icons.Default.Pause else androidx.compose.material.icons.Icons.Default.PlayArrow,
                             "Пауза / Старт",
                             hapticsEnabled,
                             soundEnabled,
                             allowSound = !player.isPlaying.value && !radioPlaying,
-                            onClick = onPause
+                            onClick = { menuInteractionToken++; onPause() }
                         )
-                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onNext)
+                        TvV9PlayerButtonLarge(Icons.Default.SkipNext, "Следующий", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, { menuInteractionToken++; onNext() })
                     }
 
                     if (!pipMode) noticeMessage?.let {
