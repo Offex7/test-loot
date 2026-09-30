@@ -21,6 +21,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class PlayerController(context: Context) {
+    private companion object {
+        const val BUFFER_TARGET_MS = 6_000L
+        const val BUFFER_MAX_MS = 30_000
+        const val BUFFER_TIMEOUT_MS = 15_000L
+        const val WEAK_NETWORK_NOTICE_MS = 4_000L
+    }
+
     private val appContext = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
     private val connectivityManager =
@@ -40,6 +47,9 @@ class PlayerController(context: Context) {
 
     private val _buffering = MutableStateFlow(false)
     val buffering: StateFlow<Boolean> = _buffering.asStateFlow()
+
+    private val _bufferPercent = MutableStateFlow(0)
+    val bufferPercent: StateFlow<Int> = _bufferPercent.asStateFlow()
 
     private val _weakNetworkEvent = MutableStateFlow(0L)
     val weakNetworkEvent: StateFlow<Long> = _weakNetworkEvent.asStateFlow()
@@ -65,15 +75,22 @@ class PlayerController(context: Context) {
     private var bufferingStartedAt = 0L
     private var released = false
     private var fadeAnimator: ValueAnimator? = null
+    private var fadeRestoreVolume = 1f
     private var internalRetryEnabled = true
-    private var bufferMultiplier = 1f
+    private var resumeAfterInterruption = false
+    private var userPaused = false
+    private var userStopped = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onLost(network: Network) {
             if (!hasValidatedInternet()) {
-                val wasPlaying = currentPlayer.isPlaying || currentPlayer.playWhenReady
-                if (wasPlaying) currentPlayer.pause()
+                val active = currentPlayer.isPlaying || currentPlayer.playWhenReady
+                if (active) {
+                    resumeAfterInterruption = true
+                    currentPlayer.playWhenReady = false
+                }
                 _waitingForNetwork.value = true
+                LogExporter.log("TV network lost; resumeAfterInterruption=" + resumeAfterInterruption)
             }
         }
 
@@ -81,8 +98,16 @@ class PlayerController(context: Context) {
             if (hasValidatedInternet()) {
                 _waitingForNetwork.value = false
                 _weakNetwork.value = hasLowBandwidthNetwork()
-                if (lastUrl != null && currentPlayer.playbackState == Player.STATE_IDLE) {
-                    play(lastUrl!!)
+                if (resumeAfterInterruption && lastUrl != null && !userPaused && !userStopped) {
+                    resumeAfterInterruption = false
+                    runCatching {
+                        if (currentPlayer.playbackState == Player.STATE_IDLE) {
+                            currentPlayer.prepare()
+                        }
+                        currentPlayer.playWhenReady = true
+                    }.onFailure {
+                        _error.value = "Поток недоступен"
+                    }
                 }
             }
         }
@@ -93,10 +118,8 @@ class PlayerController(context: Context) {
     }
 
     private fun createPlayer(): ExoPlayer {
-        val minBufferMs = (10_000f * bufferMultiplier).toInt().coerceIn(10_000, 60_000)
-        val maxBufferMs = (30_000f * bufferMultiplier).toInt().coerceIn(30_000, 120_000)
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minBufferMs, maxBufferMs, 2_000, 5_000)
+            .setBufferDurationsMs(6_000, BUFFER_MAX_MS, 2_000, 5_000)
             .setBackBuffer(0, false)
             .build()
 
@@ -119,111 +142,150 @@ class PlayerController(context: Context) {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (newPlayer !== currentPlayer) return
                         when (state) {
-                            Player.STATE_BUFFERING -> {
-                                _buffering.value = true
-                                bufferingStartedAt = System.currentTimeMillis()
-                                val generation = ++bufferingGeneration
-                                handler.postDelayed({
-                                    if (
-                                        !released &&
-                                        generation == bufferingGeneration &&
-                                        newPlayer === currentPlayer &&
-                                        currentPlayer.playbackState == Player.STATE_BUFFERING &&
-                                        System.currentTimeMillis() - bufferingStartedAt >= 7_000L
-                                    ) {
-                                        handleWeakNetworkEvent()
-                                    }
-                                }, 7_000L)
-                            }
-                            Player.STATE_READY -> {
-                                bufferingGeneration++
-                                bufferingStartedAt = 0L
-                                _buffering.value = false
-                                _weakNetwork.value = false
-                                reconnectAttempts = 0
-                                _error.value = null
-                            }
+                            Player.STATE_BUFFERING -> beginBuffering(newPlayer)
+                            Player.STATE_READY -> completeBuffering(newPlayer)
                             Player.STATE_ENDED -> {
-                                _buffering.value = false
+                                stopBuffering()
                                 _isPlaying.value = false
                             }
+                            Player.STATE_IDLE -> stopBuffering()
+                        }
+                    }
+
+                    override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                        if (newPlayer !== currentPlayer) return
+                        if (
+                            playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+                            resumeAfterInterruption &&
+                            !userPaused &&
+                            !userStopped &&
+                            lastUrl != null
+                        ) {
+                            LogExporter.log("TV playback suppression cleared; auto-resume")
+                            runCatching { newPlayer.play() }
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
                         if (newPlayer !== currentPlayer) return
-                        if (internalRetryEnabled && reconnectAttempts < 2 && lastUrl != null && !released) {
+                        stopBuffering()
+                        if (
+                            internalRetryEnabled &&
+                            reconnectAttempts < 1 &&
+                            lastUrl != null &&
+                            !released &&
+                            !userStopped
+                        ) {
                             reconnectAttempts++
                             val url = lastUrl
+                            LogExporter.log("TV player error; retry #" + reconnectAttempts + ": " + error.errorCodeName)
                             if (url != null) {
                                 handler.postDelayed({
-                                    if (!released && url == lastUrl) play(url)
-                                }, 400L)
+                                    if (!released && url == lastUrl && !userStopped) {
+                                        runCatching {
+                                            currentPlayer.setMediaItem(MediaItem.fromUri(url))
+                                            currentPlayer.prepare()
+                                            currentPlayer.playWhenReady = !userPaused
+                                        }.onFailure {
+                                            _error.value = "Поток недоступен"
+                                        }
+                                    }
+                                }, 500L)
                             }
                         } else {
+                            resumeAfterInterruption = false
                             _error.value = "Поток недоступен"
                             _isPlaying.value = false
-                            runCatching { currentPlayer.pause() }
+                            runCatching { currentPlayer.playWhenReady = false }
                         }
                     }
                 })
             }
     }
 
-    private fun replacePlayer() {
-        val old = currentPlayer
-        runCatching {
-            old.stop()
-            old.clearMediaItems()
-            old.release()
-        }
-
-        val fresh = createPlayer()
-        currentPlayer = fresh
-        _playerInstance.value = fresh
-        _isPlaying.value = false
-        _error.value = null
-        _weakNetwork.value = false
+    private fun beginBuffering(player: ExoPlayer) {
         bufferingGeneration++
+        val generation = bufferingGeneration
+        bufferingStartedAt = System.currentTimeMillis()
+        val wasActive = player.isPlaying || player.playWhenReady
+        if (wasActive && !userPaused && !userStopped) {
+            resumeAfterInterruption = true
+            player.playWhenReady = false
+            LogExporter.log("TV buffering started; playback paused automatically")
+        }
+        _buffering.value = true
+        _bufferPercent.value = 0
+        _adaptiveBufferLevel.value = 3
+        handler.postDelayed({
+            if (
+                !released &&
+                generation == bufferingGeneration &&
+                player === currentPlayer &&
+                player.playbackState == Player.STATE_BUFFERING &&
+                System.currentTimeMillis() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS
+            ) {
+                if (_weakNetworkNoticeCount.value < 1) {
+                    _weakNetworkNoticeCount.value = 1
+                    _weakNetworkEvent.value += 1L
+                }
+                _weakNetwork.value = true
+                lowerVideoQuality()
+            }
+        }, WEAK_NETWORK_NOTICE_MS)
+        handler.postDelayed({
+            if (
+                !released &&
+                generation == bufferingGeneration &&
+                player === currentPlayer &&
+                player.playbackState == Player.STATE_BUFFERING &&
+                System.currentTimeMillis() - bufferingStartedAt >= BUFFER_TIMEOUT_MS
+            ) {
+                resumeAfterInterruption = false
+                _error.value = "Буферизация не завершилась за 15 секунд. Переключите канал."
+                runCatching { player.playWhenReady = false }
+                LogExporter.log("TV buffering timeout after 15s")
+            }
+        }, BUFFER_TIMEOUT_MS)
+        updateBufferProgress(player, generation)
     }
 
-    fun resetWeakNetworkSession() {
-        if (released) return
+    private fun updateBufferProgress(player: ExoPlayer, generation: Long) {
+        handler.post(object : Runnable {
+            override fun run() {
+                if (
+                    released ||
+                    generation != bufferingGeneration ||
+                    player !== currentPlayer ||
+                    !_buffering.value ||
+                    player.playbackState != Player.STATE_BUFFERING
+                ) return
+                val bufferedMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L)
+                val percent = ((bufferedMs.toDouble() / BUFFER_TARGET_MS) * 100.0)
+                    .toInt()
+                    .coerceIn(0, 99)
+                _bufferPercent.value = percent
+                handler.postDelayed(this, 200L)
+            }
+        })
+    }
+
+    private fun completeBuffering(player: ExoPlayer) {
+        val shouldResume =
+            resumeAfterInterruption && !userPaused && !userStopped && lastUrl != null
+        stopBuffering()
+        if (shouldResume) {
+            resumeAfterInterruption = false
+            runCatching { player.play() }
+            LogExporter.log("TV buffering completed; playback resumed")
+        }
+    }
+
+    private fun stopBuffering() {
         bufferingGeneration++
-        _weakNetworkEvent.value = 0L
-        _weakNetworkNoticeCount.value = 0
-        _adaptiveBufferLevel.value = 0
-        _weakNetwork.value = false
+        bufferingStartedAt = 0L
         _buffering.value = false
-        bufferMultiplier = 1f
-    }
-
-    private fun handleWeakNetworkEvent() {
-        if (released) return
-        val previous = _weakNetworkNoticeCount.value
-        if (previous >= 5) return
-        val count = previous + 1
-        _weakNetworkNoticeCount.value = count
-        if (previous == 0) _weakNetworkEvent.value += 1L
-        _weakNetwork.value = true
-        when (count) {
-            1, 2 -> lowerVideoQuality()
-            3 -> {
-                bufferMultiplier *= 1.10f
-                _adaptiveBufferLevel.value = 3
-                reconfigurePlayerForBuffer()
-            }
-            4 -> {
-                bufferMultiplier *= 1.20f
-                _adaptiveBufferLevel.value = 4
-                reconfigurePlayerForBuffer()
-            }
-            5 -> {
-                bufferMultiplier *= 1.40f
-                _adaptiveBufferLevel.value = 5
-                reconfigurePlayerForBuffer()
-            }
-        }
+        _bufferPercent.value = 100
+        _adaptiveBufferLevel.value = 0
     }
 
     private fun lowerVideoQuality() {
@@ -232,23 +294,6 @@ class PlayerController(context: Context) {
                 currentPlayer.trackSelectionParameters.buildUpon()
                     .setMaxVideoSize(854, 480)
                     .build()
-        }
-    }
-
-    private fun reconfigurePlayerForBuffer() {
-        val url = lastUrl ?: return
-        if (released) return
-        handler.post {
-            if (released || url != lastUrl) return@post
-            val shouldPlay = currentPlayer.playWhenReady || currentPlayer.isPlaying
-            runCatching {
-                replacePlayer()
-                currentPlayer.setMediaItem(MediaItem.fromUri(url))
-                currentPlayer.prepare()
-                currentPlayer.playWhenReady = shouldPlay
-            }.onFailure {
-                _error.value = "Поток недоступен"
-            }
         }
     }
 
@@ -268,19 +313,21 @@ class PlayerController(context: Context) {
             } == true
         }
 
-
     fun play(url: String) {
         if (released || url.isBlank()) return
         playbackGeneration++
         internalRetryEnabled = true
         reconnectAttempts = 0
         lastUrl = url
-        fadeAnimator?.cancel()
+        userPaused = false
+        userStopped = false
+        resumeAfterInterruption = false
+        cancelFadeOut(restore = false)
         _error.value = null
         _weakNetwork.value = false
-        _buffering.value = false
+        _waitingForNetwork.value = false
+        stopBuffering()
         runCatching {
-            replacePlayer()
             currentPlayer.setMediaItem(MediaItem.fromUri(url))
             currentPlayer.prepare()
             currentPlayer.playWhenReady = true
@@ -299,14 +346,19 @@ class PlayerController(context: Context) {
 
         val generation = ++playbackGeneration
         internalRetryEnabled = false
-        lastUrl = null
+        userPaused = false
+        userStopped = false
+        resumeAfterInterruption = false
+        reconnectAttempts = 0
+        cancelFadeOut(restore = false)
+
         try {
             for ((index, url) in candidates.withIndex()) {
                 if (generation != playbackGeneration || released) return -1
                 lastUrl = url
-                reconnectAttempts = 0
                 _error.value = null
-
+                _waitingForNetwork.value = false
+                stopBuffering()
                 val started = runCatching {
                     currentPlayer.setMediaItem(MediaItem.fromUri(url))
                     currentPlayer.prepare()
@@ -314,23 +366,23 @@ class PlayerController(context: Context) {
                 }.isSuccess
                 if (!started) continue
 
-                val until = System.currentTimeMillis() + 15_000L
+                val until = System.currentTimeMillis() + BUFFER_TIMEOUT_MS
                 while (
                     System.currentTimeMillis() < until &&
                     generation == playbackGeneration &&
                     !released
                 ) {
-                    if (currentPlayer.playbackState == Player.STATE_READY || currentPlayer.isPlaying) {
+                    if (currentPlayer.playbackState == Player.STATE_READY && currentPlayer.isPlaying) {
                         _error.value = null
                         internalRetryEnabled = true
                         return index
                     }
                     if (_error.value != null) break
-                    delay(200L)
+                    delay(100L)
                 }
-
                 if (generation != playbackGeneration || released) return -1
                 runCatching {
+                    currentPlayer.playWhenReady = false
                     currentPlayer.stop()
                     currentPlayer.clearMediaItems()
                 }
@@ -342,14 +394,25 @@ class PlayerController(context: Context) {
 
         if (generation == playbackGeneration) {
             _error.value = "Поток недоступен"
-            runCatching { currentPlayer.pause() }
+            runCatching { currentPlayer.playWhenReady = false }
         }
         return -1
     }
 
     fun toggle() {
         if (released) return
-        if (currentPlayer.isPlaying) currentPlayer.pause() else currentPlayer.play()
+        if (currentPlayer.isPlaying || currentPlayer.playWhenReady) {
+            userPaused = true
+            resumeAfterInterruption = false
+            currentPlayer.pause()
+        } else {
+            userPaused = false
+            userStopped = false
+            resumeAfterInterruption = false
+            _error.value = null
+            if (currentPlayer.playbackState == Player.STATE_IDLE) currentPlayer.prepare()
+            currentPlayer.play()
+        }
     }
 
     fun stop() {
@@ -358,32 +421,49 @@ class PlayerController(context: Context) {
         lastUrl = null
         reconnectAttempts = 0
         internalRetryEnabled = true
-        fadeAnimator?.cancel()
+        userPaused = false
+        userStopped = true
+        resumeAfterInterruption = false
+        cancelFadeOut(restore = false)
         handler.removeCallbacksAndMessages(null)
         runCatching {
+            currentPlayer.playWhenReady = false
             currentPlayer.stop()
             currentPlayer.clearMediaItems()
         }
         _error.value = null
         _weakNetwork.value = false
         _buffering.value = false
+        _bufferPercent.value = 0
+        _adaptiveBufferLevel.value = 0
         _waitingForNetwork.value = false
         _isPlaying.value = false
     }
 
     fun pause() {
-        if (!released) currentPlayer.pause()
+        if (!released) {
+            userPaused = true
+            resumeAfterInterruption = false
+            currentPlayer.pause()
+        }
     }
 
     fun fadeOut(durationMs: Long = 10_000L) {
         if (released) return
         fadeAnimator?.cancel()
-        fadeAnimator = ValueAnimator.ofFloat(currentPlayer.volume.coerceIn(0f, 1f), 0f).apply {
-            duration = durationMs
+        fadeRestoreVolume = currentPlayer.volume.coerceIn(0f, 1f)
+        fadeAnimator = ValueAnimator.ofFloat(fadeRestoreVolume, 0f).apply {
+            duration = durationMs.coerceAtLeast(1L)
             interpolator = LinearInterpolator()
             addUpdateListener { currentPlayer.volume = it.animatedValue as Float }
             start()
         }
+    }
+
+    fun cancelFadeOut(restore: Boolean = true) {
+        fadeAnimator?.cancel()
+        fadeAnimator = null
+        if (restore && !released) currentPlayer.volume = fadeRestoreVolume.coerceIn(0f, 1f)
     }
 
     fun release() {
