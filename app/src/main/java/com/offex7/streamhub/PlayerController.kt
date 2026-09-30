@@ -332,6 +332,18 @@ class PlayerController(context: Context) {
             } == true
         }
 
+    fun resetWeakNetworkSession() {
+        bufferingGeneration++
+        bufferingStartedAt = 0L
+        _weakNetwork.value = false
+        _weakNetworkEvent.value = 0L
+        _weakNetworkNoticeCount.value = 0
+        _adaptiveBufferLevel.value = 0
+        if (!_buffering.value) {
+            _bufferPercent.value = 0
+        }
+    }
+
     fun play(url: String) {
         if (released || url.isBlank()) return
         playbackGeneration++
