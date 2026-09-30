@@ -58,6 +58,18 @@ class RadioMediaController(context: Context) {
                     val generation = ++bufferingGeneration
                     _buffering.value = true
                     _bufferPercent.value = 0
+                    handler.postDelayed({
+                        if (
+                            generation == bufferingGeneration &&
+                            controller?.playbackState == Player.STATE_BUFFERING
+                        ) {
+                            controller?.playWhenReady = false
+                            _buffering.value = false
+                            _bufferPercent.value = 0
+                            _error.value = "Буферизация не завершилась за 15 секунд. Переключите станцию."
+                            LogExporter.log("Radio buffering timeout after 15s")
+                        }
+                    }, 15_000L)
                     handler.post(object : Runnable {
                         override fun run() {
                             if (
