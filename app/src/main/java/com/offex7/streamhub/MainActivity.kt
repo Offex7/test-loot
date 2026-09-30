@@ -848,31 +848,51 @@ private fun HomeCard(
 @Composable
 private fun ScrollActionButton(
     visible: Boolean,
-    direction: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var variant by remember { mutableIntStateOf(0) }
+    val glyphs = listOf("🢁", "🔝", "🔼")
+
+    LaunchedEffect(visible) {
+        if (!visible) {
+            variant = 0
+            return@LaunchedEffect
+        }
+        while (visible) {
+            delay(700L)
+            variant = (variant + 1) % glyphs.size
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.8f, animationSpec = tween(180)),
-        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.8f, animationSpec = tween(180))
+        enter = fadeIn(tween(220)) + scaleIn(initialScale = .82f, animationSpec = tween(220)),
+        exit = fadeOut(tween(220)) + scaleOut(targetScale = .82f, animationSpec = tween(220))
     ) {
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(48.dp)
+                .size(52.dp)
                 .background(Red, CircleShape)
         ) {
-            Icon(
-                if (direction == 1) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                if (direction == 1) "Вниз" else "Вверх",
-                tint = Color.White,
-                modifier = Modifier.size(28.dp)
-            )
+            androidx.compose.animation.Crossfade(
+                targetState = variant,
+                animationSpec = tween(220),
+                label = "scroll-arrow-glyph"
+            ) { i ->
+                Text(
+                    glyphs[i],
+                    color = Color.White,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
+
 
 private fun onHapticFeedback(context: Context,hapticsEnabled:Boolean,soundEnabled:Boolean){InteractionFeedback.click(context,hapticsEnabled,soundEnabled,false)}
 private fun performRadioTvHaptic(view: android.view.View, enabled: Boolean, constant: Int) {
@@ -1145,55 +1165,31 @@ private fun Radio(
         ).run()
     }
 
-    LaunchedEffect(list) {
-        var previous = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
-        var previousTime = System.currentTimeMillis()
+    LaunchedEffect(Unit) {
         snapshotFlow {
-            Triple(
-                list.firstVisibleItemIndex,
-                list.firstVisibleItemScrollOffset,
-                list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            )
+            list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
         }.collect { current ->
-            val now = System.currentTimeMillis()
             store.saveScrollPosition(Section.RADIO, current.first, current.second)
-            if (current.first != previous.first || current.second != previous.second) {
-                val deltaIndex = current.first - previous.first
-                val deltaPx = current.second - previous.second
-                val elapsed = (now - previousTime).coerceAtLeast(1L)
-                val movingUp = deltaIndex < 0 || (deltaIndex == 0 && deltaPx < 0)
-                val movingDown = deltaIndex > 0 || (deltaIndex == 0 && deltaPx > 0)
-                val fast = kotlin.math.abs(deltaIndex) >= 2 ||
-                    (elapsed <= 140L && kotlin.math.abs(deltaPx) >= 96)
-                val total = RADIO_STATIONS.size
-                val lastVisible = current.third
-                val canGoTop = current.first > maxOf(5, favorites.size)
-                val canGoBottom = total > 0 && lastVisible >= 0 && lastVisible < total - 6
-                when {
-                    current.first <= 0 && current.second <= 0 -> showScrollAction = false
-                    total > 0 && lastVisible >= total - 1 -> showScrollAction = false
-                    fast && movingDown && canGoTop -> {
-                        scrollDirection = -1
-                        showScrollAction = true
-                        scrollActivityToken += 1L
-                    }
-                    fast && movingUp && canGoBottom -> {
-                        scrollDirection = 1
-                        showScrollAction = true
-                        scrollActivityToken += 1L
-                    }
-                }
-                previous = current.first to current.second
-                previousTime = now
-            }
         }
     }
 
-    LaunchedEffect(scrollActivityToken) {
-        if (scrollActivityToken == 0L) return@LaunchedEffect
-        val token = scrollActivityToken
-        delay(5000L)
-        if (token == scrollActivityToken) showScrollAction = false
+    LaunchedEffect(list.isScrollInProgress) {
+        if (!list.isScrollInProgress) {
+            showScrollAction = false
+            return@LaunchedEffect
+        }
+        val started = System.currentTimeMillis()
+        while (list.isScrollInProgress && System.currentTimeMillis() - started < 4_000L) {
+            delay(100L)
+        }
+        if (
+            list.isScrollInProgress &&
+            (list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0)
+        ) {
+            showScrollAction = true
+        }
+        while (list.isScrollInProgress) delay(100L)
+        showScrollAction = false
     }
 
     fun updateTimerState(state: RadioTimerState, now: Long) {
@@ -1429,15 +1425,10 @@ private fun Radio(
 
                 ScrollActionButton(
                     visible = showScrollAction,
-                    direction = scrollDirection,
                     onClick = {
                         scope.launch {
                             showScrollAction = false
-                            if (scrollDirection == -1) {
-                                list.animateScrollToItem(0)
-                            } else {
-                                list.animateScrollToItem((orderedStations.lastIndex).coerceAtLeast(0))
-                            }
+                            list.animateScrollToItem(0)
                         }
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
