@@ -2546,75 +2546,192 @@ private fun PinGate(
     var error by remember { mutableStateOf(false) }
     var biometricTried by rememberSaveable { mutableStateOf(false) }
     var biometricAvailable by rememberSaveable { mutableStateOf(false) }
-    val feedbackContext=LocalContext.current
-    val pinSettingsStore=remember(feedbackContext){SettingsStore(feedbackContext.applicationContext)}
+    var failedAttempts by remember { mutableIntStateOf(store.failedAttempts()) }
+    var lockoutUntil by remember { mutableLongStateOf(store.lockoutUntil()) }
+    var lockoutRemaining by remember { mutableLongStateOf(store.lockoutRemainingMs()) }
+    val pinSettingsStore = remember(context) {
+        SettingsStore(context.applicationContext)
+    }
     val pinHapticsEnabled by pinSettingsStore.hapticsFlow().collectAsState(true)
     val pinSoundEnabled by pinSettingsStore.soundFeedbackFlow().collectAsState(true)
+
+    LaunchedEffect(lockoutUntil) {
+        while (true) {
+            val remaining = store.lockoutRemainingMs()
+            lockoutRemaining = remaining
+            if (remaining <= 0L) {
+                lockoutUntil = 0L
+                failedAttempts = store.failedAttempts()
+                break
+            }
+            delay(250L)
+        }
+    }
+
+    fun promptBiometric() {
+        if (!biometricAvailable) return
+        val executor = ContextCompat.getMainExecutor(context)
+        val prompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(
+                    result: BiometricPrompt.AuthenticationResult
+                ) {
+                    store.registerSuccess()
+                    onUnlocked()
+                }
+            }
+        )
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Вход в Radio.TV")
+                .setSubtitle("Подтвердите вход разблокировав биометрией или введя PIN")
+                .setNegativeButtonText("Ввести PIN")
+                .build()
+        )
+    }
 
     LaunchedEffect(Unit) {
         if (!biometricTried) {
             biometricTried = true
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
-            biometricAvailable=BiometricManager.from(context).canAuthenticate(authenticators)==BiometricManager.BIOMETRIC_SUCCESS
-            if(biometricAvailable){
-                val executor = ContextCompat.getMainExecutor(context)
-                val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        onUnlocked()
-                    }
-                })
-                prompt.authenticate(
-                    BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Разблокировать")
-                        .setSubtitle("Подтвердите вход")
-                        .setNegativeButtonText("PIN-код")
-                        .build()
-                )
-            }
+            val authenticators =
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK
+            biometricAvailable =
+                BiometricManager.from(context).canAuthenticate(authenticators) ==
+                    BiometricManager.BIOMETRIC_SUCCESS
+            if (biometricAvailable) promptBiometric()
         }
     }
 
-    val redFlash by animateColorAsState(if(error)Color(0xFF5A1111).copy(alpha=.72f)else Color.Transparent,animationSpec=tween(220),label="pin-error-flash")
-    LaunchedEffect(error){if(error){delay(1200L);error=false}}
+    fun tryPin(value: String) {
+        if (lockoutRemaining > 0L || value.length != 4) return
+        if (store.verify(value)) {
+            store.registerSuccess()
+            failedAttempts = 0
+            lockoutUntil = 0L
+            pin = ""
+            onUnlocked()
+        } else {
+            pin = ""
+            error = true
+            failedAttempts = store.registerFailure()
+            lockoutUntil = store.lockoutUntil()
+            lockoutRemaining = store.lockoutRemainingMs()
+            InteractionFeedback.error(context, pinHapticsEnabled)
+            InteractionFeedback.beep(context, pinSoundEnabled)
+        }
+    }
+
+    val redFlash by animateColorAsState(
+        targetValue = if (error) Color(0xFF5A1111).copy(alpha = .72f) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "pin-error-flash"
+    )
+    LaunchedEffect(error) {
+        if (error) {
+            delay(1200L)
+            error = false
+        }
+    }
+
     Surface(Modifier.fillMaxSize(), color = Color.Black) {
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(52.dp))
-            Spacer(Modifier.height(12.dp))
-            Text("Введите PIN-код", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(12.dp))
+            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(46.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Введите PIN-код", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Подтвердите вход разблокировав биометрией или введя PIN",
+                color = Gray,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = pin,
                 onValueChange = { value ->
-                    pin=value.filter(Char::isDigit).take(4);error=false
-                    if(pin.length==4){
-                        if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}
+                    if (lockoutRemaining <= 0L) {
+                        val next = value.filter(Char::isDigit).take(4)
+                        pin = next
+                        error = false
+                        if (next.length == 4) tryPin(next)
                     }
                 },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().height(58.dp),
+                enabled = lockoutRemaining <= 0L,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 label = { Text("4 цифры") },
                 isError = error
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
+            if (lockoutRemaining > 0L) {
+                val totalSeconds = ((lockoutRemaining + 999L) / 1000L).coerceAtLeast(0L)
+                Text(
+                    "Ввод заблокирован на 5 минут • %02d:%02d".format(
+                        totalSeconds / 60L,
+                        totalSeconds % 60L
+                    ),
+                    color = Red,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    "Неверных попыток: $failedAttempts/5",
+                    color = if (failedAttempts > 0) Red else Gray,
+                    fontSize = 11.sp
+                )
+            }
             TextButton(
-                onClick = { Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show() }
-            ) { Text("Забыли PIN?", color = Red) }
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={if(store.verify(pin))onUnlocked()else{error=true;InteractionFeedback.error(feedbackContext,pinHapticsEnabled);InteractionFeedback.beep(feedbackContext,pinSoundEnabled)}},enabled=pin.length==4,modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Red)){Text("ВОЙТИ")}
-                if(biometricAvailable)IconButton(onClick={
-                    val executor=ContextCompat.getMainExecutor(context)
-                    val prompt=BiometricPrompt(activity,executor,object:BiometricPrompt.AuthenticationCallback(){override fun onAuthenticationSucceeded(result:BiometricPrompt.AuthenticationResult){onUnlocked()}})
-                    prompt.authenticate(BiometricPrompt.PromptInfo.Builder().setTitle("Разблокировать").setSubtitle("Подтвердите вход").setNegativeButtonText("PIN-код").build())
-                }){Icon(Icons.Default.Fingerprint,"Вход по отпечатку или лицу",tint=Red,modifier=Modifier.size(30.dp))}
+                onClick = {
+                    Toast.makeText(
+                        context,
+                        "Подсказка: " + store.hint(),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            ) {
+                Text("Забыли PIN?", color = Red)
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { tryPin(pin) },
+                    enabled = pin.length == 4 && lockoutRemaining <= 0L,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Red)
+                ) {
+                    Text("ВОЙТИ")
+                }
+                if (biometricAvailable) {
+                    IconButton(
+                        onClick = { promptBiometric() },
+                        enabled = lockoutRemaining <= 0L
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            "Вход по отпечатку или лицу",
+                            tint = Red,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
             }
         }
         Box(Modifier.fillMaxSize().background(redFlash))
     }
 }
+
 
 @Composable
 private fun UsageLine(label: String, seconds: Long) {
