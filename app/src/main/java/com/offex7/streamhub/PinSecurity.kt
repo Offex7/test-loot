@@ -31,12 +31,14 @@ class PinSecurityStore(context: Context) {
             .putString(KEY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putString(KEY_HASH, hash(pin, salt))
             .putString(KEY_HINT, hint.take(15))
+            .putInt(KEY_FAILED_ATTEMPTS, 0)
+            .putLong(KEY_LOCKOUT_UNTIL, 0L)
             .apply()
         return true
     }
 
     fun disable() {
-        prefs.edit().putBoolean(KEY_ENABLED, false).apply()
+        prefs.edit().putBoolean(KEY_ENABLED, false).putInt(KEY_FAILED_ATTEMPTS, 0).putLong(KEY_LOCKOUT_UNTIL, 0L).apply()
     }
 
     fun verify(pin: String): Boolean {
