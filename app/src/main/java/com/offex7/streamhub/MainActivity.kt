@@ -482,10 +482,13 @@ private fun App(
     }
 
     Scaffold(containerColor = if (energySaving) Color.Black else Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        val screenRoot = Modifier.fillMaxSize().padding(padding)
         Box(
-            Modifier.fillMaxSize().padding(padding).windowInsetsPadding(
-                WindowInsets.systemBars.union(WindowInsets.displayCutout)
-            )
+            if (section == Section.TV && activity.tvViewing) {
+                screenRoot
+            } else {
+                screenRoot.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+            }
         ) {
             when {
                 disclaimer -> Disclaimer(onBack = { disclaimer = false })
@@ -773,6 +776,8 @@ private fun Home(
             Card(
                 onClick = {
                     InteractionFeedback.click(context, hapticsEnabled, false, allowSound = false)
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV", RECOMMEND_MESSAGE))
                     shareText(context, RECOMMEND_MESSAGE, "Рекомендовать Radio.TV")
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -2186,6 +2191,7 @@ private fun Settings(
                     scope.launch {
                         runCatching {
                             val file = LogExporter.export(settingsContext, store)
+                            require(file.exists() && file.length() > 0L) { "ZIP-файл логов не создан" }
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 settingsContext,
                                 settingsContext.packageName + ".fileprovider",
