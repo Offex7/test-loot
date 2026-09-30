@@ -1066,9 +1066,9 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
-    var scrollDirection by remember { mutableIntStateOf(0) } // 1=up, -1=down
     var showScrollAction by remember { mutableStateOf(false) }
-    var scrollActivityToken by remember { mutableLongStateOf(0L) }
+    val buffering by player.buffering.collectAsState()
+    val bufferPercent by player.bufferPercent.collectAsState()
     var availability by remember { mutableStateOf<Map<String, AvailabilityStatus>>(emptyMap()) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -1132,7 +1132,7 @@ private fun Radio(
             timerStartedAtMs = state.startedAtMs
             timerNowMs = now
             RADIO_STATIONS.getOrNull(index)?.let { availability = availability + (it.url to AvailabilityStatus.OFFLINE) }
-            notify("Возникла проблема. Обсуждаем решения в Telegram.")
+            notify(error ?: "Поток недоступен")
         }
     }
 
@@ -1329,6 +1329,32 @@ private fun Radio(
             }
 
             Box(Modifier.fillMaxSize()) {
+                if (buffering) {
+                    Card(
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .78f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            Modifier.width(190.dp).padding(horizontal = 12.dp, vertical = 7.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Буферизация… $bufferPercent%",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { bufferPercent / 100f },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                color = Red,
+                                trackColor = Color.White.copy(alpha = .20f)
+                            )
+                        }
+                    }
+                }
                 LazyColumn(
                     state = list,
                     modifier = Modifier.fillMaxSize(),
