@@ -17,6 +17,7 @@ private val Context.dataStore by preferencesDataStore("streamhub_settings")
 class SettingsStore(private val context: Context) {
     private val sectionKey = stringPreferencesKey("last_section")
     private val sourceKey = intPreferencesKey("tv_source_index")
+    private val tvSourceInitializedKey = booleanPreferencesKey("tv_source_initialized_v1")
     private val activeSourceKeyStorage = stringPreferencesKey("tv_active_source")
     private val userPlaylistsStorage = stringPreferencesKey("tv_user_playlists_v1")
     private val exitKey = longPreferencesKey("last_exit_time")
@@ -92,6 +93,17 @@ class SettingsStore(private val context: Context) {
     suspend fun clearSection() { context.dataStore.edit { it.remove(sectionKey) } }
 
     suspend fun sourceIndex(): Int = context.dataStore.data.first()[sourceKey] ?: 0
+    suspend fun ensureInitialTvSource(): Boolean {
+        val prefs = context.dataStore.data.first()
+        if (prefs[tvSourceInitializedKey] == true) return false
+        context.dataStore.edit {
+            it[activeSourceKeyStorage] = builtinSourceKey(0)
+            it[sourceKey] = 0
+            it[tvSourceInitializedKey] = true
+        }
+        return true
+    }
+
 
     suspend fun setSourceIndex(index: Int) {
         setActiveSourceKey(builtinSourceKey(index))
