@@ -96,8 +96,7 @@ class RadioPlaybackService : MediaSessionService() {
                     Player.STATE_BUFFERING -> {
                         if ((player.isPlaying || player.playWhenReady) && !userPaused && !userStopped) {
                             resumeAfterInterruption = true
-                            player.playWhenReady = false
-                            LogExporter.log("Radio buffering started; playback paused automatically")
+                            LogExporter.log("Radio buffering started; playback kept ready for automatic recovery")
                         }
                     }
                     Player.STATE_READY -> {
@@ -153,7 +152,6 @@ class RadioPlaybackService : MediaSessionService() {
                 if (!hasValidatedInternet(cm)) {
                     if (player.isPlaying || player.playWhenReady) {
                         resumeAfterInterruption = true
-                        player.playWhenReady = false
                     }
                     LogExporter.log("Radio network lost; resumeAfterInterruption="+resumeAfterInterruption)
                 }
