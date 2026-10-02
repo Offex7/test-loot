@@ -214,9 +214,24 @@ private val Panel = Color(0xFF1A1A1A)
 private val PanelAlt = Color(0xFF232323)
 private val Gray = Color(0xFF808080)
 
-private const val TELEGRAM = "https://t.me/TvRadioOnline"
+private const val TELEGRAM = "https://t.me/TvRadioOnline/170289"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/9"
-private const val RECOMMEND_MESSAGE = """Приветствую! Слушай, хочу поделиться находкой, которая реально заслуживает внимания — приложением Radio.TV. Представь: куча ТВ-каналов, Радио и всё, что нужно для досуга, в одном месте. И всё это абсолютно бесплатно! Дизайн минималистичный и приятный, ничего лишнего. Приложение активно развивается, так что скучать не придётся. Работает на Android 12 и новее. Я уже пользуюсь — и мне очень зашло. Держи ссылку на блог разработчика, устанавливай скорее: [https://t.me/TvRadioOnline](https://t.me/TvRadioOnline). Не пожалеешь! И да, я пишу это осознанно: это не спам, а искренняя рекомендация.  """
+private const val RECOMMEND_MESSAGE = """🔥 Нашёл приложение с простым названием - Radio.TV, которым хочется поделиться.
+Сохрани ссылку — ещё пригодится!
+
+• Это Телевизор и Радио в одном приложении. Без платной подписки, без встроенной рекламы и, как заявляет разработчик, проект навсегда останется бесплатным.
+
+• Самое интересное, разработчик называет его «народным проектом». Цель которого создать максимально удобное приложение для просмотра Телевизора и прослушивания Радио, постоянно развивая приложение и добавляя новые возможности...
+
+• Никаких рекламных баннеров посреди просмотра, навязчивых подписок и прочего цифрового спама. Просто открыл → выбрал → смотри или слушай. 😎
+
+📱 Работает на Android 12 и новее.
+
+👉 Вот ссылка на проект: https://t.me/TvRadioOnline/1
+
+• И сразу, чтобы без лишних вопросов: это не взлом меня, не пиратская рассылка и не спам. Я осознанно пересылаю это сообщение, потому что считаю проект интересным и хочу, чтобы о нём узнало больше людей.
+
+• Загляни хотя бы одним глазом. Возможно, потом скажешь спасибо за эту находку! 😉"""
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
@@ -318,7 +333,7 @@ class MainActivity : FragmentActivity() {
 @Composable
 private fun AppTheme(store: SettingsStore, content: @Composable () -> Unit) {
     val systemPowerSave = rememberSystemPowerSave()
-    val energyMode by store.energySavingModeFlow().collectAsState(initial = "AUTO")
+    val energyMode by store.energySavingModeFlow().collectAsState(initial = "OFF")
     val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
     val bg = if (energySaving) Color.Black else Bg
     MaterialTheme(
@@ -418,7 +433,7 @@ private fun App(
         val savedSection = store.lastSection()
         if (savedSection != null && last > 0L && System.currentTimeMillis() - last < RESTORE_WINDOW) {
             section = savedSection
-            restore = store.lastStream(savedSection)
+            restore = if (savedSection == Section.TV) store.lastStream(savedSection) else null
         }
     }
 
@@ -460,14 +475,21 @@ private fun App(
                 radio.fadeOut(fadeDuration)
             }
             if (left <= 0L) {
-                sleepRemaining = 0L
-                sleepMinutes = 0L
+                val stopAtExpiration = System.currentTimeMillis()
                 tv.pause()
                 radio.pause()
-                radioTimerStore.pause(System.currentTimeMillis())
-                sleepUntil = 0L
-                delay(250L)
-                activity.finishAndRemoveTask()
+                radioTimerStore.pause(stopAtExpiration)
+                sleepRemaining = 0L
+                sleepMinutes = 0L
+                sleepWarningFor = 0L
+                tv.cancelFadeOut()
+                radio.cancelFadeOut(restore = false)
+                if (autoStartEnabled) {
+                    sleepUntil = 0L
+                } else {
+                    // Do this before changing sleepUntil: changing the effect key cancels this coroutine.
+                    activity.finishAndRemoveTask()
+                }
                 break
             }
             sleepRemaining = left
@@ -782,7 +804,7 @@ private fun Home(
                     InteractionFeedback.click(context, hapticsEnabled, false, allowSound = false)
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV", RECOMMEND_MESSAGE))
-                    shareText(context, RECOMMEND_MESSAGE, "Рекомендовать Radio.TV")
+                    shareText(context, RECOMMEND_MESSAGE, "Рассказать о Radio.TV")
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
@@ -793,7 +815,7 @@ private fun Home(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "рекомендовать друзьям",
+                        "рассказать о приложении",
                         color = Red,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -860,20 +882,6 @@ private fun ScrollActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var variant by remember { mutableIntStateOf(0) }
-    val glyphs = listOf("🢁", "🔝", "🔼")
-
-    LaunchedEffect(visible) {
-        if (!visible) {
-            variant = 0
-            return@LaunchedEffect
-        }
-        while (visible) {
-            delay(700L)
-            variant = (variant + 1) % glyphs.size
-        }
-    }
-
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
@@ -886,18 +894,12 @@ private fun ScrollActionButton(
                 .size(52.dp)
                 .background(Red, CircleShape)
         ) {
-            androidx.compose.animation.Crossfade(
-                targetState = variant,
-                animationSpec = tween(220),
-                label = "scroll-arrow-glyph"
-            ) { i ->
-                Text(
-                    glyphs[i],
-                    color = Color.White,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                "Вверх",
+                tint = Color.White,
+                modifier = Modifier.size(31.dp)
+            )
         }
     }
 }
@@ -1076,8 +1078,6 @@ private fun Radio(
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
     var showScrollAction by remember { mutableStateOf(false) }
-    val buffering by player.buffering.collectAsState()
-    val bufferPercent by player.bufferPercent.collectAsState()
     var availability by remember { mutableStateOf<Map<String, AvailabilityStatus>>(emptyMap()) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -1125,10 +1125,10 @@ private fun Radio(
         }
     }
 
-    LaunchedEffect(playing, timerStartedAtMs, energySaving) {
+    LaunchedEffect(playing, timerStartedAtMs) {
         while (playing && timerStartedAtMs > 0L) {
             timerNowMs = System.currentTimeMillis()
-            delay(if (energySaving) 2000L else 1000L)
+            delay(1000L)
         }
         timerNowMs = System.currentTimeMillis()
     }
@@ -1338,32 +1338,6 @@ private fun Radio(
             }
 
             Box(Modifier.fillMaxSize()) {
-                if (buffering) {
-                    Card(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .78f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Column(
-                            Modifier.width(190.dp).padding(horizontal = 12.dp, vertical = 7.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                "Буферизация… $bufferPercent%",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(Modifier.height(5.dp))
-                            androidx.compose.material3.LinearProgressIndicator(
-                                progress = { bufferPercent / 100f },
-                                modifier = Modifier.fillMaxWidth().height(4.dp),
-                                color = Red,
-                                trackColor = Color.White.copy(alpha = .20f)
-                            )
-                        }
-                    }
-                }
                 LazyColumn(
                     state = list,
                     modifier = Modifier.fillMaxSize(),
@@ -1957,7 +1931,7 @@ private fun Settings(
     var deleteCandidate by remember { mutableStateOf<UserPlaylist?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
-    val energyMode by store.energySavingModeFlow().collectAsState("AUTO")
+    val energyMode by store.energySavingModeFlow().collectAsState("OFF")
     val systemPowerSave = rememberSystemPowerSave()
     val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
@@ -2181,15 +2155,19 @@ private fun Settings(
             }
         }
         item {
-            val sharePulse by rememberInfiniteTransition(label = "share-log-pulse").animateFloat(
-                initialValue = 1f,
-                targetValue = 1.1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(750, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "share-log-pulse-value"
-            )
+            val sharePulse = if (energySaving) {
+                1f
+            } else {
+                rememberInfiniteTransition(label = "share-log-pulse").animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(750, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "share-log-pulse-value"
+                ).value
+            }
             Card(
                 onClick = {
                     scope.launch {
@@ -2596,8 +2574,8 @@ private fun PinGate(
             }
         ).authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Вход в Radio.TV")
-                .setSubtitle("Подтвердите вход разблокировав биометрией или введя PIN")
+                .setTitle("Radio.TV")
+                .setSubtitle("Разблокировать приложение при помощи биометрии или введите пароль вручную")
                 .setNegativeButtonText("Ввести PIN")
                 .build()
         )
@@ -2610,9 +2588,7 @@ private fun PinGate(
         biometricAvailable =
             BiometricManager.from(context).canAuthenticate(authenticators) ==
                 BiometricManager.BIOMETRIC_SUCCESS
-        if (biometricAvailable) {
-            promptBiometric()
-        }
+        if (biometricAvailable) promptBiometric()
     }
 
     fun tryPin(value: String) {
@@ -2634,6 +2610,14 @@ private fun PinGate(
         }
     }
 
+    fun appendDigit(digit: Char) {
+        if (lockoutRemaining > 0L || pin.length >= 4) return
+        error = false
+        val next = pin + digit
+        pin = next
+        if (next.length == 4) tryPin(next)
+    }
+
     val redFlash by animateColorAsState(
         targetValue = if (error) Color(0xFF5A1111).copy(alpha = .72f) else Color.Transparent,
         animationSpec = tween(220),
@@ -2648,102 +2632,135 @@ private fun PinGate(
 
     Surface(Modifier.fillMaxSize(), color = Color.Black) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                Icons.Default.Lock,
-                null,
-                tint = Red,
-                modifier = Modifier.size(46.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text("Введите PIN-код", fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Подтвердите вход разблокировав биометрией или введя PIN",
-                color = Gray,
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
-                textAlign = TextAlign.Center
-            )
+            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(46.dp))
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = pin,
-                onValueChange = { value ->
-                    if (lockoutRemaining <= 0L) {
-                        val next = value.filter(Char::isDigit).take(4)
-                        pin = next
-                        error = false
-                        if (next.length == 4) tryPin(next)
-                    }
-                },
-                singleLine = true,
-                enabled = lockoutRemaining <= 0L,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                label = { Text("4 цифры") },
-                isError = error
+            Text(
+                "Разблокировать приложение при помощи биометрии или введите пароль вручную",
+                color = Color.White,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(14.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(4) { i ->
+                    Box(
+                        Modifier
+                            .size(15.dp)
+                            .background(if (i < pin.length) Red else PanelAlt, CircleShape)
+                            .border(1.dp, if (error) Red else Gray, CircleShape)
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             if (lockoutRemaining > 0L) {
                 val seconds = (lockoutRemaining + 999L) / 1000L
                 Text(
                     "Ввод заблокирован на 5 минут • %02d:%02d".format(seconds / 60L, seconds % 60L),
                     color = Red,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
                 )
-            } else {
-                Text(
-                    "Неверных попыток: $failedAttempts/5",
-                    color = if (failedAttempts > 0) Red else Gray,
-                    fontSize = 11.sp
-                )
+            } else if (failedAttempts > 0) {
+                Text("Неверных попыток: $failedAttempts/5", color = Red, fontSize = 11.sp)
             }
-            TextButton(
-                onClick = {
-                    Toast.makeText(
-                        context,
-                        "Подсказка: " + store.hint(),
-                        Toast.LENGTH_LONG
-                    ).show()
+            Spacer(Modifier.height(10.dp))
+            val rows = listOf(
+                listOf('1', '2', '3'),
+                listOf('4', '5', '6'),
+                listOf('7', '8', '9')
+            )
+            rows.forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
+                ) {
+                    row.forEach { digit ->
+                        Button(
+                            onClick = {
+                                InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
+                                appendDigit(digit)
+                            },
+                            enabled = lockoutRemaining <= 0L && pin.length < 4,
+                            modifier = Modifier.size(74.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Panel,
+                                contentColor = Color.White,
+                                disabledContainerColor = PanelAlt
+                            ),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(digit.toString(), fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
                 }
-            ) {
-                Text("Забыли PIN?", color = Red)
+                Spacer(Modifier.height(10.dp))
             }
             Row(
                 Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
             ) {
                 Button(
-                    onClick = { tryPin(pin) },
-                    enabled = pin.length == 4 && lockoutRemaining <= 0L,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Red)
+                    onClick = {
+                        InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
+                        if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                        error = false
+                    },
+                    enabled = lockoutRemaining <= 0L && pin.isNotEmpty(),
+                    modifier = Modifier.size(74.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                    contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("ВОЙТИ")
+                    Icon(Icons.Default.Delete, "Удалить последнюю цифру", tint = Color.White, modifier = Modifier.size(25.dp))
                 }
-                if (biometricAvailable) {
-                    IconButton(
-                        onClick = { promptBiometric() },
-                        enabled = lockoutRemaining <= 0L
-                    ) {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            "Вход по биометрии",
-                            tint = Red,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
+                Button(
+                    onClick = {
+                        InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
+                        appendDigit('0')
+                    },
+                    enabled = lockoutRemaining <= 0L && pin.length < 4,
+                    modifier = Modifier.size(74.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("0", fontSize = 24.sp, fontWeight = FontWeight.Medium)
                 }
+                Button(
+                    onClick = { promptBiometric() },
+                    enabled = biometricAvailable && lockoutRemaining <= 0L,
+                    modifier = Modifier.size(74.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.Fingerprint, "Переключиться на биометрию", tint = Red, modifier = Modifier.size(28.dp))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = {
+                Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show()
+            }) {
+                Text("Забыли PIN?", color = Red, fontSize = 12.sp)
             }
         }
         Box(Modifier.fillMaxSize().background(redFlash))
     }
 }
-
 
 @Composable
 private fun UsageLine(label: String, seconds: Long) {
@@ -2755,7 +2772,13 @@ private fun UsageLine(label: String, seconds: Long) {
 
 @Composable
 private fun TopStats(stats: Map<String, Long>) {
-    val top = stats.entries.filter { it.value > 0L }.sortedByDescending { it.value }.take(3)
+    val top = stats.entries
+        .filter { it.value >= 60L }
+        .sortedWith(
+            compareByDescending<Map.Entry<String, Long>> { it.value }
+                .thenBy { it.key.lowercase(Locale.ROOT) }
+        )
+        .take(3)
     if (top.isEmpty()) {
         Text("Пока нет данных", color = Color.Gray, fontSize = 12.sp)
     } else {
@@ -2914,7 +2937,7 @@ private fun DonationCard() {
             Spacer(Modifier.height(10.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Card(
-                    onClick = { InteractionFeedback.click(context,hapticsEnabled,false,false); openUrl(context, TELEGRAM_DONATION) },
+                    onClick = { InteractionFeedback.click(context,hapticsEnabled,false,false); openTelegramOrBrowser(context, TELEGRAM_DONATION) },
                     modifier = Modifier.height(46.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF229ED9)),
                     shape = RoundedCornerShape(14.dp)
@@ -3035,7 +3058,7 @@ private fun Disclaimer(onBack: () -> Unit) {
         }
         item {
             Card(
-                onClick = { openUrl(context, TELEGRAM) },
+                onClick = { openTelegramOrBrowser(context, TELEGRAM) },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = CardDefaults.cardColors(containerColor = Panel),
                 shape = RoundedCornerShape(16.dp)
@@ -3348,7 +3371,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.5")
+                            .header("User-Agent", "Radio.TV/3.6")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -3467,7 +3490,7 @@ private fun NoticeBanner(notice: String?, onDismiss: () -> Unit) {
         ) {
             Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(notice.orEmpty(), Modifier.weight(1f), fontSize = 12.sp)
-                TextButton(onClick = { openUrl(context, TELEGRAM); onDismiss() }) { Text("Перейти", color = Red) }
+                TextButton(onClick = { openTelegramOrBrowser(context, TELEGRAM); onDismiss() }) { Text("Перейти", color = Red) }
                 TextButton(onClick = onDismiss) { Text("Закрыть") }
             }
         }
@@ -3537,6 +3560,34 @@ private fun openUrl(context: Context, url: String) {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
+    }.onFailure {
+        Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun openTelegramOrBrowser(context: Context, url: String) {
+    val originalUri = android.net.Uri.parse(url)
+    val parts = originalUri.pathSegments
+    val isTelegramPost = originalUri.host.equals("t.me", ignoreCase = true) &&
+        parts.size == 2 &&
+        parts[0].isNotBlank() &&
+        parts[1].toLongOrNull() != null
+    if (!isTelegramPost) {
+        openUrl(context, url)
+        return
+    }
+    val deepLink = android.net.Uri.Builder()
+        .scheme("tg")
+        .authority("resolve")
+        .appendQueryParameter("domain", parts[0])
+        .appendQueryParameter("post", parts[1])
+        .build()
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, deepLink).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }.onFailure {
+        openUrl(context, url)
     }
 }
 
