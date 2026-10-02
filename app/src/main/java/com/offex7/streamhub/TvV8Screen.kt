@@ -37,6 +37,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -732,7 +738,10 @@ fun TvV8Screen(
                         list.animateScrollToItem(0)
                     }
                 },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
+                    .padding(12.dp)
             )
 
             if (refreshing) {
@@ -1044,19 +1053,6 @@ private fun TvV9ScrollActionButton(
     onClick: () -> Unit,
     modifier: Modifier
 ) {
-    var variant by remember { mutableIntStateOf(0) }
-    val glyphs = listOf("🢁", "🔝", "🔼")
-
-    LaunchedEffect(visible) {
-        if (!visible) {
-            variant = 0
-            return@LaunchedEffect
-        }
-        while (visible) {
-            delay(700L)
-            variant = (variant + 1) % glyphs.size
-        }
-    }
 
     AnimatedVisibility(
         visible = visible,
@@ -1077,18 +1073,12 @@ private fun TvV9ScrollActionButton(
                 .background(TvV9Red, CircleShape)
                 .focusable()
         ) {
-            androidx.compose.animation.Crossfade(
-                targetState = variant,
-                animationSpec = tween(220),
-                label = "tv-scroll-arrow-glyph"
-            ) { index ->
-                Text(
-                    glyphs[index],
-                    color = Color.White,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                "Вверх",
+                tint = Color.White,
+                modifier = Modifier.size(31.dp)
+            )
         }
     }
 }
@@ -1152,11 +1142,11 @@ private fun TvV9RestoreBanner(
                     onClick = onContinue,
                     Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = TvV9Red)
-                ) { Text("Продолжить") }
+                ) { Text("Продолжить", fontSize = 12.sp) }
                 OutlinedButton(
                     onClick = onClose,
                     Modifier.weight(1f)
-                ) { Text("Закрыть") }
+                ) { Text("Закрыть", fontSize = 12.sp) }
             }
         }
     }
@@ -1220,10 +1210,6 @@ private fun TvV9Player(
     var zoom by androidx.compose.runtime.remember(channel.key, initialZoom) {
         androidx.compose.runtime.mutableFloatStateOf(initialZoom?.coerceIn(1f, 3f) ?: 1f)
     }
-    var panX by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    var panY by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    var viewportWidth by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(1) }
-    var viewportHeight by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(1) }
     var playerToast by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var playerToastToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var playerToastDuration by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(5000L) }
@@ -1417,17 +1403,11 @@ private fun TvV9Player(
             factory = { playerView },
             modifier = Modifier
                 .fillMaxSize()
-                .onSizeChanged {
-                    viewportWidth = it.width.coerceAtLeast(1)
-                    viewportHeight = it.height.coerceAtLeast(1)
-                }
                 .graphicsLayer {
                     val baseScale = zoom * formatScale
                     transformOrigin = TransformOrigin.Center
                     scaleX = baseScale
                     scaleY = baseScale
-                    translationX = panX
-                    translationY = panY
                 }
                 .pointerInput(locked, controls, channel.key) {
                     if (!locked) {
@@ -1435,8 +1415,6 @@ private fun TvV9Player(
                             onTap = { controls = !controls; menuInteractionToken++ },
                             onDoubleTap = {
                             zoom = 1f
-                            panX = 0f
-                            panY = 0f
                             formatMode = 5
                             onZoomReset()
                             showPlayerToast("Пользовательский: 100%", 3000L)
@@ -1448,20 +1426,13 @@ private fun TvV9Player(
                 }
                 .pointerInput(locked, channel.key) {
                     if (!locked) {
-                        detectTransformGestures { pan, _, gestureZoom, _ ->
+                        detectTransformGestures { _, _, gestureZoom, _ ->
                             if (formatMode != 5) {
                                 formatMode = 5
                                 zoom = 1f
-                                panX = 0f
-                                panY = 0f
                             }
                             val nextZoom = (zoom * gestureZoom).coerceIn(1f, 3f)
                             zoom = nextZoom
-                            val effectiveScale = (nextZoom * formatScale).coerceAtLeast(1f)
-                            val maxPanX = viewportWidth * (effectiveScale - 1f) / 2f
-                            val maxPanY = viewportHeight * (effectiveScale - 1f) / 2f
-                            panX = (panX + pan.x).coerceIn(-maxPanX, maxPanX)
-                            panY = (panY + pan.y).coerceIn(-maxPanY, maxPanY)
                             onZoomChanged(nextZoom)
                             showPlayerToast("Пользовательский масштаб: " + (nextZoom * 100f).toInt() + "%", 3000L)
                         }
@@ -1482,6 +1453,7 @@ private fun TvV9Player(
                 },
                 modifier = Modifier
                     .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
                     .padding(8.dp)
                     .size(54.dp)
                     .background(Color.Black.copy(alpha = .35f), CircleShape)
@@ -1499,7 +1471,10 @@ private fun TvV9Player(
             ) {
                 Box(Modifier.fillMaxSize()) {
                     Row(
-                        Modifier.align(Alignment.TopStart).padding(8.dp),
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
+                            .padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         TvV9PlayerButton(Icons.Default.ArrowBack, "Назад", hapticsEnabled, soundEnabled, allowSound = !player.isPlaying.value && !radioPlaying, onClick = { menuInteractionToken++; onBack() })
@@ -1521,8 +1496,6 @@ private fun TvV9Player(
                             } else {
                                 1f
                             }
-                            panX = 0f
-                            panY = 0f
                             menuInteractionToken++
                             val nextLabel = when (formatMode) {
                                 1 -> "РАСТЯНУТЬ 125%"
@@ -1618,6 +1591,7 @@ private fun TvV9Player(
                         Card(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
+                                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
                                 .padding(bottom = 92.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .72f)),
                             border = BorderStroke(1.dp, TvV9Red),
@@ -1643,7 +1617,10 @@ private fun TvV9Player(
                     }
 
                     Row(
-                        Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
+                            .padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
