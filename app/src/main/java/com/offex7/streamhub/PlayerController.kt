@@ -80,6 +80,7 @@ class PlayerController(context: Context) {
     private var resumeAfterInterruption = false
     private var userPaused = false
     private var userStopped = false
+    private var internalPlayWhenReadyChange = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onLost(network: Network) {
@@ -87,7 +88,6 @@ class PlayerController(context: Context) {
                 val active = currentPlayer.isPlaying || currentPlayer.playWhenReady
                 if (active) {
                     resumeAfterInterruption = true
-                    currentPlayer.playWhenReady = false
                 }
                 _waitingForNetwork.value = true
                 LogExporter.log("TV network lost; resumeAfterInterruption=" + resumeAfterInterruption)
@@ -104,7 +104,7 @@ class PlayerController(context: Context) {
                         if (currentPlayer.playbackState == Player.STATE_IDLE) {
                             currentPlayer.prepare()
                         }
-                        currentPlayer.playWhenReady = true
+                        setPlayWhenReadySystem(currentPlayer, true)
                     }.onFailure {
                         _error.value = "Поток недоступен"
                     }
@@ -154,6 +154,10 @@ class PlayerController(context: Context) {
 
                     override fun onPlayWhenReadyChanged(isReady: Boolean, reason: Int) {
                         if (newPlayer !== currentPlayer) return
+                        if (internalPlayWhenReadyChange) {
+                            internalPlayWhenReadyChange = false
+                            return
+                        }
                         when (reason) {
                             Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> {
                                 userPaused = !isReady
@@ -222,6 +226,11 @@ class PlayerController(context: Context) {
             }
     }
 
+    private fun setPlayWhenReadySystem(player: ExoPlayer, ready: Boolean) {
+        internalPlayWhenReadyChange = true
+        player.playWhenReady = ready
+    }
+
     private fun beginBuffering(player: ExoPlayer) {
         bufferingGeneration++
         val generation = bufferingGeneration
@@ -229,8 +238,7 @@ class PlayerController(context: Context) {
         val wasActive = player.isPlaying || player.playWhenReady
         if (wasActive && !userPaused && !userStopped) {
             resumeAfterInterruption = true
-            player.playWhenReady = false
-            LogExporter.log("TV buffering started; playback paused automatically")
+            LogExporter.log("TV buffering started; playback kept ready for automatic recovery")
         }
         _buffering.value = true
         _bufferPercent.value = 0
@@ -261,7 +269,7 @@ class PlayerController(context: Context) {
             ) {
                 resumeAfterInterruption = false
                 _error.value = "Буферизация не завершилась за 15 секунд. Переключите канал."
-                runCatching { player.playWhenReady = false }
+                runCatching { setPlayWhenReadySystem(player, false) }
                 LogExporter.log("TV buffering timeout after 15s")
             }
         }, BUFFER_TIMEOUT_MS)

@@ -422,10 +422,10 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun energySavingMode(): String =
-        context.dataStore.data.first()[energySavingModeKey] ?: "AUTO"
+        context.dataStore.data.first()[energySavingModeKey] ?: "OFF"
 
     fun energySavingModeFlow(): Flow<String> =
-        context.dataStore.data.map { it[energySavingModeKey] ?: "AUTO" }
+        context.dataStore.data.map { it[energySavingModeKey] ?: "OFF" }
 
     suspend fun setEnergySavingMode(mode: String) {
         val normalized = mode.uppercase(java.util.Locale.ROOT)
