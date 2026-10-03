@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -121,6 +122,7 @@ fun ScrollTopButtonV37(
                 scope.launch { listState.animateScrollToItem(0) }
             },
             modifier = Modifier
+                .graphicsLayer(scaleX = pulse, scaleY = pulse)
                 .clip(CircleShape)
                 .background(Color(0xFFE53935), CircleShape)
         ) {
