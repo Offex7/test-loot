@@ -58,7 +58,7 @@ jobs:
           grep -q 'PIN_REAUTH_WINDOW = 5 \* 60 \* 1000L' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'FLAG_SECURE' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q 'autoStartEnabled(): Boolean = .*?: true' app/src/main/java/com/offex7/streamhub/Storage.kt
+          grep -Fq 'context.dataStore.data.first()[autoStartKey] ?: true' app/src/main/java/com/offex7/streamhub/Storage.kt
           grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
           grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
           grep -q 'contentColor = Color.White' app/src/main/java/com/offex7/streamhub/MainActivity.kt
