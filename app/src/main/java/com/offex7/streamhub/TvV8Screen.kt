@@ -1696,6 +1696,7 @@ private fun TvV9Player(
                     if (!pipMode && noticeMessage == null && (showLoading || waiting || error != null)) {
                         Text(
                             when {
+                                switching -> "Загрузка…"
                                 waiting -> "Ожидание сети…\nВозможно источник трансляции канала — сломался"
                                 error != null -> "Поток недоступен"
                                 else -> "Загрузка…"
