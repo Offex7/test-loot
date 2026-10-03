@@ -142,7 +142,7 @@ jobs:
           APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.7.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='9'"
+          echo "$APK_PACKAGE" | grep -q "versionCode='10'"
           echo "$APK_PACKAGE" | grep -q "versionName='3.7'"
           sha256sum radio-tv-release-3.7.apk
           ls -lh radio-tv-release-3.7.apk
