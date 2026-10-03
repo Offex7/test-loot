@@ -62,7 +62,7 @@ jobs:
           grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
           grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
           grep -q 'contentColor = Color.White' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'tools:keep="@drawable/logo_*"' app/src/main/res/values/keep.xml
+          grep -Fq 'tools:keep="@drawable/logo_*"' app/src/main/res/values/keep.xml
           if grep -R -q 'Radio.TV/3.6' app/src/main; then echo "stale v3.6 user-agent"; exit 1; fi
 
           grep -q 'compileSdk = 34' app/build.gradle.kts
