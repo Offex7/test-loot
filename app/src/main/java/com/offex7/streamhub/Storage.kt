@@ -430,7 +430,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setEnergySavingMode(mode: String) {
         val normalized = mode.uppercase(java.util.Locale.ROOT)
         if (normalized !in setOf("AUTO", "ON", "OFF")) return
-        context.dataStore.edit { it[energySavingModeKey] = normalized }
+        context.dataStore.edit {
+            it[energySavingModeKey] = normalized
+            if (normalized == "ON") it[autoStartKey] = false
+        }
     }
 
     suspend fun hapticsEnabled(): Boolean =
@@ -444,13 +447,16 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun autoStartEnabled(): Boolean =
-        context.dataStore.data.first()[autoStartKey] ?: false
+        context.dataStore.data.first()[autoStartKey] ?: true
 
     fun autoStartFlow(): Flow<Boolean> =
-        context.dataStore.data.map { it[autoStartKey] ?: false }
+        context.dataStore.data.map { it[autoStartKey] ?: true }
 
     suspend fun setAutoStartEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[autoStartKey] = enabled }
+        context.dataStore.edit {
+            val energyMode = it[energySavingModeKey] ?: "OFF"
+            it[autoStartKey] = if (energyMode == "ON") false else enabled
+        }
     }
 
     fun soundFeedbackFlow(): Flow<Boolean> =

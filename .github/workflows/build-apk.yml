@@ -44,11 +44,27 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate final release 3.6 project
+      - name: Validate final release 3.7 project
         run: |
           set -e
-          grep -q 'versionCode = 9' app/build.gradle.kts
-          grep -q 'versionName = "3.6"' app/build.gradle.kts
+          grep -q 'versionCode = 10' app/build.gradle.kts
+          grep -q 'versionName = "3.7"' app/build.gradle.kts
+          grep -q 'versionCode = 10' app/build.gradle.kts
+          grep -q 'isMinifyEnabled = true' app/build.gradle.kts
+          grep -q 'isShrinkResources = true' app/build.gradle.kts
+          grep -q 'https://t.me/TvRadioOnline/170311' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -q 'https://t.me/TvRadioOnline/170289' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          test -f app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'PIN_REAUTH_WINDOW = 5 \* 60 \* 1000L' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -q 'FLAG_SECURE' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -q 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
+          grep -Fq 'context.dataStore.data.first()[autoStartKey] ?: true' app/src/main/java/com/offex7/streamhub/Storage.kt
+          grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
+          grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
+          grep -q 'contentColor = Color.White' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -Fq 'tools:keep="@drawable/logo_*"' app/src/main/res/values/keep.xml
+          if grep -R -q 'Radio.TV/3.6' app/src/main; then echo "stale v3.6 user-agent"; exit 1; fi
+
           grep -q 'compileSdk = 34' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'minSdk = 29' app/build.gradle.kts
@@ -70,7 +86,7 @@ jobs:
           grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/src/main/java/com/offex7/streamhub/Storage.kt
           test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssets.kt
-          grep -q 'versionCode = 9' app/build.gradle.kts
+          grep -q 'versionCode = 10' app/build.gradle.kts
           grep -q 'ГАМАЮН' app/src/main/java/com/offex7/streamhub/Models.kt
           test -f app/signing/radio-tv-v5-debug.keystore
           grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
@@ -105,7 +121,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.6-debug-build-log
+          name: Radio-TV-v3.7-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -117,33 +133,33 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" radio-tv-release-3.6.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.6.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.6.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" radio-tv-release-3.7.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.7.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.7.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.6.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.7.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='9'"
-          echo "$APK_PACKAGE" | grep -q "versionName='3.6'"
-          sha256sum radio-tv-release-3.6.apk
-          ls -lh radio-tv-release-3.6.apk
+          echo "$APK_PACKAGE" | grep -q "versionCode='10'"
+          echo "$APK_PACKAGE" | grep -q "versionName='3.7'"
+          sha256sum radio-tv-release-3.7.apk
+          ls -lh radio-tv-release-3.7.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-Release-3.6-APK
-          path: radio-tv-release-3.6.apk
+          name: Radio-TV-Release-3.7-APK
+          path: radio-tv-release-3.7.apk
           if-no-files-found: error
 
       - name: Package source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v3.6-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v3.7-source.zip
 
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.6-Source
-          path: Radio-TV-v3.6-source.zip
+          name: Radio-TV-v3.7-Source
+          path: Radio-TV-v3.7-source.zip
           if-no-files-found: error

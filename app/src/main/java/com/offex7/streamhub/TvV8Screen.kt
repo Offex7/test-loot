@@ -730,14 +730,10 @@ fun TvV8Screen(
                 }
             }
 
-            TvV9ScrollActionButton(
-                visible = showScrollAction,
-                onClick = {
-                    scope.launch {
-                        showScrollAction = false
-                        list.animateScrollToItem(0)
-                    }
-                },
+            ScrollTopButtonV37(
+                listState = list,
+                hapticsEnabled = hapticsEnabled,
+                soundEnabled = soundEnabled,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
@@ -1282,6 +1278,33 @@ private fun TvV9Player(
         onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
+    androidx.compose.runtime.DisposableEffect(playerWindow, formatMode) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            val window = playerWindow
+            val originalMode = window?.attributes?.layoutInDisplayCutoutMode
+                ?: android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            if (formatMode != 0) {
+                window?.let { w ->
+                    val params = w.attributes
+                    params.layoutInDisplayCutoutMode =
+                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    w.attributes = params
+                }
+            }
+            onDispose {
+                if (formatMode != 0) {
+                    window?.let { w ->
+                        val params = w.attributes
+                        params.layoutInDisplayCutoutMode = originalMode
+                        w.attributes = params
+                    }
+                }
+            }
+        } else {
+            onDispose { }
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(channel.key, switching) {
         channelNotice = false
         if (switching) return@LaunchedEffect
@@ -1314,7 +1337,7 @@ private fun TvV9Player(
         else insets?.show(WindowInsetsCompat.Type.systemBars())
         if (controls && !locked) {
             val token = menuInteractionToken
-            delay(5_000L)
+            delay(4_000L)
             if (token == menuInteractionToken) {
                 controls = false
                 favoriteMenu = false
@@ -1375,18 +1398,31 @@ private fun TvV9Player(
                 if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
-                        menuInteractionToken++
-                        if (!locked) onPrev()
+                        if (!locked) {
+                            if (!controls) controls = true else onPrev()
+                            menuInteractionToken++
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        menuInteractionToken++
-                        if (!locked) onNext()
+                        if (!locked) {
+                            if (!controls) controls = true else onNext()
+                            menuInteractionToken++
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_SPACE -> {
-                        menuInteractionToken++
-                        if (!locked) onPause()
+                        if (!locked) {
+                            if (!controls) controls = true else onPause()
+                            menuInteractionToken++
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (!locked && !controls) {
+                            controls = true
+                            menuInteractionToken++
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_BACK -> {
@@ -1558,7 +1594,14 @@ private fun TvV9Player(
                         )
                     }
 
-                    if (!pipMode && buffering) {
+                    val showBuffering = !pipMode &&
+                        !switching &&
+                        !waiting &&
+                        error == null &&
+                        buffering &&
+                        bufferPercent < 100
+
+                    if (showBuffering) {
                         Card(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -1648,11 +1691,14 @@ private fun TvV9Player(
                         )
                     }
 
-                    if (!pipMode && (waiting || error != null || !isPlaying)) {
+                    val showLoading = switching || (!waiting && error == null && !isPlaying && !buffering)
+
+                    if (!pipMode && noticeMessage == null && (showLoading || waiting || error != null)) {
                         Text(
                             when {
+                                switching -> "Загрузка…"
+                                waiting -> "Ожидание сети…\nВозможно источник трансляции канала — сломался"
                                 error != null -> "Поток недоступен"
-                                waiting -> "Ожидание сети…"
                                 else -> "Загрузка…"
                             },
                             color = Color.White,

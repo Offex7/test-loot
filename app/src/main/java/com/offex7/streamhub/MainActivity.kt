@@ -214,8 +214,8 @@ private val Panel = Color(0xFF1A1A1A)
 private val PanelAlt = Color(0xFF232323)
 private val Gray = Color(0xFF808080)
 
-private const val TELEGRAM = "https://t.me/TvRadioOnline/170289"
-private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/9"
+private const val TELEGRAM = "https://t.me/TvRadioOnline/170311"
+private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/170289"
 private const val RECOMMEND_MESSAGE = """🔥 Нашёл приложение с простым названием - Radio.TV, которым хочется поделиться.
 Сохрани ссылку — ещё пригодится!
 
@@ -234,6 +234,7 @@ private const val RECOMMEND_MESSAGE = """🔥 Нашёл приложение с
 • Загляни хотя бы одним глазом. Возможно, потом скажешь спасибо за эту находку! 😉"""
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
+private const val PIN_REAUTH_WINDOW = 5 * 60 * 1000L
 private const val ERROR_COOLDOWN = 5 * 60 * 1000L
 private val APP_VERSION = BuildConfig.VERSION_NAME
 val LocalEnergySaving = androidx.compose.runtime.staticCompositionLocalOf { false }
@@ -363,9 +364,38 @@ private fun App(
     val energySaving = LocalEnergySaving.current
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
     val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
-    val autoStartEnabled by store.autoStartFlow().collectAsState(false)
+    val autoStartEnabled by store.autoStartFlow().collectAsState(true)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
+    val appOrientation = LocalConfiguration.current.orientation
+    var lastAppOrientation by rememberSaveable { mutableIntStateOf(appOrientation) }
+
+    suspend fun refreshPinReauth() {
+        if (!pinStore.isEnabled()) return
+        val lastExit = store.lastExitTime()
+        if (lastExit > 0L && System.currentTimeMillis() - lastExit >= PIN_REAUTH_WINDOW) {
+            pinUnlocked = false
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshPinReauth() }
+
+    DisposableEffect(activity, pinStore) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                scope.launch { refreshPinReauth() }
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(appOrientation) {
+        if (lastAppOrientation != appOrientation) {
+            InteractionFeedback.vibrate(appContext, hapticsEnabled, 45L, 135)
+            lastAppOrientation = appOrientation
+        }
+    }
     DisposableEffect(autoStartEnabled, activity.tvViewing) {
         val handler = Handler(Looper.getMainLooper())
         val runnable = object : Runnable {
@@ -406,6 +436,15 @@ private fun App(
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
     var sleepWarningFor by remember { mutableLongStateOf(0L) }
+
+    DisposableEffect(activity, settings, disclaimer) {
+        if (settings || disclaimer) {
+            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose { activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) }
+    }
     fun notify(message: String, durationMs: Long = 5000L) {
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
@@ -1275,7 +1314,36 @@ private fun Radio(
                     Row(verticalAlignment=Alignment.CenterVertically){
                         IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);eqDialog=true}){Icon(Icons.Default.Equalizer,"Эквалайзер",tint=Red)}
                         IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);onQuickLock()}){Icon(Icons.Default.Lock,"Блокировка",tint=Red)}
-                        IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);sleepMenu=!sleepMenu}){Icon(Icons.Default.AccessTime,"Таймер сна",tint=Red)}
+                        Box {
+                            IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);sleepMenu=!sleepMenu}) {
+                                Icon(Icons.Default.AccessTime,"Таймер сна",tint=Red)
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = sleepMenu,
+                                onDismissRequest = { sleepMenu = false },
+                                modifier = Modifier.width(240.dp)
+                            ) {
+                                androidx.compose.material3.Surface(color = Color.Black.copy(alpha = .88f), shape = RoundedCornerShape(14.dp)) {
+                                    Column(Modifier.padding(10.dp).heightIn(max=380.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                                        Text("Таймер сна",color=Color.White,fontWeight=FontWeight.Bold)
+                                        FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+                                            SleepOptions.forEach{(minutes,label)->
+                                                val active=minutes==sleepMinutes&&sleepUntil>System.currentTimeMillis()
+                                                Card(onClick={
+                                                    InteractionFeedback.vibrate(context,hapticsEnabled,42L,105)
+                                                    if(active)onCancelSleep()else onSleep(minutes)
+                                                    sleepMenu=false
+                                                },modifier=Modifier.size(68.dp),colors=CardDefaults.cardColors(containerColor=if(active)Red else PanelAlt),shape=CircleShape,border=BorderStroke(1.dp,if(active)Red else Gray)){
+                                                    Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
+                                                        Text(if(active)formatTimerCircle(sleepRemaining)else label,color=Color.White,fontSize=11.sp,textAlign=TextAlign.Center)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 searchOpen = false,
@@ -1403,23 +1471,7 @@ private fun Radio(
                         )
                     }
                 }
-                if(sleepMenu){
-                    Popup(alignment=Alignment.TopEnd,onDismissRequest={sleepMenu=false},properties=PopupProperties(focusable=true,dismissOnClickOutside=true,dismissOnBackPress=true)){
-                        androidx.compose.material3.Surface(color=Color.Black.copy(alpha=.88f),shape=RoundedCornerShape(14.dp),modifier=Modifier.padding(top=52.dp,end=8.dp).width(240.dp)){
-                            Column(Modifier.padding(10.dp).heightIn(max=380.dp).verticalScroll(rememberScrollState())){
-                                Text("Таймер сна",color=Color.White,fontWeight=FontWeight.Bold);Spacer(Modifier.height(6.dp))
-                                FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
-                                    SleepOptions.forEach{(minutes,label)->
-                                        val active=minutes==sleepMinutes&&sleepUntil>System.currentTimeMillis()
-                                        Card(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);if(active)onCancelSleep()else onSleep(minutes);sleepMenu=false},modifier=Modifier.size(68.dp),colors=CardDefaults.cardColors(containerColor=if(active)Red else PanelAlt),shape=CircleShape,border=BorderStroke(1.dp,if(active)Red else Gray)){
-                                            Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text(if(active)formatTimerCircle(sleepRemaining)else label,color=Color.White,fontSize=11.sp,textAlign=TextAlign.Center)}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+
 
                 if (eqDialog) {
                     RadioEqualizerDialog(
@@ -1432,15 +1484,14 @@ private fun Radio(
                     )
                 }
 
-                ScrollActionButton(
-                    visible = showScrollAction,
-                    onClick = {
-                        scope.launch {
-                            showScrollAction = false
-                            list.animateScrollToItem(0)
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+                ScrollTopButtonV37(
+                    listState = list,
+                    hapticsEnabled = hapticsEnabled,
+                    soundEnabled = soundEnabled,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
+                        .padding(12.dp)
                 )
             }
 
@@ -1936,7 +1987,7 @@ private fun Settings(
     val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
     val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
-    val autoStart by store.autoStartFlow().collectAsState(false)
+    val autoStart by store.autoStartFlow().collectAsState(true)
     var pinEnabled by remember { mutableStateOf(false) }
     var pinDialog by remember { mutableStateOf(false) }
     var pinDisableDialog by remember { mutableStateOf(false) }
@@ -2735,7 +2786,11 @@ private fun PinGate(
                     enabled = lockoutRemaining <= 0L && pin.length < 4,
                     modifier = Modifier.size(74.dp),
                     shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Panel,
+                        contentColor = Color.White,
+                        disabledContainerColor = PanelAlt
+                    ),
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     Text("0", fontSize = 24.sp, fontWeight = FontWeight.Medium)
@@ -2924,6 +2979,7 @@ private fun DonationCard() {
                 onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("Wallet", WALLET))
+                    InteractionFeedback.success(context, hapticsEnabled)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Red)
             ) { Text("Копировать") }
@@ -3371,7 +3427,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.6")
+                            .header("User-Agent", "Radio.TV/3.7")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

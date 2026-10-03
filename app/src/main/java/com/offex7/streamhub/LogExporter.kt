@@ -8,9 +8,10 @@ import java.util.zip.ZipOutputStream
 
 object LogExporter {
     suspend fun export(context: Context, store: SettingsStore): File {
-        val exportDir = context.getExternalFilesDir(null) ?: File(context.filesDir, "exports")
-        exportDir.mkdirs()
-        val zip = File(exportDir, "radio-tv-logs-${System.currentTimeMillis()}.zip")
+        val appExportDir = File(context.filesDir, "exports")
+        appExportDir.mkdirs()
+        val timestamp = System.currentTimeMillis()
+        val zip = File(appExportDir, "radio-tv-logs-$timestamp.zip")
         val logLines = synchronized(this) {
             val all = recentLines.toList()
             all.subList((all.size - 1000).coerceAtLeast(0), all.size)
@@ -61,7 +62,12 @@ object LogExporter {
             }
             entry("settings.txt", settingsSnapshot.trimEnd())
         }
-        return zip
+
+        val shareDir = context.getExternalFilesDir(null) ?: context.cacheDir
+        shareDir.mkdirs()
+        val sharedZip = File(shareDir, "radio-tv-logs-$timestamp-share.zip")
+        zip.copyTo(sharedZip, overwrite = true)
+        return sharedZip
     }
 
     private val recentLines = ArrayDeque<String>(1000)
