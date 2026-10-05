@@ -4,7 +4,7 @@ id("org.jetbrains.kotlin.plugin.compose")
 }
 android {
     namespace = "com.radiotv.tvremote.ui"
-    compileSdk = 37
+    compileSdk = 35
     defaultConfig { minSdk = 29 }
     buildFeatures { compose = true }
     compileOptions {
