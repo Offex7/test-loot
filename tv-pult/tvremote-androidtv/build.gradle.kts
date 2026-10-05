@@ -4,7 +4,7 @@ id("com.google.protobuf")
 }
 android {
     namespace = "com.radiotv.tvremote.androidtv"
-    compileSdk = 37
+    compileSdk = 35
     defaultConfig { minSdk = 29 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
