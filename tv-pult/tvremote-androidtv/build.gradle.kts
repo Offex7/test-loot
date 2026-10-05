@@ -1,7 +1,6 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
-    id("com.google.protobuf")
+id("com.google.protobuf")
 }
 android {
     namespace = "com.radiotv.tvremote.androidtv"
