@@ -37,11 +37,11 @@ fun DPad(onKey: (RemoteKey) -> Unit, modifier: Modifier = Modifier) {
             tonalElevation = 4.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
-                IconButton(Modifier.align(Alignment.TopCenter), onClick = { onKey(RemoteKey.UP) }) { Icon(Icons.Filled.ArrowUpward, "Вверх") }
-                IconButton(Modifier.align(Alignment.BottomCenter), onClick = { onKey(RemoteKey.DOWN) }) { Icon(Icons.Filled.ArrowDownward, "Вниз") }
-                IconButton(Modifier.align(Alignment.CenterStart), onClick = { onKey(RemoteKey.LEFT) }) { Icon(Icons.Filled.ArrowBack, "Влево") }
+                IconButton(modifier = Modifier.align(Alignment.TopCenter), onClick = { onKey(RemoteKey.UP) }) { Icon(Icons.Filled.ArrowUpward, "Вверх") }
+                IconButton(modifier = Modifier.align(Alignment.BottomCenter), onClick = { onKey(RemoteKey.DOWN) }) { Icon(Icons.Filled.ArrowDownward, "Вниз") }
+                IconButton(modifier = Modifier.align(Alignment.CenterStart), onClick = { onKey(RemoteKey.LEFT) }) { Icon(Icons.Filled.ArrowBack, "Влево") }
                 FilledTonalButton(onClick = { onKey(RemoteKey.OK) }, modifier = Modifier.size(82.dp)) { Icon(Icons.Filled.Check, "OK") }
-                IconButton(Modifier.align(Alignment.CenterEnd), onClick = { onKey(RemoteKey.RIGHT) }) { Icon(Icons.Filled.ArrowForward, "Вправо") }
+                IconButton(modifier = Modifier.align(Alignment.CenterEnd), onClick = { onKey(RemoteKey.RIGHT) }) { Icon(Icons.Filled.ArrowForward, "Вправо") }
             }
         }
     }
