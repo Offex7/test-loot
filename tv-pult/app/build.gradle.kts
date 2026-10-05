@@ -5,7 +5,6 @@ id("org.jetbrains.kotlin.plugin.compose")
 android {
     namespace = "com.radiotv.tvpult"
     compileSdk = 37
-    compileSdkMinor = 1
     defaultConfig {
         applicationId = "com.radiotv.tvpult"
         minSdk = 29
