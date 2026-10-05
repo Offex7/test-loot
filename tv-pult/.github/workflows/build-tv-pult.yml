@@ -1,0 +1,51 @@
+
+name: Build TV Pult
+on:
+  push:
+    branches: [ tv-pult-v1 ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Prepare Android SDK
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/37.0.0:$PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37.1" "build-tools;37.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
+      - name: Create wrapper
+        run: gradle -p tv-pult wrapper --gradle-version 9.7.1
+      - name: Unit tests
+        run: ./tv-pult/gradlew -p tv-pult :tvremote-core:test --no-daemon --stacktrace
+      - name: Assemble debug APK
+        run: ./tv-pult/gradlew -p tv-pult :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify APK
+        run: |
+          set -e
+          APK=$(find tv-pult/app/build/outputs/apk/debug -type f -name "*.apk" | head -n1)
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging "$APK" | head -n 1
+          cp "$APK" TV-pult-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TV-pult-debug
+          path: TV-pult-debug.apk
