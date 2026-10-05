@@ -341,13 +341,3 @@ private fun SectionTitle(text: String) {
     Text(text, color = Accent, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 }
 
-private fun TvPultViewModel.showInfo(message: String) {
-    setMessage(message)
-}
-
-private fun TvPultViewModel.setMessage(message: String) {
-    javaClass.getDeclaredField("_message").apply {
-        isAccessible = true
-        (get(this@setMessage) as MutableStateFlow<String?>).value = message
-    }
-}
