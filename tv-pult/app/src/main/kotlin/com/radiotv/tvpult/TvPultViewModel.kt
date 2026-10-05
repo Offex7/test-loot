@@ -182,6 +182,8 @@ class TvPultViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearMessage() { _message.value = null }
 
+    fun showInfo(message: String) { _message.value = message }
+
     private fun connectRemote(host: String) {
         teardownRemote()
         remoteJob = viewModelScope.launch {
