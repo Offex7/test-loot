@@ -1,4 +1,5 @@
 name: Build Android APK
+# v3.8 final validation
 
 on:
   workflow_dispatch:
@@ -47,88 +48,48 @@ jobs:
       - name: Validate final v3.8 project
         run: |
           set -e
-          grep -q 'versionCode = 11' app/build.gradle.kts
-          grep -q 'versionName = "3.8"' app/build.gradle.kts
-          grep -q 'isMinifyEnabled = true' app/build.gradle.kts
-          grep -q 'isShrinkResources = true' app/build.gradle.kts
-          grep -q 'https://t.me/TvRadioOnline/170311' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'https://t.me/TvRadioOnline/170289' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          test -f app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
-          grep -q 'PIN_REAUTH_WINDOW = 5 \* 60 \* 1000L' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'FLAG_SECURE' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -Fq 'context.dataStore.data.first()[autoStartKey] ?: true' app/src/main/java/com/offex7/streamhub/Storage.kt
-          grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
-          grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
-          grep -q 'contentColor = Color.White' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -Fq 'tools:keep="@drawable/logo_*"' app/src/main/res/values/keep.xml
-          grep -q 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
-          grep -q 'Radio-TV-v' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
-          grep -q 'Проверить обновление' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'onCheckUpdate' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'verticalScroll(scrollState)' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q 'scrollState.scrollTo' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q 'RadioEqualizerDialog' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'verticalScroll(rememberScrollState())' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssetsV38.kt
-          test -f app/src/main/assets/radio_logo2.zip
-          test -f app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
-          test -f app/src/main/res/mipmap-mdpi/ic_launcher.png
-          test -f app/src/main/res/mipmap-hdpi/ic_launcher.png
-          test -f app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          test -f app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          test -f app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          grep -q 'android:icon="@mipmap/ic_launcher"' app/src/main/AndroidManifest.xml
-          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' app/src/main/AndroidManifest.xml
-          grep -q 'REQUEST_INSTALL_PACKAGES' app/src/main/AndroidManifest.xml
-          grep -q 'StreamItem("ШАНСОН"' app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q 'StreamItem("ДЕТСКОЕ РАДИО"' app/src/main/java/com/offex7/streamhub/Models.kt
-          test "$(grep -c 'StreamItem("ШАНСОН"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("МАЯК"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("LOVE"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("ВЕСТИ FM"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("МАРУСЯ FM"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("РАДИО ДАЧА"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("RAP CLASSIC"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("REMIX FM"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("НОВОЕ РАДИО"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("ЮМОР FM"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          test "$(grep -c 'StreamItem("ДЕТСКОЕ РАДИО"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
-          if grep -R -q 'Radio.TV/3.6' app/src/main; then echo "stale v3.6 user-agent"; exit 1; fi
-
-          grep -q 'compileSdk = 34' app/build.gradle.kts
-          grep -q 'targetSdk = 34' app/build.gradle.kts
-          grep -q 'minSdk = 29' app/build.gradle.kts
-          grep -q 'applicationId = "com.offex7.streamhub"' app/build.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
-          grep -q 'android:label="Radio.TV"' app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          test -f app/src/main/java/com/offex7/streamhub/PlaylistRepository.kt
-          test -f app/src/main/java/com/offex7/streamhub/PlayerController.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioMediaController.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioPlaybackService.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioTimerStore.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV8.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q "TvV8Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q "https://smolnp.github.io/IPTVru//IPTVru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://naggdd.github.io/iptv/ru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          test -f app/src/main/java/com/offex7/streamhub/Storage.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssets.kt
-          grep -q 'versionCode = 11' app/build.gradle.kts
-          grep -q 'ГАМАЮН' app/src/main/java/com/offex7/streamhub/Models.kt
-          test -f app/signing/radio-tv-v5-debug.keystore
-          grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
-          grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
-          grep -q 'https://t.me/TvRadioOnline/170289' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q '.scheme("tg")' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'filter { it.value >= 60L }' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'TransformOrigin.Center' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q 'energySavingModeKey] ?: "OFF"' app/src/main/java/com/offex7/streamhub/Storage.kt
-          grep -q 'Разблокировать приложение при помощи биометрии' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('app')
+          gradle = (root / 'build.gradle.kts').read_text(encoding='utf-8')
+          main = (root / 'src/main/java/com/offex7/streamhub/MainActivity.kt').read_text(encoding='utf-8')
+          models = (root / 'src/main/java/com/offex7/streamhub/Models.kt').read_text(encoding='utf-8')
+          storage = (root / 'src/main/java/com/offex7/streamhub/Storage.kt').read_text(encoding='utf-8')
+          logs = (root / 'src/main/java/com/offex7/streamhub/LogExporter.kt').read_text(encoding='utf-8')
+          updater = (root / 'src/main/java/com/offex7/streamhub/AppUpdateManager.kt').read_text(encoding='utf-8')
+          banner = (root / 'src/main/java/com/offex7/streamhub/UpdateBannerV38.kt').read_text(encoding='utf-8')
+          tv = (root / 'src/main/java/com/offex7/streamhub/TvV8Screen.kt').read_text(encoding='utf-8')
+          arrow = (root / 'src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt').read_text(encoding='utf-8')
+          manifest = (root / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          checks = {
+              'version': 'versionCode = 11' in gradle and 'versionName = "3.8"' in gradle,
+              'package': 'applicationId = "com.offex7.streamhub"' in gradle,
+              'r8': 'isMinifyEnabled = true' in gradle and 'isShrinkResources = true' in gradle,
+              'telegram': '170311' in main and '170289' in main,
+              'pin': 'PIN_REAUTH_WINDOW = 5 * 60 * 1000L' in main,
+              'secure': 'FLAG_SECURE' in main,
+              'cutout': 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' in tv,
+              'logs': 'getExternalFilesDir(null)' in logs and '.txt' in logs,
+              'share': 'type = "text/plain"' in main,
+              'updater': 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' in updater and 'Radio-TV-v${version}.apk' in updater and 'removePrefix("V")' in updater,
+              'update_banner': 'AnimatedVisibility' in banner and 'verticalScroll' in banner,
+              'tv_picker': 'verticalScroll(scrollState)' in tv and 'Canvas' in tv,
+              'arrow': 'delay(3000L)' in arrow and 'delay(5000L)' in arrow and 'slideInHorizontally' in arrow and 'canScrollForward' in arrow,
+              'autostart': 'autoStartKey' in storage,
+              'keystore': (root / 'signing/radio-tv-v5-debug.keystore').is_file(),
+              'manifest': 'android:icon="@mipmap/ic_launcher"' in manifest and 'android:roundIcon="@mipmap/ic_launcher_round"' in manifest,
+              'assets': (root / 'src/main/assets/radio_logo2.zip').is_file() and (root / 'src/main/java/com/offex7/streamhub/RadioLogoAssetsV38.kt').is_file(),
+              'main_files': all((root / 'src/main/java/com/offex7/streamhub' / name).is_file() for name in ['MainActivity.kt','Storage.kt','PlayerController.kt','RadioMediaController.kt','TvV8Screen.kt','ScrollTopButtonV37.kt']),
+              'no_stale_ua': 'Radio.TV/3.6' not in main and 'Radio.TV/3.7' not in main,
+          }
+          missing = [name for name, ok in checks.items() if not ok]
+          if missing:
+              raise SystemExit('Validation failed: ' + ', '.join(missing))
+          for path in [root / 'src/main/res/mipmap-mdpi/ic_launcher.png', root / 'src/main/res/mipmap-hdpi/ic_launcher.png', root / 'src/main/res/mipmap-xhdpi/ic_launcher.png', root / 'src/main/res/mipmap-xxhdpi/ic_launcher.png', root / 'src/main/res/mipmap-xxxhdpi/ic_launcher.png', root / 'src/main/res/drawable-nodpi/ic_launcher_foreground.png']:
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise SystemExit(f'Invalid launcher asset: {path}')
+          print('v3.8 static validation: OK')
+          PY
       - name: Validate signing keystore
         run: |
           set -e

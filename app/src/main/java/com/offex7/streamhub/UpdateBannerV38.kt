@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,11 +73,18 @@ fun UpdateBannerV38(
             ) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Доступно обновление", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("v\${update.versionName}", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text(update.changelog, color = Color.LightGray, fontSize = 12.sp, maxLines = 8, overflow = TextOverflow.Ellipsis)
+                    Text("v${update.versionName}", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 130.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(update.changelog, color = Color.LightGray, fontSize = 12.sp)
+                    }
                     if (downloading) {
                         LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                        Text("Скачивание: \${(progress.coerceIn(0f, 1f) * 100f).toInt()}%", color = Color.LightGray, fontSize = 11.sp)
+                        Text("Скачивание: ${(progress.coerceIn(0f, 1f) * 100f).toInt()}%", color = Color.LightGray, fontSize = 11.sp)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(

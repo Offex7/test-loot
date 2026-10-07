@@ -27,6 +27,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -803,51 +804,88 @@ fun TvV8Screen(
                     }
                 } else {
                     val scrollState = rememberScrollState()
-                    Column(
+                    Box(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(max = 260.dp)
-                            .verticalScroll(scrollState)
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
-                                    when (event.nativeKeyEvent.keyCode) {
-                                        KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                            scope.launch { scrollState.scrollTo((scrollState.value + 72).coerceAtMost(scrollState.maxValue)) }
-                                            true
-                                        }
-                                        KeyEvent.KEYCODE_DPAD_UP -> {
-                                            scope.launch { scrollState.scrollTo((scrollState.value - 72).coerceAtLeast(0)) }
-                                            true
-                                        }
-                                        else -> false
-                                    }
-                                } else false
-                            },
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            "Источник по умолчанию недоступен. Выберите другой источник",
-                            color = TvV9Gray,
-                            fontSize = 12.sp
-                        )
-                        options.forEach { (key, name) ->
-                            val active = key == sourceKey
-                            TextButton(
-                                onClick = {
-                                    sourcePickerVisible = false
-                                    scope.launch {
-                                        store.setActiveSourceKey(key)
-                                        sourceReady = true
-                                    }
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(scrollState)
+                                .padding(end = 10.dp)
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                                        when (event.nativeKeyEvent.keyCode) {
+                                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                scope.launch {
+                                                    scrollState.scrollTo(
+                                                        (scrollState.value + 72).coerceAtMost(scrollState.maxValue)
+                                                    )
+                                                }
+                                                true
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                                scope.launch {
+                                                    scrollState.scrollTo(
+                                                        (scrollState.value - 72).coerceAtLeast(0)
+                                                    )
+                                                }
+                                                true
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
                                 },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    name,
-                                    color = if (active) TvV9Red else Color.White,
-                                    maxLines = 2,
-                                    textAlign = TextAlign.Start,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "Источник по умолчанию недоступен. Выберите другой источник",
+                                color = TvV9Gray,
+                                fontSize = 12.sp
+                            )
+                            options.forEach { (key, name) ->
+                                val active = key == sourceKey
+                                TextButton(
+                                    onClick = {
+                                        sourcePickerVisible = false
+                                        scope.launch {
+                                            store.setActiveSourceKey(key)
+                                            sourceReady = true
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        name,
+                                        color = if (active) TvV9Red else Color.White,
+                                        maxLines = 2,
+                                        textAlign = TextAlign.Start,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+
+                        if (scrollState.maxValue > 0) {
+                            Canvas(
+                                Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .width(3.dp)
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                val viewport = size.height
+                                val thumbHeight =
+                                    (viewport * viewport / (viewport + scrollState.maxValue)).coerceAtLeast(24f)
+                                val thumbTop =
+                                    (scrollState.value / scrollState.maxValue.toFloat()).coerceIn(0f, 1f) *
+                                        (viewport - thumbHeight)
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.35f),
+                                    topLeft = androidx.compose.ui.geometry.Offset(0f, thumbTop),
+                                    size = androidx.compose.ui.geometry.Size(size.width, thumbHeight),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width, size.width)
                                 )
                             }
                         }
