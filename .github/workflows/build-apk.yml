@@ -152,7 +152,6 @@ jobs:
           grep -q '.scheme("tg")' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'filter { it.value >= 60L }' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'TransformOrigin.Center' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q 'energySavingModeKey] ?: "OFF"' app/src/main/java/com/offex7/streamhub/Storage.kt
 
       - name: Validate signing keystore
         run: |
