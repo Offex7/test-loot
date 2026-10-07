@@ -3166,7 +3166,18 @@ private fun RadioEqualizerDialog(
         onDismissRequest = onDismiss,
         title = { Text("ЭКВАЛАЙЗЕР РАДИО") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val contentModifier = if (landscape) {
+                Modifier
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState())
+            } else {
+                Modifier
+            }
+            Column(
+                modifier = contentModifier,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text("Bass", color = Gray, fontSize = 11.sp)
                 Slider(value = bass, onValueChange = { bass = it; preset = "Flat" }, valueRange = -1500f..1500f)
                 Text("Mid", color = Gray, fontSize = 11.sp)
@@ -3176,7 +3187,18 @@ private fun RadioEqualizerDialog(
                 Text("Пресет", color = Gray, fontSize = 11.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     presets.forEach { name ->
-                        AssistChip(onClick={applyPreset(name)},label={Text(name,color=if(preset==name)Color(0xFFB6FF5C)else Color.White,fontSize=9.sp)})
+                        AssistChip(
+                            onClick = { applyPreset(name) },
+                            label = {
+                                Text(
+                                    name,
+                                    color = if (preset == name) Color(0xFFB6FF5C) else Color.White,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        )
                     }
                 }
             }
