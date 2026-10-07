@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -766,34 +768,88 @@ fun TvV8Screen(
             onDismissRequest = { },
             title = { Text("Выбор источника") },
             text = {
-                Column(
-                    Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        "Источник по умолчанию недоступен. Выберите другой источник",
-                        color = TvV9Gray,
-                        fontSize = 12.sp
-                    )
-                    options.forEach { (key, name) ->
-                        val active = key == sourceKey
-                        TextButton(
-                            onClick = {
-                                sourcePickerVisible = false
-                                scope.launch {
-                                    store.setActiveSourceKey(key)
-                                    sourceReady = true
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                name,
-                                color = if (active) TvV9Red else Color.White,
-                                maxLines = 2,
-                                textAlign = TextAlign.Start,
+                val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                if (!landscape) {
+                    Column(
+                        Modifier.heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "Источник по умолчанию недоступен. Выберите другой источник",
+                            color = TvV9Gray,
+                            fontSize = 12.sp
+                        )
+                        options.forEach { (key, name) ->
+                            val active = key == sourceKey
+                            TextButton(
+                                onClick = {
+                                    sourcePickerVisible = false
+                                    scope.launch {
+                                        store.setActiveSourceKey(key)
+                                        sourceReady = true
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth()
-                            )
+                            ) {
+                                Text(
+                                    name,
+                                    color = if (active) TvV9Red else Color.White,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    val scrollState = rememberScrollState()
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(scrollState)
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                                    when (event.nativeKeyEvent.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                            scope.launch { scrollState.scrollTo((scrollState.value + 72).coerceAtMost(scrollState.maxValue)) }
+                                            true
+                                        }
+                                        KeyEvent.KEYCODE_DPAD_UP -> {
+                                            scope.launch { scrollState.scrollTo((scrollState.value - 72).coerceAtLeast(0)) }
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                } else false
+                            },
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "Источник по умолчанию недоступен. Выберите другой источник",
+                            color = TvV9Gray,
+                            fontSize = 12.sp
+                        )
+                        options.forEach { (key, name) ->
+                            val active = key == sourceKey
+                            TextButton(
+                                onClick = {
+                                    sourcePickerVisible = false
+                                    scope.launch {
+                                        store.setActiveSourceKey(key)
+                                        sourceReady = true
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    name,
+                                    color = if (active) TvV9Red else Color.White,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
