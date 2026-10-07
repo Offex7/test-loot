@@ -750,8 +750,7 @@ private fun App(
                         )
                         updateInfo = null
                     }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                }
             )
 
             AnimatedVisibility(
