@@ -94,6 +94,32 @@ jobs:
           test "$(grep -c 'StreamItem("НОВОЕ РАДИО"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
           test "$(grep -c 'StreamItem("ЮМОР FM"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
           test "$(grep -c 'StreamItem("ДЕТСКОЕ РАДИО"' app/src/main/java/com/offex7/streamhub/Models.kt)" -eq 1
+          grep -Fq 'header("User-Agent", "Radio.TV/${BuildConfig.VERSION_NAME}")' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
+          grep -Fq 'Radio-TV-v${version}.apk' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
+          grep -q 'removePrefix("V")' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
+          grep -Fq '.txt"' app/src/main/java/com/offex7/streamhub/LogExporter.kt
+          grep -q 'type = "text/plain"' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -q 'AnimatedVisibility' app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt
+          grep -q 'verticalScroll(rememberScrollState())' app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt
+          grep -q 'Modifier = Modifier.align(Alignment.BottomCenter)' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -q 'Canvas' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
+          grep -q 'Color.White.copy(alpha = 0.35f)' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
+          grep -q 'delay(3000L)' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'delay(5000L)' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'canScrollForward' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'slideInHorizontally' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'KeyboardArrowUp' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          grep -q 'vibrate(context, true, 52L, 165)' app/src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          expected = {"mdpi": (48,48), "hdpi": (72,72), "xhdpi": (96,96), "xxhdpi": (144,144), "xxxhdpi": (192,192)}
+          for density, expected_size in expected.items():
+              p = Path("app/src/main/res") / f"mipmap-{density}" / "ic_launcher.png"
+              b = p.read_bytes()
+              got = struct.unpack(">II", b[16:24])
+              assert got == expected_size, (density, got, expected_size)
+          PY
           if grep -R -q 'Radio.TV/3.6' app/src/main; then echo "stale v3.6 user-agent"; exit 1; fi
 
           grep -q 'compileSdk = 34' app/build.gradle.kts
