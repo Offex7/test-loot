@@ -709,6 +709,7 @@ private fun App(
             }
 
             UpdateBannerV38(
+                modifier = Modifier.align(Alignment.BottomCenter),
                 info = updateInfo,
                 downloading = updateDownloading,
                 progress = updateProgress,
