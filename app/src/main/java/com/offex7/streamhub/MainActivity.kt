@@ -2040,6 +2040,8 @@ private fun Settings(
     onSource: (String) -> Unit,
     onDisclaimer: () -> Unit,
     notify: (String, Long) -> Unit,
+    onCheckUpdate: () -> Unit,
+    updateAvailable: Boolean,
     onResetAll: () -> Unit
 ) {
     val tvUsage by store.usageFlow(Section.TV).collectAsState(0L)
@@ -2167,6 +2169,25 @@ private fun Settings(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Red)
                     ) { Text("ВЫБРАТЬ ИСТОЧНИК") }
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ОБНОВЛЕНИЕ ПРИЛОЖЕНИЯ", color = Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (updateAvailable) "Доступна новая версия" else "Проверка обновлений через GitHub Releases",
+                        color = Gray,
+                        fontSize = 11.sp
+                    )
+                    Button(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red)
+                    ) {
+                        Text("Проверить обновление", color = Color.White)
+                    }
                 }
             }
         }
