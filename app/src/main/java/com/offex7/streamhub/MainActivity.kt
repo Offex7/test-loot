@@ -436,6 +436,9 @@ private fun App(
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
     var sleepWarningFor by remember { mutableLongStateOf(0L) }
+    var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateDownloading by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableFloatStateOf(0f) }
 
     DisposableEffect(activity, settings, disclaimer) {
         if (settings || disclaimer) {
@@ -535,6 +538,32 @@ private fun App(
             delay(250L)
         }
     }
+    suspend fun checkForUpdates(manual: Boolean) {
+        if (!networkNow(appContext)) {
+            if (manual) notify("Нет подключения к интернету")
+            return
+        }
+        AppUpdateManager.checkLatest()
+            .onSuccess { info ->
+                if (info == null) {
+                    if (manual) notify("У вас последняя версия")
+                } else {
+                    val dismissed = runCatching {
+                        store.isUpdateDismissed(info.versionName)
+                    }.getOrDefault(false)
+                    if (manual || !dismissed) updateInfo = info
+                }
+            }
+            .onFailure {
+                if (manual) notify("Не удалось проверить обновление")
+            }
+    }
+
+    LaunchedEffect(Unit) {
+        delay(1500L)
+        checkForUpdates(manual = false)
+    }
+
     fun leaveSection() {
         section = null
         settings = false
@@ -600,6 +629,8 @@ private fun App(
                     },
                     onDisclaimer = { disclaimer = true },
                     notify = ::notify,
+                    onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } },
+                    updateAvailable = updateInfo != null,
                     onResetAll = {
                         scope.launch {
                             runCatching {
@@ -676,6 +707,51 @@ private fun App(
                     onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
                 )
             }
+
+            UpdateBannerV38(
+                info = updateInfo,
+                downloading = updateDownloading,
+                progress = updateProgress,
+                onUpdate = {
+                    val info = updateInfo ?: return@UpdateBannerV38
+                    if (updateDownloading) return@UpdateBannerV38
+                    updateDownloading = true
+                    updateProgress = 0f
+                    scope.launch {
+                        AppUpdateManager.downloadApk(
+                            appContext,
+                            info,
+                            onProgress = { value ->
+                                activity.runOnUiThread { updateProgress = value }
+                            }
+                        ).onSuccess { apk ->
+                            updateDownloading = false
+                            updateProgress = 1f
+                            runCatching {
+                                AppUpdateManager.install(appContext, apk)
+                            }.onSuccess {
+                                updateInfo = null
+                            }.onFailure {
+                                notify("Не удалось открыть установку APK")
+                            }
+                        }.onFailure {
+                            updateDownloading = false
+                            notify("Не удалось скачать обновление")
+                        }
+                    }
+                },
+                onLater = {
+                    val info = updateInfo ?: return@UpdateBannerV38
+                    scope.launch {
+                        store.dismissUpdate(
+                            info.versionName,
+                            System.currentTimeMillis() + 48L * 60L * 60L * 1000L
+                        )
+                        updateInfo = null
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
 
             AnimatedVisibility(
                 visible = notification != null,
