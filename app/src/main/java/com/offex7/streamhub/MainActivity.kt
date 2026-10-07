@@ -3289,7 +3289,9 @@ private fun LogoImage(
         context.resources.getIdentifier(resourceName, "drawable", context.packageName)
     }
     val localRadioImage = remember(item.name, isRadio) {
-        if (isRadio) RadioLogoAssets.image(item.name) else null
+        if (!isRadio) null
+        else RadioLogoAssets.image(item.name)
+            ?: RadioLogoAssetsV38.image(context, item.name)
     }
 
     val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
