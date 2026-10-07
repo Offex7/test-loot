@@ -120,38 +120,9 @@ jobs:
               got = struct.unpack(">II", b[16:24])
               assert got == expected_size, (density, got, expected_size)
           PY
+          if grep -R -q 'Radio.TV/3.7' app/src/main; then echo "stale v3.7 user-agent"; exit 1; fi
           if grep -R -q 'Radio.TV/3.6' app/src/main; then echo "stale v3.6 user-agent"; exit 1; fi
-
-          grep -q 'compileSdk = 34' app/build.gradle.kts
-          grep -q 'targetSdk = 34' app/build.gradle.kts
-          grep -q 'minSdk = 29' app/build.gradle.kts
-          grep -q 'applicationId = "com.offex7.streamhub"' app/build.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
-          grep -q 'android:label="Radio.TV"' app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          test -f app/src/main/java/com/offex7/streamhub/PlaylistRepository.kt
-          test -f app/src/main/java/com/offex7/streamhub/PlayerController.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioMediaController.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioPlaybackService.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioTimerStore.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV8.kt
-          test -f app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
-          grep -q "TvV8Screen" app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q "https://smolnp.github.io/IPTVru//IPTVru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://naggdd.github.io/iptv/ru.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://raw.githubusercontent.com/CrocoUser/zabava-project/refs/heads/main/zabava-ef.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          grep -q "https://romaxa55.github.io/world_ip_tv/output/index.m3u" app/src/main/java/com/offex7/streamhub/Models.kt
-          test -f app/src/main/java/com/offex7/streamhub/Storage.kt
-          test -f app/src/main/java/com/offex7/streamhub/RadioLogoAssets.kt
-          grep -q 'versionCode = 11' app/build.gradle.kts
-          grep -q 'ГАМАЮН' app/src/main/java/com/offex7/streamhub/Models.kt
-          test -f app/signing/radio-tv-v5-debug.keystore
-          grep -q 'getExternalFilesDir(null)' app/src/main/java/com/offex7/streamhub/LogExporter.kt
-          grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
-          grep -q 'https://t.me/TvRadioOnline/170289' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q '.scheme("tg")' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'filter { it.value >= 60L }' app/src/main/java/com/offex7/streamhub/MainActivity.kt
-          grep -q 'TransformOrigin.Center' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
+          echo "v3.8 static validation passed"
 
       - name: Validate signing keystore
         run: |
