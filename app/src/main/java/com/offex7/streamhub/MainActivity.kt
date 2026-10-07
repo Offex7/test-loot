@@ -216,7 +216,7 @@ private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline/170311"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/170289"
-private const val RECOMMEND_MESSAGE = """🔥 Нашёл приложение с простым названием - Radio.TV, которым хочется поделиться.
+private const val RECOMMEND_MESSAGE = """🔥 Нашлось приложение с простым названием - Radio.TV, которым хочется поделиться.
 Сохрани ссылку — ещё пригодится!
 
 • Это Телевизор и Радио в одном приложении. Без платной подписки, без встроенной рекламы и, как заявляет разработчик, проект навсегда останется бесплатным.
@@ -278,7 +278,7 @@ private fun shareText(context: Context, text: String, chooserTitle: String) {
 }
 
 private val SleepOptions = listOf(
-    5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч",
+    5L to "5 м", 10L to "10 м", 15L to "15 м", 30L to "30 м", 60L to "1 ч", 120L to "2 ч",
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
 )
 
@@ -3427,7 +3427,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.7")
+                            .header("User-Agent", "Radio.TV/3.8")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
