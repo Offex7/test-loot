@@ -49,7 +49,7 @@ val RADIO_STATIONS = listOf(
     StreamItem("ХИТ FM", "https://hls-01-hitfm.hostingradio.ru/hitfm/playlist.m3u8"),
     StreamItem("НАШЕ РАДИО", "https://nashe1.hostingradio.ru:80/nashe-128.mp3"),
     StreamItem("DATASET [AI]", "https://region-ru4.tunio.ai/datasetradio.aac"),
-    StreamItem("ГАМАЮН", "https://gamaun.online:8025/radio")
+    StreamItem("ГАМАЮН", "https://gamaun.online:8025/radio"),
     StreamItem("ШАНСОН", "https://chanson.hostingradio.ru:8041/chanson128.mp3"),
     StreamItem("МАЯК", "https://icecast-vgtrk.cdnvideo.ru/mayakfm_mp3_192kbps"),
     StreamItem("LOVE", "https://stream.gakku.kz:8443/love128.mp3"),
