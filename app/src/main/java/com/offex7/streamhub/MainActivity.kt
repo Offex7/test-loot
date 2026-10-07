@@ -216,7 +216,7 @@ private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline/170311"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/170289"
-private const val RECOMMEND_MESSAGE = """🔥 Нашёл приложение с простым названием - Radio.TV, которым хочется поделиться.
+private const val RECOMMEND_MESSAGE = """🔥 Нашлось приложение с простым названием - Radio.TV, которым хочется поделиться.
 Сохрани ссылку — ещё пригодится!
 
 • Это Телевизор и Радио в одном приложении. Без платной подписки, без встроенной рекламы и, как заявляет разработчик, проект навсегда останется бесплатным.
@@ -278,7 +278,7 @@ private fun shareText(context: Context, text: String, chooserTitle: String) {
 }
 
 private val SleepOptions = listOf(
-    5L to "5 мин", 10L to "10 мин", 15L to "15 мин", 30L to "30 мин", 60L to "1 ч", 120L to "2 ч",
+    5L to "5 м", 10L to "10 м", 15L to "15 м", 30L to "30 м", 60L to "1 ч", 120L to "2 ч",
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
 )
 
@@ -436,6 +436,9 @@ private fun App(
     var sleepRemaining by remember { mutableLongStateOf(0L) }
     var sleepMinutes by remember { mutableLongStateOf(0L) }
     var sleepWarningFor by remember { mutableLongStateOf(0L) }
+    var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateDownloading by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableFloatStateOf(0f) }
 
     DisposableEffect(activity, settings, disclaimer) {
         if (settings || disclaimer) {
@@ -535,6 +538,32 @@ private fun App(
             delay(250L)
         }
     }
+    suspend fun checkForUpdates(manual: Boolean) {
+        if (!networkNow(appContext)) {
+            if (manual) notify("Нет подключения к интернету")
+            return
+        }
+        AppUpdateManager.checkLatest()
+            .onSuccess { info ->
+                if (info == null) {
+                    if (manual) notify("У вас последняя версия")
+                } else {
+                    val dismissed = runCatching {
+                        store.isUpdateDismissed(info.versionName)
+                    }.getOrDefault(false)
+                    if (manual || !dismissed) updateInfo = info
+                }
+            }
+            .onFailure {
+                if (manual) notify("Не удалось проверить обновление")
+            }
+    }
+
+    LaunchedEffect(Unit) {
+        delay(1500L)
+        checkForUpdates(manual = false)
+    }
+
     fun leaveSection() {
         section = null
         settings = false
@@ -600,6 +629,8 @@ private fun App(
                     },
                     onDisclaimer = { disclaimer = true },
                     notify = ::notify,
+                    onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } },
+                    updateAvailable = updateInfo != null,
                     onResetAll = {
                         scope.launch {
                             runCatching {
@@ -676,6 +707,51 @@ private fun App(
                     onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
                 )
             }
+
+            UpdateBannerV38(
+                info = updateInfo,
+                downloading = updateDownloading,
+                progress = updateProgress,
+                onUpdate = {
+                    val info = updateInfo ?: return@UpdateBannerV38
+                    if (updateDownloading) return@UpdateBannerV38
+                    updateDownloading = true
+                    updateProgress = 0f
+                    scope.launch {
+                        AppUpdateManager.downloadApk(
+                            appContext,
+                            info,
+                            onProgress = { value ->
+                                activity.runOnUiThread { updateProgress = value }
+                            }
+                        ).onSuccess { apk ->
+                            updateDownloading = false
+                            updateProgress = 1f
+                            runCatching {
+                                AppUpdateManager.install(appContext, apk)
+                            }.onSuccess {
+                                updateInfo = null
+                            }.onFailure {
+                                notify("Не удалось открыть установку APK")
+                            }
+                        }.onFailure {
+                            updateDownloading = false
+                            notify("Не удалось скачать обновление")
+                        }
+                    }
+                },
+                onLater = {
+                    val info = updateInfo ?: return@UpdateBannerV38
+                    scope.launch {
+                        store.dismissUpdate(
+                            info.versionName,
+                            System.currentTimeMillis() + 48L * 60L * 60L * 1000L
+                        )
+                        updateInfo = null
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
 
             AnimatedVisibility(
                 visible = notification != null,
@@ -1964,6 +2040,8 @@ private fun Settings(
     onSource: (String) -> Unit,
     onDisclaimer: () -> Unit,
     notify: (String, Long) -> Unit,
+    onCheckUpdate: () -> Unit,
+    updateAvailable: Boolean,
     onResetAll: () -> Unit
 ) {
     val tvUsage by store.usageFlow(Section.TV).collectAsState(0L)
@@ -2091,6 +2169,25 @@ private fun Settings(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Red)
                     ) { Text("ВЫБРАТЬ ИСТОЧНИК") }
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ОБНОВЛЕНИЕ ПРИЛОЖЕНИЯ", color = Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (updateAvailable) "Доступна новая версия" else "Проверка обновлений через GitHub Releases",
+                        color = Gray,
+                        fontSize = 11.sp
+                    )
+                    Button(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red)
+                    ) {
+                        Text("Проверить обновление", color = Color.White)
+                    }
                 }
             }
         }
@@ -3166,7 +3263,18 @@ private fun RadioEqualizerDialog(
         onDismissRequest = onDismiss,
         title = { Text("ЭКВАЛАЙЗЕР РАДИО") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val contentModifier = if (landscape) {
+                Modifier
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState())
+            } else {
+                Modifier
+            }
+            Column(
+                modifier = contentModifier,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text("Bass", color = Gray, fontSize = 11.sp)
                 Slider(value = bass, onValueChange = { bass = it; preset = "Flat" }, valueRange = -1500f..1500f)
                 Text("Mid", color = Gray, fontSize = 11.sp)
@@ -3176,7 +3284,18 @@ private fun RadioEqualizerDialog(
                 Text("Пресет", color = Gray, fontSize = 11.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     presets.forEach { name ->
-                        AssistChip(onClick={applyPreset(name)},label={Text(name,color=if(preset==name)Color(0xFFB6FF5C)else Color.White,fontSize=9.sp)})
+                        AssistChip(
+                            onClick = { applyPreset(name) },
+                            label = {
+                                Text(
+                                    name,
+                                    color = if (preset == name) Color(0xFFB6FF5C) else Color.White,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -3289,7 +3408,9 @@ private fun LogoImage(
         context.resources.getIdentifier(resourceName, "drawable", context.packageName)
     }
     val localRadioImage = remember(item.name, isRadio) {
-        if (isRadio) RadioLogoAssets.image(item.name) else null
+        if (!isRadio) null
+        else RadioLogoAssets.image(item.name)
+            ?: RadioLogoAssetsV38.image(context, item.name)
     }
 
     val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
@@ -3427,7 +3548,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.7")
+                            .header("User-Agent", "Radio.TV/3.8")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

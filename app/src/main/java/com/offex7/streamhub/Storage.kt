@@ -54,6 +54,8 @@ class SettingsStore(private val context: Context) {
     private val equalizerTrebleKey = intPreferencesKey("radio_eq_treble_v1")
     private val equalizerPresetKey = stringPreferencesKey("radio_eq_preset_v1")
     private val normalizeKey = booleanPreferencesKey("radio_normalize_v1")
+    private val updateDismissUntilKey = longPreferencesKey("update_dismiss_until_v1")
+    private val updateDismissVersionKey = stringPreferencesKey("update_dismiss_version_v1")
 
     suspend fun disclaimerShown(): Boolean = context.dataStore.data.first()[firstLaunchKey] ?: false
     suspend fun setDisclaimerShown(shown: Boolean) { context.dataStore.edit { it[firstLaunchKey] = shown } }
@@ -506,5 +508,18 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    suspend fun resetAll() { context.dataStore.edit { it.clear() } }
+    suspend fun isUpdateDismissed(versionName: String, now: Long = System.currentTimeMillis()): Boolean {
+        val prefs = context.dataStore.data.first()
+        return prefs[updateDismissVersionKey] == versionName &&
+            (prefs[updateDismissUntilKey] ?: 0L) > now
+    }
+
+    suspend fun dismissUpdate(versionName: String, until: Long) {
+        context.dataStore.edit {
+            it[updateDismissVersionKey] = versionName
+            it[updateDismissUntilKey] = until
+        }
+    }
+
+$reset
 }
