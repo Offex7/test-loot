@@ -153,7 +153,7 @@ jobs:
           grep -q 'filter { it.value >= 60L }' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'TransformOrigin.Center' app/src/main/java/com/offex7/streamhub/TvV8Screen.kt
           grep -q 'energySavingModeKey] ?: "OFF"' app/src/main/java/com/offex7/streamhub/Storage.kt
-          grep -q 'Разблокировать приложение при помощи биометрии' app/src/main/java/com/offex7/streamhub/MainActivity.kt
+          grep -Fq 'Разблокировать приложение при помощи биометрии' app/src/main/java/com/offex7/streamhub/MainActivity.kt
 
       - name: Validate signing keystore
         run: |
