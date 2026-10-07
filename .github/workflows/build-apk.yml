@@ -1,4 +1,5 @@
 name: Build Android APK
+# v3.8 final validation
 
 on:
   workflow_dispatch:
