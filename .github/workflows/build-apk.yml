@@ -49,7 +49,6 @@ jobs:
           set -e
           grep -q 'versionCode = 11' app/build.gradle.kts
           grep -q 'versionName = "3.8"' app/build.gradle.kts
-          grep -q 'versionCode = 11' app/build.gradle.kts
           grep -q 'isMinifyEnabled = true' app/build.gradle.kts
           grep -q 'isShrinkResources = true' app/build.gradle.kts
           grep -q 'https://t.me/TvRadioOnline/170311' app/src/main/java/com/offex7/streamhub/MainActivity.kt
@@ -63,7 +62,7 @@ jobs:
           grep -q 'external-files-path' app/src/main/res/xml/file_paths.xml
           grep -q 'contentColor = Color.White' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -Fq 'tools:keep="@drawable/logo_*"' app/src/main/res/values/keep.xml
-grep -q 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
+          grep -q 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
           grep -q 'Radio-TV-v' app/src/main/java/com/offex7/streamhub/AppUpdateManager.kt
           grep -q 'Проверить обновление' app/src/main/java/com/offex7/streamhub/MainActivity.kt
           grep -q 'onCheckUpdate' app/src/main/java/com/offex7/streamhub/MainActivity.kt
@@ -174,7 +173,7 @@ grep -q 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' app/src/mai
           APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.8.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='10'"
+          echo "$APK_PACKAGE" | grep -q "versionCode='11'"
           echo "$APK_PACKAGE" | grep -q "versionName='3.8'"
           sha256sum radio-tv-release-3.8.apk
           ls -lh radio-tv-release-3.8.apk
