@@ -30,20 +30,20 @@ object AppUpdateManager {
             val request = Request.Builder()
                 .url(LATEST_URL)
                 .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", "Radio.TV/\${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "Radio.TV/${BuildConfig.VERSION_NAME}")
                 .build()
 
             client.newCall(request).execute().use { response ->
-                require(response.isSuccessful) { "GitHub API HTTP \${response.code}" }
+                require(response.isSuccessful) { "GitHub API HTTP ${response.code}" }
                 val json = JSONObject(response.body?.string().orEmpty())
-                val version = json.optString("tag_name").removePrefix("v").trim()
+                val version = json.optString("tag_name").removePrefix("v").removePrefix("V").trim()
                 require(version.isNotBlank()) { "Release tag is empty" }
 
                 if (compareVersions(version, BuildConfig.VERSION_NAME) <= 0) {
                     return@use null
                 }
 
-                val expected = "Radio-TV-v\${version}.apk"
+                val expected = "Radio-TV-v${version}.apk"
                 val assets = json.optJSONArray("assets")
                     ?: throw IllegalStateException("Release has no assets")
                 var downloadUrl: String? = null
@@ -54,7 +54,7 @@ object AppUpdateManager {
                         break
                     }
                 }
-                require(!downloadUrl.isNullOrBlank()) { "APK asset \${expected} not found" }
+                require(!downloadUrl.isNullOrBlank()) { "APK asset ${expected} not found" }
 
                 AppUpdateInfo(
                     versionName = version,
@@ -75,16 +75,16 @@ object AppUpdateManager {
                 ?: throw IllegalStateException("External app files directory is unavailable")
             if (!dir.exists()) dir.mkdirs()
 
-            val target = File(dir, "Radio-TV-v\${info.versionName}.apk")
+            val target = File(dir, "Radio-TV-v${info.versionName}.apk")
             val temp = File(dir, target.name + ".part")
 
             val request = Request.Builder()
                 .url(info.downloadUrl)
-                .header("User-Agent", "Radio.TV/\${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "Radio.TV/${BuildConfig.VERSION_NAME}")
                 .build()
 
             client.newCall(request).execute().use { response ->
-                require(response.isSuccessful) { "APK download HTTP \${response.code}" }
+                require(response.isSuccessful) { "APK download HTTP ${response.code}" }
                 val body = response.body ?: throw IllegalStateException("Empty APK response")
                 val total = body.contentLength()
                 body.byteStream().use { input ->
