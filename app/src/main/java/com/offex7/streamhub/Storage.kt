@@ -521,5 +521,5 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-$reset
+    suspend fun resetAll() { context.dataStore.edit { it.clear() } }
 }
