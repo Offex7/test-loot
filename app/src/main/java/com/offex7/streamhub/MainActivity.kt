@@ -2173,6 +2173,16 @@ private fun Settings(
             }
         }
         item {
+            val updatePulseTransition = rememberInfiniteTransition(label = "settings-update-pulse")
+            val updatePulse by updatePulseTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = if (updateAvailable && !energySaving) 1.035f else 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(900, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "settings-update-pulse-value"
+            )
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("ОБНОВЛЕНИЕ ПРИЛОЖЕНИЯ", color = Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -2183,10 +2193,12 @@ private fun Settings(
                     )
                     Button(
                         onClick = onCheckUpdate,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red)
+                        modifier = Modifier.fillMaxWidth().graphicsLayer(scaleX = updatePulse, scaleY = updatePulse),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red
+                        )
                     ) {
-                        Text("Проверить обновление", color = Color.White)
+                        Text("Проверить обновление", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -2321,18 +2333,18 @@ private fun Settings(
                     scope.launch {
                         runCatching {
                             val file = LogExporter.export(settingsContext, store)
-                            require(file.exists() && file.length() > 0L) { "ZIP-файл логов не создан" }
+                            require(file.exists() && file.length() > 0L) { "TXT-файл логов не создан" }
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 settingsContext,
                                 settingsContext.packageName + ".fileprovider",
                                 file
                             )
                             val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "application/zip"
+                                type = "text/plain"
                                 putExtra(Intent.EXTRA_STREAM, uri)
                                 putExtra(Intent.EXTRA_TEXT, "Radio.TV — логи приложения")
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                clipData = ClipData.newRawUri("Radio.TV logs", uri)
+                                clipData = ClipData.newRawUri("Radio.TV log", uri)
                             }
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             settingsContext.startActivity(
@@ -2357,7 +2369,7 @@ private fun Settings(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("ЭКСПОРТ ЛОГОВ", fontSize = 16.sp)
-                        Text("ZIP-файл для отправки", fontSize = 11.sp, color = Gray)
+                        Text("TXT-файл для отправки", fontSize = 11.sp, color = Gray)
                     }
                     Icon(
                         Icons.Default.Share,
