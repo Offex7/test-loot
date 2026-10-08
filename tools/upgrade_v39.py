@@ -10,6 +10,7 @@ def read(path):
     return path.read_text(encoding="utf-8")
 
 def write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 def replace_once(text, old, new, label):
