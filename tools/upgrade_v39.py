@@ -1086,7 +1086,7 @@ receiver_block = '''        <receiver
                 android:resource="@xml/widget_tv_info" />
         </receiver>
 '''
-pip_marker = '        <receiver\\n            android:name=".PipActionReceiver"'
+pip_marker = '        <receiver\n            android:name=".PipActionReceiver"'
 pip_pos = manifest.find(pip_marker)
 if pip_pos < 0:
     raise SystemExit("PipActionReceiver manifest marker not found")
