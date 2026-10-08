@@ -33,7 +33,7 @@ class MainActivity : FragmentActivity() {
 
         if (savedInstanceState == null) {
             val remote = TVRemoteFragment.newInstance().apply {
-                setCastController(DlnaCastController())
+                setCastController(DlnaCastController(this@MainActivity))
             }
             supportFragmentManager.beginTransaction()
                 .replace(frame.id, remote)
