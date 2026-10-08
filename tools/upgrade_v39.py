@@ -107,23 +107,9 @@ m = replace_once(
 
 m = replace_once(
     m,
-    """    LaunchedEffect(notificationToken) {
-        if (notification == null || notificationToken == 0L) return@LaunchedEffect
-        val token = notificationToken
-        delay(notificationDuration)
-        if (token == notificationToken) notification = null
-    }
-
-    LaunchedEffect(Unit) {
+    """    LaunchedEffect(Unit) {
         pip = store.pipEnabled()""",
-    """    LaunchedEffect(notificationToken) {
-        if (notification == null || notificationToken == 0L) return@LaunchedEffect
-        val token = notificationToken
-        delay(notificationDuration)
-        if (token == notificationToken) notification = null
-    }
-
-    LaunchedEffect(Unit) {
+    """    LaunchedEffect(Unit) {
         delay(250L)
         val powerManager = appContext.getSystemService(android.os.PowerManager::class.java)
         val activityManager = appContext.getSystemService(android.app.ActivityManager::class.java)
