@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.radiotv.tvremote"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.radiotv.tvremote"
         minSdk = 26

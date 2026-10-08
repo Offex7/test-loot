@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.radiotv.tvremote.core"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig { minSdk = 26; consumerProguardFiles("consumer-rules.pro") }
 }
 
