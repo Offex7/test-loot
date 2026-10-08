@@ -1048,12 +1048,23 @@ widget_info_tv = widget_info.replace('@layout/widget_radio', '@layout/widget_tv'
 write(ROOT / "src/main/res/xml/widget_tv_info.xml", widget_info_tv)
 
 manifest = read(ROOT / "src/main/AndroidManifest.xml")
-manifest = replace_once(
-    manifest,
-    'android:exported="true"\\n            android:supportsPictureInPicture="true">',
-    'android:exported="true"\\n            android:launchMode="singleTop"\\n            android:supportsPictureInPicture="true">',
-    "singleTop"
-)
+activity_marker = '        <activity\n            android:name=".MainActivity"'
+activity_pos = manifest.find(activity_marker)
+if activity_pos < 0:
+    raise SystemExit("MainActivity manifest marker not found")
+activity_end = manifest.find("</activity>", activity_pos)
+if activity_end < 0:
+    raise SystemExit("MainActivity closing tag not found")
+activity_block = manifest[activity_pos:activity_end]
+if 'android:launchMode="singleTop"' not in activity_block:
+    exported_pos = activity_block.find('android:exported="true"')
+    if exported_pos < 0:
+        raise SystemExit("MainActivity exported attribute not found")
+    line_end = activity_block.find("\n", exported_pos)
+    if line_end < 0:
+        raise SystemExit("MainActivity exported line end not found")
+    activity_block = activity_block[:line_end + 1] + '            android:launchMode="singleTop"\n' + activity_block[line_end + 1:]
+    manifest = manifest[:activity_pos] + activity_block + manifest[activity_end:]
 receiver_block = '''        <receiver
             android:name=".RadioWidgetProvider"
             android:exported="true">
