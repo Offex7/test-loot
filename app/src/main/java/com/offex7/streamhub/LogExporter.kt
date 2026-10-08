@@ -2,22 +2,14 @@ package com.offex7.streamhub
 
 import android.content.Context
 import android.os.Build
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.flow.first
 
 object LogExporter {
-    suspend fun export(context: Context, store: SettingsStore): File {
-        val exportDir = context.getExternalFilesDir(null)
-            ?: throw IllegalStateException("External app files directory is unavailable")
-        if (!exportDir.exists() && !exportDir.mkdirs()) {
-            throw IllegalStateException("Cannot create external app files directory")
-        }
-
+    suspend fun buildText(context: Context, store: SettingsStore): String {
         val timestamp = System.currentTimeMillis()
-        val file = File(exportDir, "radio-tv-log-${timestamp}.txt")
         val metrics = context.resources.displayMetrics
         val language = Locale.getDefault().toLanguageTag()
 
@@ -30,9 +22,7 @@ object LogExporter {
                 .use { it.readText() }
         }.getOrDefault("")
 
-        val fallbackLines = synchronized(this) {
-            recentLines.toList()
-        }
+        val fallbackLines = synchronized(this) { recentLines.toList() }
         val logLines = (capturedLogcat.ifBlank { fallbackLines.joinToString("\n") })
             .lineSequence()
             .filter { it.isNotBlank() }
@@ -60,43 +50,35 @@ object LogExporter {
             appendLine("radio_normalize=" + eq.normalize)
         }
 
-        file.writeText(
-            buildString {
-                appendLine("Radio.TV log export")
-                appendLine("created_at_epoch_ms=" + timestamp)
-                appendLine("created_at_local=" + SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date(timestamp)))
-                appendLine()
-                appendLine("[app]")
-                appendLine("version_name=" + BuildConfig.VERSION_NAME)
-                appendLine("version_code=" + BuildConfig.VERSION_CODE)
-                appendLine()
-                appendLine("[device]")
-                appendLine("manufacturer=" + Build.MANUFACTURER)
-                appendLine("model=" + Build.MODEL)
-                appendLine("android_version=" + Build.VERSION.RELEASE)
-                appendLine("sdk=" + Build.VERSION.SDK_INT)
-                appendLine("display=" + Build.DISPLAY)
-                appendLine("fingerprint=" + Build.FINGERPRINT)
-                appendLine("screen_width_px=" + metrics.widthPixels)
-                appendLine("screen_height_px=" + metrics.heightPixels)
-                appendLine("density=" + metrics.density)
-                appendLine("density_dpi=" + metrics.densityDpi)
-                appendLine("language=" + language)
-                appendLine()
-                appendLine("[settings_without_personal_data]")
-                append(settingsSnapshot)
-                appendLine()
-                appendLine("[last_100_logcat_lines]")
-                if (logLines.isEmpty()) {
-                    appendLine("No logcat lines available")
-                } else {
-                    logLines.forEach(::appendLine)
-                }
-            },
-            Charsets.UTF_8
-        )
-        require(file.exists() && file.length() > 0L) { "TXT log file was not created" }
-        return file
+        return buildString {
+            appendLine("Radio.TV log export")
+            appendLine("created_at_epoch_ms=" + timestamp)
+            appendLine("created_at_local=" + SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date(timestamp)))
+            appendLine()
+            appendLine("[app]")
+            appendLine("version_name=" + BuildConfig.VERSION_NAME)
+            appendLine("version_code=" + BuildConfig.VERSION_CODE)
+            appendLine()
+            appendLine("[device]")
+            appendLine("manufacturer=" + Build.MANUFACTURER)
+            appendLine("model=" + Build.MODEL)
+            appendLine("android_version=" + Build.VERSION.RELEASE)
+            appendLine("sdk=" + Build.VERSION.SDK_INT)
+            appendLine("display=" + Build.DISPLAY)
+            appendLine("fingerprint=" + Build.FINGERPRINT)
+            appendLine("screen_width_px=" + metrics.widthPixels)
+            appendLine("screen_height_px=" + metrics.heightPixels)
+            appendLine("density=" + metrics.density)
+            appendLine("density_dpi=" + metrics.densityDpi)
+            appendLine("language=" + language)
+            appendLine()
+            appendLine("[settings_without_personal_data]")
+            append(settingsSnapshot)
+            appendLine()
+            appendLine("[last_100_logcat_lines]")
+            if (logLines.isEmpty()) appendLine("No logcat lines available")
+            else logLines.forEach(::appendLine)
+        }
     }
 
     private val recentLines = ArrayDeque<String>(1000)
