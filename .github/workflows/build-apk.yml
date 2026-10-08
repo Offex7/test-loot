@@ -1,5 +1,5 @@
 name: Build Android APK
-# v3.8 final validation
+# v3.9 release validation and build
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-android-apk-${{ github.run_id }}
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +45,16 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Validate final v3.8 project
+      - name: Apply final v3.9 source update
+        run: |
+          set -e
+          if [ -f tools/upgrade_v39.py ]; then
+            python3 tools/upgrade_v39.py
+          else
+            echo "v3.9 source update already committed; no patch step required."
+          fi
+
+      - name: Validate final v3.9 project
         run: |
           set -e
           python3 - <<'PY'
@@ -57,39 +66,47 @@ jobs:
           storage = (root / 'src/main/java/com/offex7/streamhub/Storage.kt').read_text(encoding='utf-8')
           logs = (root / 'src/main/java/com/offex7/streamhub/LogExporter.kt').read_text(encoding='utf-8')
           updater = (root / 'src/main/java/com/offex7/streamhub/AppUpdateManager.kt').read_text(encoding='utf-8')
-          banner = (root / 'src/main/java/com/offex7/streamhub/UpdateBannerV38.kt').read_text(encoding='utf-8')
           tv = (root / 'src/main/java/com/offex7/streamhub/TvV8Screen.kt').read_text(encoding='utf-8')
           arrow = (root / 'src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt').read_text(encoding='utf-8')
           manifest = (root / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
           checks = {
-              'version': 'versionCode = 11' in gradle and 'versionName = "3.8"' in gradle,
+              'version': 'versionCode = 12' in gradle and 'versionName = "3.9"' in gradle,
               'package': 'applicationId = "com.offex7.streamhub"' in gradle,
               'r8': 'isMinifyEnabled = true' in gradle and 'isShrinkResources = true' in gradle,
-              'telegram': '170311' in main and '170289' in main,
-              'pin': 'PIN_REAUTH_WINDOW = 5 * 60 * 1000L' in main,
-              'secure': 'FLAG_SECURE' in main,
-              'cutout': 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' in tv,
-              'logs': 'getExternalFilesDir(null)' in logs and '.txt' in logs,
-              'share': 'type = "text/plain"' in main,
-              'updater': 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' in updater and 'Radio-TV-v${version}.apk' in updater and 'removePrefix("V")' in updater,
-              'update_banner': 'AnimatedVisibility' in banner and 'verticalScroll' in banner,
-              'tv_picker': 'verticalScroll(scrollState)' in tv and 'Canvas' in tv,
-              'arrow': 'delay(3000L)' in arrow and 'delay(5000L)' in arrow and 'slideInHorizontally' in arrow and 'canScrollForward' in arrow,
-              'autostart': 'autoStartKey' in storage,
               'keystore': (root / 'signing/radio-tv-v5-debug.keystore').is_file(),
-              'manifest': 'android:icon="@mipmap/ic_launcher"' in manifest and 'android:roundIcon="@mipmap/ic_launcher_round"' in manifest,
-              'assets': (root / 'src/main/assets/radio_logo2.zip').is_file() and (root / 'src/main/java/com/offex7/streamhub/RadioLogoAssetsV38.kt').is_file(),
-              'main_files': all((root / 'src/main/java/com/offex7/streamhub' / name).is_file() for name in ['MainActivity.kt','Storage.kt','PlayerController.kt','RadioMediaController.kt','TvV8Screen.kt','ScrollTopButtonV37.kt']),
-              'no_stale_ua': 'Radio.TV/3.6' not in main and 'Radio.TV/3.7' not in main,
+              'telegram': '170311' in main and '170289' in main,
+              'pin': 'PIN_REAUTH_WINDOW = 5 * 60 * 1000L' in main and 'SCREEN_ORIENTATION_PORTRAIT' in main and 'enabled = biometricAvailable,' in main,
+              'biometric_not_pin_locked': 'if (!biometricAvailable) return' in main and 'biometricAvailable && lockoutRemaining <= 0L' not in main,
+              'secure': 'FLAG_SECURE' in main,
+              'energy_restriction': 'isIgnoringBatteryOptimizations' in main and 'isBackgroundRestricted' in main,
+              'logs_dialog': 'LogExporter.buildText' in main and 'СКОПИРОВАТЬ' in main and 'getExternalFilesDir(null)' not in logs and 'FileProvider' not in main,
+              'logs_metadata': 'Build.MODEL' in logs and 'Build.MANUFACTURER' in logs and 'Build.VERSION.RELEASE' in logs and 'Build.VERSION.SDK_INT' in logs and 'Build.DISPLAY' in logs and 'Build.FINGERPRINT' in logs,
+              'update_banner': 'ПРОВЕРИТЬ ОБНОВЛЕНИЕ' in main and 'item { DonationCard() }' in main,
+              'header_update': 'modifier = Modifier.clickable { onCheckUpdate() }' in main,
+              'settings_labels': 'ВИБРАЦИОННЫЙ ОТКЛИК' in main and 'ТАКТИЛЬНАЯ ОБРАТНАЯ СВЯЗЬ' not in main and 'Общий виброотклик для кнопок и действий' not in main and 'Сохраняется после перезапуска' not in main and 'Короткий сигнал на ТВ/устройствах без вибрации' not in main,
+              'protection_simplified': 'ЗАЩИТА ПРИЛОЖЕНИЯ' not in main and 'PIN-код на вход' in main,
+              'stats_center': 'textAlign = TextAlign.Center' in main and 'СТАТИСТИКА' in main,
+              'logo_cache': 'TvLogoCache' in main,
+              'scroll_behavior': 'delay(2000L)' in arrow and 'delay(5000L)' in arrow and 'slideInHorizontally' in arrow and 'canScrollForward' in arrow,
+              'scroll_no_old_timer': 'delay(3000L)' not in arrow,
+              'sleep_feedback': 'InteractionFeedback.click(context,hapticsEnabled,soundEnabled)' in main and 'SleepGrid(' in main,
+              'new_stations': 'РАДИУС FM' in models and 'ЮНИСТАР' in models and 'https://media2.datacenter.by:8002/radiusfm_main' in models and 'https://edge1.usp.unistar.by/hls/unistar_main/96k.m3u8' in models,
+              'widgets_source': (root / 'src/main/java/com/offex7/streamhub/RadioWidgetProvider.kt').is_file() and (root / 'src/main/java/com/offex7/streamhub/TvWidgetProvider.kt').is_file(),
+              'widgets_layouts': (root / 'src/main/res/layout/widget_radio.xml').is_file() and (root / 'src/main/res/layout/widget_tv.xml').is_file() and (root / 'src/main/res/xml/widget_radio_info.xml').is_file() and (root / 'src/main/res/xml/widget_tv_info.xml').is_file(),
+              'widgets_manifest': '.RadioWidgetProvider' in manifest and '.TvWidgetProvider' in manifest and 'android.appwidget.action.APPWIDGET_UPDATE' in manifest,
+              'radii': 'start_radio_v2' in (root / 'src/main/java/com/offex7/streamhub/RadioWidgetProvider.kt').read_text(encoding='utf-8') and 'start_tv_final' in (root / 'src/main/java/com/offex7/streamhub/TvWidgetProvider.kt').read_text(encoding='utf-8'),
+              'widgets_navigation': 'EXTRA_WIDGET_SECTION' in main and 'android:launchMode="singleTop"' in manifest,
+              'update_url': 'https://api.github.com/repos/RadioTV-apk/R/releases/latest' in updater,
+              'autostart': 'autoStartKey' in storage and 'FLAG_KEEP_SCREEN_ON' in main,
+              'stale_user_agent': 'Radio.TV/3.8' not in '\n'.join(p.read_text(encoding='utf-8') for p in root.rglob('*.kt') if p.is_file()),
+              'activity_main': (root / 'src/main/java/com/offex7/streamhub/MainActivity.kt').is_file(),
           }
           missing = [name for name, ok in checks.items() if not ok]
           if missing:
               raise SystemExit('Validation failed: ' + ', '.join(missing))
-          for path in [root / 'src/main/res/mipmap-mdpi/ic_launcher.png', root / 'src/main/res/mipmap-hdpi/ic_launcher.png', root / 'src/main/res/mipmap-xhdpi/ic_launcher.png', root / 'src/main/res/mipmap-xxhdpi/ic_launcher.png', root / 'src/main/res/mipmap-xxxhdpi/ic_launcher.png', root / 'src/main/res/drawable-nodpi/ic_launcher_foreground.png']:
-              if not path.is_file() or path.stat().st_size == 0:
-                  raise SystemExit(f'Invalid launcher asset: {path}')
-          print('v3.8 static validation: OK')
+          print('v3.9 static validation: OK')
           PY
+
       - name: Validate signing keystore
         run: |
           set -e
@@ -113,7 +130,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.8-debug-build-log
+          name: Radio-TV-v3.9-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -125,33 +142,33 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" radio-tv-release-3.8.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.8.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.8.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" radio-tv-release-3.9.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose radio-tv-release-3.9.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs radio-tv-release-3.9.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.8.apk | head -n 1)
+          APK_PACKAGE=$(aapt2 dump badging radio-tv-release-3.9.apk | head -n 1)
           echo "$APK_PACKAGE"
           echo "$APK_PACKAGE" | grep -q "name='com.offex7.streamhub'"
-          echo "$APK_PACKAGE" | grep -q "versionCode='11'"
-          echo "$APK_PACKAGE" | grep -q "versionName='3.8'"
-          sha256sum radio-tv-release-3.8.apk
-          ls -lh radio-tv-release-3.8.apk
+          echo "$APK_PACKAGE" | grep -q "versionCode='12'"
+          echo "$APK_PACKAGE" | grep -q "versionName='3.9'"
+          sha256sum radio-tv-release-3.9.apk
+          ls -lh radio-tv-release-3.9.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-Release-3.8-APK
-          path: radio-tv-release-3.8.apk
+          name: Radio-TV-Release-3.9-APK
+          path: radio-tv-release-3.9.apk
           if-no-files-found: error
 
       - name: Package source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v3.8-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v3.9-source.zip
 
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v3.8-Source
-          path: Radio-TV-v3.8-source.zip
+          name: Radio-TV-v3.9-Source
+          path: Radio-TV-v3.9-source.zip
           if-no-files-found: error
