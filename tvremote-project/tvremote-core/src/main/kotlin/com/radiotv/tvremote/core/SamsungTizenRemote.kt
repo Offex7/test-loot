@@ -2,8 +2,8 @@ package com.radiotv.tvremote.core
 
 import android.net.Uri
 import android.util.Base64
-import kotlinx.coroutines.runCatching
 import java.nio.charset.StandardCharsets
+import org.json.JSONObject
 
 class SamsungTizenRemote(
     host: String,
@@ -60,7 +60,7 @@ class SamsungTizenRemote(
                 })
             }
             is RemoteCommand.Text -> throw RemoteException("Samsung text input: vendor-specific API varies by model")
-            else -> throw RemoteException("Samsung pointer: model-specific input socket not enabled here")
+            else -> throw RemoteException("Samsung pointer is not enabled in base profile")
         }
     }
 }

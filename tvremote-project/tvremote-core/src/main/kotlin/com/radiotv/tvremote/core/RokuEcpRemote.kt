@@ -43,17 +43,27 @@ class RokuEcpRemote(
         stateFlow.value = ConnectionState.READY
     }
 
-    override suspend fun send(command: RemoteCommand) = withContext(Dispatchers.IO) {
-        when (command) {
-            is RemoteCommand.Key -> post("keypress/" + (map[command.code] ?: throw RemoteException("Roku: " + command.code)))
-            is RemoteCommand.Text -> command.value.forEach { ch -> post("keypress/Lit_" + URLEncoder.encode(ch.toString(), "UTF-8")) }
-            is RemoteCommand.PointerMove -> throw RemoteException("Roku ECP pointer не включён")
-            RemoteCommand.PointerClick -> post("keypress/Select")
-            RemoteCommand.PointerRightClick -> post("keypress/Back")
+    override suspend fun send(command: RemoteCommand) {
+        withContext(Dispatchers.IO) {
+            when (command) {
+                is RemoteCommand.Key -> {
+                    post("keypress/" + (map[command.code] ?: throw RemoteException("Roku: " + command.code)))
+                }
+                is RemoteCommand.Text -> {
+                    command.value.forEach { ch ->
+                        post("keypress/Lit_" + URLEncoder.encode(ch.toString(), "UTF-8"))
+                    }
+                }
+                is RemoteCommand.PointerMove -> throw RemoteException("Roku ECP pointer не включён")
+                RemoteCommand.PointerClick -> post("keypress/Select")
+                RemoteCommand.PointerRightClick -> post("keypress/Back")
+            }
         }
     }
 
-    override suspend fun disconnect() { stateFlow.value = ConnectionState.DISCONNECTED }
+    override suspend fun disconnect() {
+        stateFlow.value = ConnectionState.DISCONNECTED
+    }
 
     private fun post(path: String): Int {
         val c = URL("http://" + info.host + ":8060/" + path).openConnection() as HttpURLConnection
