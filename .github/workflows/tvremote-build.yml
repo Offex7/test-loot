@@ -53,11 +53,11 @@ jobs:
 
       - name: Unit tests
         working-directory: tvremote-project
-        run: gradle :tvremote-core:test --no-daemon --max-workers=2 --stacktrace --info
+        run: timeout 10m gradle :tvremote-core:test --no-daemon --max-workers=2 --stacktrace --info
 
       - name: Assemble debug APK
         working-directory: tvremote-project
-        run: gradle :app:assembleDebug --no-daemon --max-workers=2 --stacktrace --info
+        run: timeout 10m gradle :app:assembleDebug --no-daemon --max-workers=2 --stacktrace --info
 
       - name: Verify APK
         working-directory: tvremote-project
@@ -71,9 +71,8 @@ jobs:
           grep -q "sdkVersion:'26'" /tmp/tvremote-badging.txt
           grep -q "targetSdkVersion:'35'" /tmp/tvremote-badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/tvremote-manifest.txt
-          grep -q "usesCleartextTraffic" /tmp/tvremote-manifest.txt
-          grep -q "screenOrientation" /tmp/tvremote-manifest.txt
-          grep -q "0x1" /tmp/tvremote-manifest.txt
+          grep -A3 -q "usesCleartextTraffic" /tmp/tvremote-manifest.txt && grep -A3 "usesCleartextTraffic" /tmp/tvremote-manifest.txt | grep -q "0xffffffff"
+          grep -A3 "screenOrientation" /tmp/tvremote-manifest.txt | grep -q "0x1"
           sha256sum "$APK" | tee /tmp/tvremote-sha256.txt
           stat -c 'APK size: %s bytes' "$APK"
 
