@@ -1050,8 +1050,8 @@ write(ROOT / "src/main/res/xml/widget_tv_info.xml", widget_info_tv)
 manifest = read(ROOT / "src/main/AndroidManifest.xml")
 manifest = replace_once(
     manifest,
-    'android:exported="true"\n            android:supportsPictureInPicture="true">',
-    'android:exported="true"\n            android:launchMode="singleTop"\n            android:supportsPictureInPicture="true">',
+    'android:exported="true"\\n            android:supportsPictureInPicture="true">',
+    'android:exported="true"\\n            android:launchMode="singleTop"\\n            android:supportsPictureInPicture="true">',
     "singleTop"
 )
 receiver_block = '''        <receiver
@@ -1075,18 +1075,14 @@ receiver_block = '''        <receiver
                 android:resource="@xml/widget_tv_info" />
         </receiver>
 '''
-manifest = replace_once(
-    manifest,
-    """        <receiver
-        android:name=".PipActionReceiver"
-        android:exported="false" />""",
-    """        <receiver
-        android:name=".PipActionReceiver"
-        android:exported="false" />
-
-""" + receiver_block.rstrip(),
-    "widget manifest receivers"
-)
+pip_marker = '        <receiver\\n            android:name=".PipActionReceiver"'
+pip_pos = manifest.find(pip_marker)
+if pip_pos < 0:
+    raise SystemExit("PipActionReceiver manifest marker not found")
+pip_end = manifest.find("        <provider", pip_pos)
+if pip_end < 0:
+    raise SystemExit("FileProvider marker not found")
+manifest = manifest[:pip_end] + receiver_block + manifest[pip_end:]
 write(ROOT / "src/main/AndroidManifest.xml", manifest)
 
 # ---------- Remove all literal v3.8 User-Agent remnants ----------
