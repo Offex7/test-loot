@@ -40,6 +40,7 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      # Build and unit-test both before packaging the APK.
       - name: Unit tests and debug APK
         working-directory: tvremote-project
         run: gradle :tvremote-core:test :app:assembleDebug --no-daemon --stacktrace
