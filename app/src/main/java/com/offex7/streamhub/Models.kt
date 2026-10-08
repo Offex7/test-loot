@@ -60,7 +60,9 @@ val RADIO_STATIONS = listOf(
     StreamItem("REMIX FM", "https://irp2.volna.top/remixfm.aacp"),
     StreamItem("НОВОЕ РАДИО", "https://hls.newradio.ru/novoeradio/playlist.m3u8"),
     StreamItem("ЮМОР FM", "https://srv01.gpmradio.ru/stream/trust/mp3/128/20"),
-    StreamItem("ДЕТСКОЕ РАДИО", "https://hls-01-gpm.hostingradio.ru/detifm7/playlist.m3u8"))
+    StreamItem("ДЕТСКОЕ РАДИО", "https://hls-01-gpm.hostingradio.ru/detifm7/playlist.m3u8"),
+    StreamItem("РАДИУС FM", "https://media2.datacenter.by:8002/radiusfm_main"),
+    StreamItem("ЮНИСТАР", "https://edge1.usp.unistar.by/hls/unistar_main/96k.m3u8"))
 
 val RADIO_LOGO_URLS = mapOf(
     "RECORD" to "https://sun9-58.vkuserphoto.ru/s/v1/ig2/IiddqILI9W20xtBjGASd1Wc2qaE8CtlNMcM4HP7_rOxeHWqZHsTZQrxChaHjZF90iod1cWtN-YKmKEhzRcRW4WNu.jpg?quality=96&cs=640x0",
