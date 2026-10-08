@@ -6,11 +6,22 @@ on:
     branches:
       - feature/tvremote-v1
     paths:
-      - "tvremote-project/**"
+      - "tvremote-project/app/**"
+      - "tvremote-project/tvremote-core/**"
+      - "tvremote-project/tvremote-ui/**"
+      - "tvremote-project/tvremote-cast/**"
+      - "tvremote-project/settings.gradle.kts"
+      - "tvremote-project/build.gradle.kts"
+      - "tvremote-project/gradle.properties"
+      - "tvremote-project/gradle/**"
       - ".github/workflows/tvremote-build.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: tvremote-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -40,14 +51,35 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      # Build and unit-test both before packaging the APK.
-      - name: Unit tests and debug APK
+      - name: Unit tests
         working-directory: tvremote-project
-        run: gradle :tvremote-core:test :app:assembleDebug --no-daemon --stacktrace
+        run: gradle :tvremote-core:test --no-daemon --max-workers=2 --stacktrace --info
+
+      - name: Assemble debug APK
+        working-directory: tvremote-project
+        run: gradle :app:assembleDebug --no-daemon --max-workers=2 --stacktrace --info
+
+      - name: Verify APK
+        working-directory: tvremote-project
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/tvremote-badging.txt
+          grep -q "package: name='com.radiotv.tvremote' versionCode='1' versionName='1.0.0'" /tmp/tvremote-badging.txt
+          grep -q "sdkVersion:'26'" /tmp/tvremote-badging.txt
+          grep -q "targetSdkVersion:'35'" /tmp/tvremote-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/tvremote-manifest.txt
+          grep -q "usesCleartextTraffic" /tmp/tvremote-manifest.txt
+          grep -q "screenOrientation" /tmp/tvremote-manifest.txt
+          grep -q "0x1" /tmp/tvremote-manifest.txt
+          sha256sum "$APK" | tee /tmp/tvremote-sha256.txt
+          stat -c 'APK size: %s bytes' "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TVRemote-debug
+          name: TVRemote-debug-run-${{ github.run_number }}
           path: tvremote-project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
