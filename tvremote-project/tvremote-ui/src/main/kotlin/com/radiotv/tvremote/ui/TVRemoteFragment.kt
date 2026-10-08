@@ -53,8 +53,15 @@ class TVRemoteFragment : Fragment() {
         val preferredWidth = dp(420)
         val screenWidth = resources.displayMetrics.widthPixels
         val viewportWidth = minOf(preferredWidth, maxOf(screenWidth, dp(280)))
+
+        val scroll = ScrollView(requireContext()).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(root, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+
         viewport.addView(
-            root,
+            scroll,
             FrameLayout.LayoutParams(viewportWidth, ViewGroup.LayoutParams.MATCH_PARENT).apply {
                 gravity = Gravity.CENTER
             }
@@ -235,6 +242,12 @@ class TVRemoteFragment : Fragment() {
     }
 
     private fun startAirMouse() {
+        if (airMouse != null) {
+            airMouse?.stop()
+            airMouse = null
+            Toast.makeText(requireContext(), "Air Mouse выключена.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val r = remote ?: run {
             Toast.makeText(requireContext(), "Сначала подключите ТВ", Toast.LENGTH_SHORT).show(); return
         }
