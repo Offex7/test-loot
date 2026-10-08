@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library")
-    id("com.google.protobuf")
 }
 
 android {
@@ -16,14 +15,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.80")
-    implementation("com.google.protobuf:protobuf-javalite:4.31.1")
     testImplementation("junit:junit:4.13.2")
-}
-protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:4.31.1" }
-    generateProtoTasks {
-        all().configureEach {
-            builtins { named("java") { option("lite") } }
-        }
-    }
 }

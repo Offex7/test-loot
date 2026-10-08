@@ -1,19 +1,16 @@
 package com.radiotv.tvremote.core
 
 import android.content.Context
-import com.google.protobuf.ByteString
-import com.radiotv.tvremote.core.proto.PoloProto
-import com.radiotv.tvremote.core.proto.RemoteProto
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.cert.X509Certificate
@@ -45,7 +42,7 @@ class AndroidTvRemoteV2(
     private var readScope: CoroutineScope? = null
     private var readySignal: CompletableDeferred<Unit>? = null
     private var voiceSignal: CompletableDeferred<Int>? = null
-    private var voiceActive = AtomicBoolean(false)
+    private val voiceActive = AtomicBoolean(false)
     private var imeCounter = 0
     private var fieldCounter = 0
 
@@ -57,37 +54,25 @@ class AndroidTvRemoteV2(
                     val server = ssl.session.peerCertificates.first() as X509Certificate
                     val input = ssl.inputStream
                     val out = ssl.outputStream
-                    sendPair(out, PoloProto.OuterMessage.newBuilder().setPairingRequest(
-                        PoloProto.PairingRequest.newBuilder()
-                            .setServiceName("atvremote")
-                            .setClientName("Radio.TV Remote")
-                    ))
-                    while (true) {
-                        val message = receivePair(input)
-                        when {
-                            message.hasPairingRequestAck() -> sendPair(out,
-                                PoloProto.OuterMessage.newBuilder().setOptions(
-                                    PoloProto.Options.newBuilder()
-                                        .setPreferredRole(PoloProto.Options.RoleType.ROLE_TYPE_INPUT)
-                                        .addInputEncodings(hexEncoding())
-                                )
-                            )
-                            message.hasOptions() -> sendPair(out,
-                                PoloProto.OuterMessage.newBuilder().setConfiguration(
-                                    PoloProto.Configuration.newBuilder()
-                                        .setClientRole(PoloProto.Options.RoleType.ROLE_TYPE_INPUT)
-                                        .setEncoding(hexEncoding())
-                                )
-                            )
-                            message.hasConfigurationAck() -> break
-                            else -> throw PairingException("Неожиданное pairing-сообщение")
+
+                    sendPair(out, AndroidTvPairingWire.pairingRequest())
+
+                    var configured = false
+                    while (!configured) {
+                        when (AndroidTvPairingWire.parse(readPairBytes(input)).kind) {
+                            AndroidTvPairingFrame.Kind.PAIRING_REQUEST_ACK ->
+                                sendPair(out, AndroidTvPairingWire.options())
+                            AndroidTvPairingFrame.Kind.OPTIONS ->
+                                sendPair(out, AndroidTvPairingWire.configuration())
+                            AndroidTvPairingFrame.Kind.CONFIGURATION_ACK -> configured = true
+                            else -> throw PairingException("Неожиданное pairing-сообщение от TV")
                         }
                     }
+
                     val secret = AndroidTvPairingSecret.compute(identity.clientCertificate(), server, code)
-                    sendPair(out, PoloProto.OuterMessage.newBuilder().setSecret(
-                        PoloProto.Secret.newBuilder().setSecret(ByteString.copyFrom(secret))
-                    ))
-                    if (!receivePair(input).hasSecretAck()) {
+                    sendPair(out, AndroidTvPairingWire.secret(secret))
+                    val ack = AndroidTvPairingWire.parse(readPairBytes(input))
+                    if (ack.status != 200 || ack.kind != AndroidTvPairingFrame.Kind.SECRET_ACK) {
                         throw PairingException("Телевизор отклонил код сопряжения")
                     }
                 }
@@ -100,27 +85,10 @@ class AndroidTvRemoteV2(
         }
     }
 
-    private fun hexEncoding() = PoloProto.Options.Encoding.newBuilder()
-        .setType(PoloProto.Options.Encoding.EncodingType.ENCODING_TYPE_HEXADECIMAL)
-        .setSymbolLength(6)
+    private fun readPairBytes(input: InputStream): ByteArray =
+        Framing.readMessage(input) ?: throw PairingException("TV закрыл pairing-сессию")
 
-    private fun sendPair(out: OutputStream, builder: PoloProto.OuterMessage.Builder) {
-        Framing.writeMessage(
-            out,
-            builder.setProtocolVersion(2)
-                .setStatus(PoloProto.OuterMessage.Status.STATUS_OK)
-                .build().toByteArray()
-        )
-    }
-
-    private fun receivePair(input: InputStream): PoloProto.OuterMessage {
-        val raw = Framing.readMessage(input) ?: throw PairingException("TV закрыл pairing-сессию")
-        val message = PoloProto.OuterMessage.parseFrom(raw)
-        if (message.status != PoloProto.OuterMessage.Status.STATUS_OK) {
-            throw PairingException("TV сообщил ошибку pairing: " + message.status)
-        }
-        return message
-    }
+    private fun sendPair(out: OutputStream, payload: ByteArray) = Framing.writeMessage(out, payload)
 
     override suspend fun connect() {
         disconnect()
@@ -145,6 +113,8 @@ class AndroidTvRemoteV2(
             disconnect()
             stateFlow.value = ConnectionState.FAILED
             throw RemoteException("Не удалось подключиться к Android TV: " + info.host, e)
+        } finally {
+            readySignal = null
         }
     }
 
@@ -152,43 +122,21 @@ class AndroidTvRemoteV2(
         try {
             while (true) {
                 val raw = Framing.readMessage(ssl.inputStream) ?: break
-                val message = RemoteProto.RemoteMessage.parseFrom(raw)
-                when {
-                    message.hasRemoteConfigure() -> {
-                        val requested = Feature.PING or Feature.KEY or Feature.POWER or Feature.VOLUME or
-                            Feature.IME or Feature.VOICE or Feature.APP_LINK
-                        val active = requested and message.remoteConfigure.code1
-                        sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteConfigure(
-                            RemoteProto.RemoteConfigure.newBuilder()
-                                .setCode1(active)
-                                .setDeviceInfo(
-                                    RemoteProto.RemoteDeviceInfo.newBuilder()
-                                        .setModel("Radio.TV Remote")
-                                        .setVendor("Radio.TV")
-                                        .setUnknown1(1)
-                                        .setUnknown2("1")
-                                        .setPackageName("com.radiotv.tvremote")
-                                        .setAppVersion("1.0.0")
-                                )
-                        ))
-                    }
-                    message.hasRemoteSetActive() -> Unit
-                    message.hasRemotePingRequest() -> sendMessage(
-                        RemoteProto.RemoteMessage.newBuilder().setRemotePingResponse(
-                            RemoteProto.RemotePingResponse.newBuilder().setVal1(message.remotePingRequest.val1)
-                        ), quiet = true
-                    )
-                    message.hasRemoteStart() -> {
-                        readySignal?.complete(Unit)
-                    }
-                    message.hasRemoteImeBatchEdit() -> {
-                        imeCounter = message.remoteImeBatchEdit.imeCounter
-                        fieldCounter = message.remoteImeBatchEdit.fieldCounter
-                    }
-                    message.hasRemoteVoiceBegin() -> voiceSignal?.complete(message.remoteVoiceBegin.sessionId)
+                val incoming = AndroidTvRemoteWire.parse(raw)
+                incoming.configureFeatures?.let { requested ->
+                    val active = requested and Feature.ALL
+                    sendMessage(AndroidTvRemoteWire.configure(active))
                 }
+                incoming.pingValue?.let { sendMessage(AndroidTvRemoteWire.pingResponse(it), quiet = true) }
+                incoming.started?.let { if (it) readySignal?.complete(Unit) }
+                if (incoming.imeCounter != null && incoming.fieldCounter != null) {
+                    imeCounter = incoming.imeCounter
+                    fieldCounter = incoming.fieldCounter
+                }
+                incoming.voiceSessionId?.let { voiceSignal?.complete(it) }
             }
             if (stateFlow.value != ConnectionState.DISCONNECTED) stateFlow.value = ConnectionState.DISCONNECTED
+            readySignal?.completeExceptionally(RemoteException("Android TV закрыл соединение"))
         } catch (e: Throwable) {
             if (stateFlow.value != ConnectionState.DISCONNECTED) stateFlow.value = ConnectionState.FAILED
             readySignal?.completeExceptionally(e)
@@ -206,40 +154,14 @@ class AndroidTvRemoteV2(
     }
 
     private fun sendKey(key: TvKey, longPress: Boolean) {
-        val code = RemoteProto.RemoteKeyCode.forNumber(key.androidKeyCode)
-            ?: throw RemoteException("Клавиша не поддерживается: " + key)
-        sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteKeyInject(
-            RemoteProto.RemoteKeyInject.newBuilder()
-                .setKeyCode(code)
-                .setDirection(
-                    if (longPress) RemoteProto.RemoteDirection.START_LONG
-                    else RemoteProto.RemoteDirection.SHORT
-                )
-        ))
-        if (longPress) {
-            sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteKeyInject(
-                RemoteProto.RemoteKeyInject.newBuilder()
-                    .setKeyCode(code)
-                    .setDirection(RemoteProto.RemoteDirection.END_LONG)
-            ))
-        }
+        val direction = if (longPress) 1 else 3 // START_LONG / SHORT
+        AndroidTvRemoteWire.keyInject(key.androidKeyCode, direction).also { sendMessageBytes(it) }
+        if (longPress) sendMessageBytes(AndroidTvRemoteWire.keyInject(key.androidKeyCode, 2)) // END_LONG
     }
 
     private fun sendText(text: String) {
         if (text.isEmpty()) return
-        val caret = text.length - 1
-        sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteImeBatchEdit(
-            RemoteProto.RemoteImeBatchEdit.newBuilder()
-                .setImeCounter(imeCounter)
-                .setFieldCounter(fieldCounter)
-                .addEditInfo(RemoteProto.RemoteEditInfo.newBuilder()
-                    .setInsert(1)
-                    .setTextFieldStatus(
-                        RemoteProto.RemoteImeObject.newBuilder()
-                            .setStart(caret).setEnd(caret).setValue(text)
-                    )
-                )
-        ))
+        sendMessageBytes(AndroidTvRemoteWire.imeBatchEdit(imeCounter, fieldCounter, text))
     }
 
     suspend fun startVoice(): VoiceSession {
@@ -250,12 +172,13 @@ class AndroidTvRemoteV2(
         sendKey(TvKey.SEARCH, false)
         val sessionId = try {
             withTimeout(3000) { signal.await() }
+        } catch (e: Exception) {
+            voiceActive.set(false)
+            throw RemoteException("Android TV не открыл voice session", e)
         } finally {
             voiceSignal = null
         }
-        sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteVoiceBegin(
-            RemoteProto.RemoteVoiceBegin.newBuilder().setSessionId(sessionId)
-        ))
+        sendMessageBytes(AndroidTvRemoteWire.voiceBegin(sessionId))
         return object : VoiceSession {
             override suspend fun sendPcm(chunk: ByteArray) = withContext(Dispatchers.IO) {
                 var offset = 0
@@ -263,19 +186,13 @@ class AndroidTvRemoteV2(
                     val end = minOf(offset + 20 * 1024, chunk.size)
                     var part = chunk.copyOfRange(offset, end)
                     if (end == chunk.size && part.size < 8 * 1024) part = part.copyOf(8 * 1024)
-                    sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteVoicePayload(
-                        RemoteProto.RemoteVoicePayload.newBuilder()
-                            .setSessionId(sessionId).setSamples(ByteString.copyFrom(part))
-                    ), quiet = true)
+                    sendMessageBytes(AndroidTvRemoteWire.voicePayload(sessionId, part), quiet = true)
                     offset = end
                 }
             }
+
             override suspend fun finish() {
-                runCatching {
-                    sendMessage(RemoteProto.RemoteMessage.newBuilder().setRemoteVoiceEnd(
-                        RemoteProto.RemoteVoiceEnd.newBuilder().setSessionId(sessionId)
-                    ))
-                }
+                runCatching { sendMessageBytes(AndroidTvRemoteWire.voiceEnd(sessionId)) }
                 voiceActive.set(false)
             }
         }
@@ -285,10 +202,12 @@ class AndroidTvRemoteV2(
         if (stateFlow.value != ConnectionState.READY) throw RemoteException("Android TV не подключён")
     }
 
-    private fun sendMessage(message: RemoteProto.RemoteMessage.Builder, quiet: Boolean = false) {
+    private fun sendMessage(message: ByteArray, quiet: Boolean = false) = sendMessageBytes(message, quiet)
+
+    private fun sendMessageBytes(message: ByteArray, quiet: Boolean = false) {
         val task = writer ?: throw RemoteException("Сессия TV закрыта")
         task.execute {
-            runCatching { Framing.writeMessage(output ?: return@execute, message.build().toByteArray()) }
+            runCatching { Framing.writeMessage(output ?: return@execute, message) }
                 .onFailure { stateFlow.value = ConnectionState.FAILED }
         }
     }
@@ -302,7 +221,9 @@ class AndroidTvRemoteV2(
         socket = null
         output = null
         voiceActive.set(false)
+        voiceSignal?.cancel()
         voiceSignal = null
+        readySignal?.cancel()
         readySignal = null
         stateFlow.value = ConnectionState.DISCONNECTED
     }
@@ -315,5 +236,6 @@ class AndroidTvRemoteV2(
         const val POWER = 32
         const val VOLUME = 64
         const val APP_LINK = 512
+        const val ALL = PING or KEY or IME or VOICE or POWER or VOLUME or APP_LINK
     }
 }
