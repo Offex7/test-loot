@@ -168,29 +168,15 @@ m = replace_once(
     "Home signature"
 )
 
-m = replace_once(
-    m,
-    """                    Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = Color.White)) { append("Radio.TV ") }
-                        withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append(APP_VERSION) }
-                    },
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )""",
-    """                    Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = Color.White)) { append("Radio.TV ") }
-                        withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append(APP_VERSION) }
-                    },
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    modifier = Modifier.clickable { onCheckUpdate() }
-                )""",
-    "Home version tap"
-)
+home_text_marker = 'withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append(APP_VERSION) }'
+home_text_pos = m.find(home_text_marker)
+if home_text_pos < 0:
+    raise SystemExit("Home version text marker not found")
+home_max_marker = "maxLines = 1\n                )"
+home_max_pos = m.find(home_max_marker, home_text_pos)
+if home_max_pos < 0:
+    raise SystemExit("Home version maxLines marker not found")
+m = m[:home_max_pos] + "maxLines = 1,\n                    modifier = Modifier.clickable { onCheckUpdate() }\n                )" + m[home_max_pos + len(home_max_marker):]
 
 # Move update check banner directly below support card.
 start_marker = """        item {
