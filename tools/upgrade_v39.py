@@ -962,12 +962,7 @@ class TvWidgetProvider : AppWidgetProvider() {
 }
 '''
 write(ROOT / "src/main/java/com/offex7/streamhub/RadioWidgetProvider.kt", widget_provider)
-write(ROOT / "src/main/java/com/offex7/streamhub/TvWidgetProvider.kt", 'package com.offex7.streamhub
-
-// Marker file kept intentionally tiny; the provider implementation is generated with RadioWidgetProvider.kt.
-')
-
-# fix split provider files: keep each class in its own file for clean Android component lookup.
+# fix split provider files: keep each class in its own file for clean Android component lookup.: keep each class in its own file for clean Android component lookup.
 radio_provider = r'''package com.offex7.streamhub
 
 import android.app.PendingIntent
