@@ -831,7 +831,8 @@ private fun App(
                         )
                         IconButton(
                             onClick = {
-                                InteractionFeedback.click(appContext,hapticsEnabled,soundEnabled)
+                                InteractionFeedback.vibrate(appContext,hapticsEnabled)
+                                InteractionFeedback.beep(appContext,soundEnabled)
                                 notification = null
                             },
                             modifier = Modifier.size(40.dp)
@@ -1447,7 +1448,11 @@ private fun Radio(
                         IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);eqDialog=true}){Icon(Icons.Default.Equalizer,"Эквалайзер",tint=Red)}
                         IconButton(onClick={InteractionFeedback.vibrate(context,hapticsEnabled,42L,105);onQuickLock()}){Icon(Icons.Default.Lock,"Блокировка",tint=Red)}
                         Box {
-                            IconButton(onClick={InteractionFeedback.click(context,hapticsEnabled,soundEnabled);sleepMenu=!sleepMenu}) {
+                            IconButton(onClick={
+                                InteractionFeedback.vibrate(context,hapticsEnabled)
+                                InteractionFeedback.beep(context,soundEnabled)
+                                sleepMenu=!sleepMenu
+                            }) {
                                 Icon(Icons.Default.AccessTime,"Таймер сна",tint=Red)
                             }
                             androidx.compose.material3.DropdownMenu(
@@ -1462,7 +1467,8 @@ private fun Radio(
                                             SleepOptions.forEach{(minutes,label)->
                                                 val active=minutes==sleepMinutes&&sleepUntil>System.currentTimeMillis()
                                                 Card(onClick={
-                                                    InteractionFeedback.click(context,hapticsEnabled,soundEnabled)
+                                                    InteractionFeedback.vibrate(context,hapticsEnabled)
+                                                    InteractionFeedback.beep(context,soundEnabled)
                                                     if(active)onCancelSleep()else onSleep(minutes)
                                                     sleepMenu=false
                                                 },modifier=Modifier.size(68.dp),colors=CardDefaults.cardColors(containerColor=if(active)Red else PanelAlt),shape=CircleShape,border=BorderStroke(1.dp,if(active)Red else Gray)){
@@ -1998,7 +2004,11 @@ private fun TvPlayer(
                         IconButton(onClick = { zoom = 1f; zoomByChannel.remove(channel.key); showBars(); onResetZoom() }) {
                             Icon(Icons.Default.Refresh, "Сбросить зум", tint = Red, modifier = Modifier.size(26.dp))
                         }
-                        IconButton(onClick = { InteractionFeedback.click(context,hapticsEnabled,soundEnabled); showBars(); sleepMenu = !sleepMenu; sleepMenuToken++ }) {
+                        IconButton(onClick = {
+                            InteractionFeedback.vibrate(context,hapticsEnabled)
+                            InteractionFeedback.beep(context,soundEnabled)
+                            showBars(); sleepMenu = !sleepMenu; sleepMenuToken++
+                        }) {
                             Icon(Icons.Default.AccessTime, "Таймер сна", tint = Red, modifier = Modifier.size(26.dp))
                         }
                     }
@@ -2052,7 +2062,8 @@ private fun TvPlayer(
                                 val active = minutes == sleepMinutes && sleepUntil > System.currentTimeMillis()
                                 Card(
                                     onClick = {
-                                        InteractionFeedback.click(context,hapticsEnabled,soundEnabled)
+                                        InteractionFeedback.vibrate(context,hapticsEnabled)
+                                        InteractionFeedback.beep(context,soundEnabled)
                                         if (active) onCancelSleep() else onSleep(minutes)
                                         sleepMenu = false
                                     },
