@@ -3695,7 +3695,7 @@ private fun RemoteLogoImage(
     }
 }
 
-private fun localLogoName(name: String): String = when (name.uppercase(Locale.ROOT)) {
+internal fun localLogoName(name: String): String = when (name.uppercase(Locale.ROOT)) {
     "RECORD" -> "logo_record"
     "CHOCOLATE" -> "logo_chocolate"
     "ЭНЕРДЖИ" -> "logo_energy"

@@ -38,14 +38,30 @@ class RadioPlaybackService : MediaSessionService() {
     private var audioEffects: RadioAudioEffects? = null
 
     private fun stationArtworkBytes(stationName: String): ByteArray? {
-        val bitmap = if (stationName.trim().uppercase(Locale.ROOT) == "РАДИУС FM") {
+        val normalizedName = stationName.trim().uppercase(Locale.ROOT)
+        val bitmap = if (normalizedName == "РАДИУС FM") {
             BitmapFactory.decodeResource(resources, R.drawable.radius_fm_logo)
         } else {
-            RadioLogoAssets.bitmap(stationName) ?: RadioLogoAssetsV38.bitmap(applicationContext, stationName)
+            val drawableName = localLogoName(stationName)
+            val drawableId = if (drawableName != "logo_fallback") {
+                resources.getIdentifier(drawableName, "drawable", packageName).takeIf { it != 0 }
+            } else null
+            drawableId?.let { BitmapFactory.decodeResource(resources, it) }
+                ?: RadioLogoAssets.bitmap(stationName)
+                ?: RadioLogoAssetsV38.bitmap(applicationContext, stationName)
         } ?: return null
+        val artworkBitmap = if (bitmap.width > 256 || bitmap.height > 256) {
+            val scale = minOf(256f / bitmap.width, 256f / bitmap.height)
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * scale).toInt().coerceAtLeast(1),
+                (bitmap.height * scale).toInt().coerceAtLeast(1),
+                true
+            )
+        } else bitmap
         return runCatching {
             ByteArrayOutputStream().use { output ->
-                if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) output.toByteArray() else null
+                if (artworkBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) output.toByteArray() else null
             }
         }.getOrNull()
     }
