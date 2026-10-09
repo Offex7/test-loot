@@ -1,1 +1,3 @@
-<resources><string name="app_name">TV / Radio. Online</string></resources>
+<resources><string name="app_name">TV / Radio. Online</string>    <string name="widget_radio_label">Радио</string>
+    <string name="widget_tv_label">Телевизор</string>
+</resources>

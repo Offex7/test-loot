@@ -1,5 +1,10 @@
 package com.offex7.streamhub
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.ByteArrayOutputStream
+import java.util.Locale
+
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -32,6 +37,19 @@ class RadioPlaybackService : MediaSessionService() {
     private var retryCount = 0
     private var audioEffects: RadioAudioEffects? = null
 
+    private fun stationArtworkBytes(stationName: String): ByteArray? {
+        val bitmap = if (stationName.trim().uppercase(Locale.ROOT) == "РАДИУС FM") {
+            BitmapFactory.decodeResource(resources, R.drawable.radius_fm_logo)
+        } else {
+            RadioLogoAssets.bitmap(stationName) ?: RadioLogoAssetsV38.bitmap(applicationContext, stationName)
+        } ?: return null
+        return runCatching {
+            ByteArrayOutputStream().use { output ->
+                if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) output.toByteArray() else null
+            }
+        }.getOrNull()
+    }
+
     override fun onCreate() {
         super.onCreate()
         settingsStore = SettingsStore(applicationContext)
@@ -63,6 +81,7 @@ class RadioPlaybackService : MediaSessionService() {
                         .setTitle(station.name)
                         .setArtist("TV / Radio. Online")
                         .setArtworkUri(Uri.parse("android.resource://$packageName/${R.drawable.ic_app_icon}"))
+                        .setArtworkData(stationArtworkBytes(station.name), androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                         .build()
                 )
                 .build()

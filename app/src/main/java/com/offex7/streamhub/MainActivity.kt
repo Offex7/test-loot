@@ -217,22 +217,26 @@ private val Gray = Color(0xFF808080)
 
 private const val TELEGRAM = "https://t.me/TvRadioOnline/170311"
 private const val TELEGRAM_DONATION = "https://t.me/TvRadioOnline/170289"
-private const val RECOMMEND_MESSAGE = """🔥 Нашлось приложение с простым названием - Radio.TV, которым хочется поделиться.
-Сохрани ссылку — ещё пригодится!
+private const val RECOMMEND_MESSAGE = """🎬 Прямой телеэфир и радиовещание без рекламы и подписок? 
+Да, такое существует!
 
-• Это Телевизор и Радио в одном приложении. Без платной подписки, без встроенной рекламы и, как заявляет разработчик, проект навсегда останется бесплатным.
+Делюсь с тобой приложением RadioTV 🔴
 
-• Самое интересное, разработчик называет его «народным проектом». Цель которого создать максимально удобное приложение для просмотра Телевизора и прослушивания Радио, постоянно развивая приложение и добавляя новые возможности...
+• Визуально — лаконичный минимализм, тёмная тема с яркими 
+красными акцентами в интерфейсе. Всё сделано предельно просто: 
+открываешь, выбираешь нужную телетрансляцию или радиостанцию 
+и сразу смотришь или слушаешь. Никаких всплывающих рекламных 
+баннеров и навязчивых подписок...
 
-• Никаких рекламных баннеров посреди просмотра, навязчивых подписок и прочего цифрового спама. Просто открыл → выбрал → смотри или слушай. 😎
+• Это настоящий «народный проект», который создаётся энтузиастами 
+и навсегда останется бесплатным!
 
 📱 Работает на Android 12 и новее.
+👉 Переходи в официальную группу и скачивай: 
+https://t.me/TvRadioOnline/1
 
-👉 Вот ссылка на проект: https://t.me/TvRadioOnline/1
-
-• И сразу, чтобы без лишних вопросов: это не взлом меня, не пиратская рассылка и не спам. Я осознанно пересылаю это сообщение, потому что считаю проект интересным и хочу, чтобы о нём узнало больше людей.
-
-• Загляни хотя бы одним глазом. Возможно, потом скажешь спасибо за эту находку! 😉"""
+P.S. Сообщение пересылаю лично — это не взлом и не автоматическая 
+рассылка. Делюсь от себя, потому что проект реально крутой! 😉"""
 private const val WALLET = "TCo8GJ3F5WAAQLq1GTvi5BY3r5acBw6pbX"
 private const val RESTORE_WINDOW = 10 * 60 * 1000L
 private const val PIN_REAUTH_WINDOW = 5 * 60 * 1000L
@@ -508,12 +512,20 @@ private fun App(
         delay(250L)
         val powerManager = appContext.getSystemService(android.os.PowerManager::class.java)
         val activityManager = appContext.getSystemService(android.app.ActivityManager::class.java)
-        val batteryRestricted = runCatching {
-            powerManager?.isIgnoringBatteryOptimizations(appContext.packageName) == false
-        }.getOrDefault(false)
-        val backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
-            activityManager?.isBackgroundRestricted == true
-        if (batteryRestricted || backgroundRestricted) {
+        val ignoringBatteryOptimizations = runCatching {
+            powerManager?.isIgnoringBatteryOptimizations(appContext.packageName)
+        }.getOrNull()
+        val backgroundRestricted = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) activityManager?.isBackgroundRestricted else null
+        }.getOrNull()
+        // A confirmed battery-optimization exemption always suppresses the warning.
+        // Unknown status is not treated as restricted unless ActivityManager confirms it.
+        val shouldWarnAboutBackgroundLimits = when (ignoringBatteryOptimizations) {
+            true -> false
+            false -> true
+            null -> backgroundRestricted == true
+        }
+        if (shouldWarnAboutBackgroundLimits) {
             notify("Фоновая работа Radio.TV может быть ограничена ОС. Добавьте приложение в исключения энергосбережения.", 3000L)
         }
     }
@@ -667,7 +679,7 @@ private fun App(
                     onResetStats = { target ->
                         scope.launch {
                             runCatching { store.resetUsage(target) }
-                                .onSuccess { notify(if (target == Section.TV) "Счётчик ТВ сброшен" else "Счётчик Радио сброшен") }
+                                .onSuccess { notify(if (target == Section.TV) "Счётчик Телевизора сброшен" else "Счётчик Радио сброшен") }
                                 .onFailure { notify("Не удалось сбросить счётчик") }
                         }
                     },
@@ -2138,11 +2150,24 @@ private fun Settings(
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
     val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
     val autoStart by store.autoStartFlow().collectAsState(true)
+    val logShareTransition = rememberInfiniteTransition(label = "log-share-pulse")
+    val logSharePulse by logShareTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.10f,
+        animationSpec = infiniteRepeatable(tween(750), repeatMode = RepeatMode.Reverse),
+        label = "log-share-pulse-scale"
+    )
+    val logShareScale = if (energySaving) 1f else logSharePulse
     var pinEnabled by remember { mutableStateOf(false) }
     var pinDialog by remember { mutableStateOf(false) }
     var pinDisableDialog by remember { mutableStateOf(false) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
     val pinStore = remember(settingsContext) { PinSecurityStore(settingsContext) }
+
+    fun toggleFeedback() {
+        InteractionFeedback.vibrate(settingsContext, hapticsEnabled, 55L, 180)
+        InteractionFeedback.beep(settingsContext, soundEnabled)
+    }
 
     LaunchedEffect(Unit) { pinEnabled = pinStore.isEnabled() }
 
@@ -2212,7 +2237,7 @@ private fun Settings(
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "ПРОВЕРИТЬ ОБНОВЛЕНИЕ",
+                        "ОБНОВИТЬ ПРИЛОЖЕНИЕ",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
@@ -2274,25 +2299,6 @@ private fun Settings(
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("КАРТИНКА В КАРТИНКЕ", fontSize = 16.sp)
-                    }
-                    Switch(
-                        checked = pip,
-                        onCheckedChange = onPip,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Red,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Gray
-                        )
-                    )
-                }
-            }
-        }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -2302,6 +2308,7 @@ private fun Settings(
                         Switch(
                             checked = energySaving,
                             onCheckedChange = { enabled ->
+                                toggleFeedback()
                                 scope.launch { store.setEnergySavingMode(if (enabled) "ON" else "OFF") }
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
@@ -2328,11 +2335,12 @@ private fun Settings(
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("ВИБРАЦИОННЫЙ ОТКЛИК", fontSize = 16.sp)
+                        Text("АВТОЗАПУСК", fontSize = 16.sp)
+                        Text("Экран не будет блокироваться, пока приложение активно", fontSize = 11.sp, color = Gray)
                     }
                     Switch(
-                        checked = hapticsEnabled,
-                        onCheckedChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
+                        checked = autoStart,
+                        onCheckedChange = { enabled -> toggleFeedback(); scope.launch { store.setAutoStartEnabled(enabled) } },
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
                     )
                 }
@@ -2342,12 +2350,11 @@ private fun Settings(
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("АВТОЗАПУСК", fontSize = 16.sp)
-                        Text("Запуск после включения. Экран не будет блокироваться, пока приложение активно",fontSize=11.sp,color=Gray)
+                        Text("ВИБРАЦИОННЫЙ ОТКЛИК", fontSize = 16.sp)
                     }
                     Switch(
-                        checked = autoStart,
-                        onCheckedChange = { enabled -> scope.launch { store.setAutoStartEnabled(enabled) } },
+                        checked = hapticsEnabled,
+                        onCheckedChange = { enabled -> toggleFeedback(); scope.launch { store.setHapticsEnabled(enabled) } },
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray)
                     )
                 }
@@ -2357,7 +2364,26 @@ private fun Settings(
             Card(colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)){
                 Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
                     Column(Modifier.weight(1f)){Text("ЗВУКОВОЙ ОТКЛИК",fontSize=16.sp)}
-                    Switch(checked=soundEnabled,onCheckedChange={enabled->scope.launch{store.setSoundFeedbackEnabled(enabled)}},colors=SwitchDefaults.colors(checkedThumbColor=Color.White,checkedTrackColor=Red,uncheckedThumbColor=Color.White,uncheckedTrackColor=Gray))
+                    Switch(checked = soundEnabled, onCheckedChange = { enabled -> toggleFeedback(); scope.launch { store.setSoundFeedbackEnabled(enabled) } }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Red, uncheckedThumbColor = Color.White, uncheckedTrackColor = Gray))
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("КАРТИНКА В КАРТИНКЕ", fontSize = 16.sp)
+                    }
+                    Switch(
+                        checked = pip,
+                        onCheckedChange = { enabled -> toggleFeedback(); onPip(enabled) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Red,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Gray
+                        )
+                    )
                 }
             }
         }
@@ -2368,6 +2394,7 @@ private fun Settings(
                     Switch(
                         checked = pinEnabled,
                         onCheckedChange = { enabled ->
+                            toggleFeedback()
                             if (enabled) pinDialog = true else pinDisableDialog = true
                         },
                         colors = SwitchDefaults.colors(
@@ -2398,7 +2425,7 @@ private fun Settings(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("ЭКСПОРТ ЛОГОВ", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.Share, "Показать логи", tint = Red)
+                    Icon(Icons.Default.Share, "Показать логи", tint = Red, modifier = Modifier.graphicsLayer(scaleX = logShareScale, scaleY = logShareScale))
                 }
             }
         }
@@ -2486,6 +2513,7 @@ private fun Settings(
                         val clipboard = settingsContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV logs", logText))
                         notify("Скопировано", 3000L)
+                        shareText(settingsContext, logText, "Поделиться логами Radio.TV")
                     }
                 ) { Text("СКОПИРОВАТЬ", color = Red) }
             },
@@ -2854,15 +2882,6 @@ private fun PinGate(
         ) {
             Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(46.dp))
             Spacer(Modifier.height(10.dp))
-            Text(
-                "ОТСКАНИРУЙТЕ ОТПЕЧАТОК ПАЛЬЦА",
-                color = Color.White,
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
             Spacer(Modifier.height(14.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -3492,8 +3511,12 @@ private fun LogoImage(
     }
     val localRadioImage = remember(item.name, isRadio) {
         if (!isRadio) null
-        else RadioLogoAssets.image(item.name)
-            ?: RadioLogoAssetsV38.image(context, item.name)
+        else if (item.name.equals("РАДИУС FM", ignoreCase = true)) {
+            BitmapFactory.decodeResource(context.resources, R.drawable.radius_fm_logo)?.asImageBitmap()
+        } else {
+            RadioLogoAssets.image(item.name)
+                ?: RadioLogoAssetsV38.image(context, item.name)
+        }
     }
 
     val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
@@ -3631,7 +3654,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/3.9")
+                            .header("User-Agent", "Radio.TV/4.0")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

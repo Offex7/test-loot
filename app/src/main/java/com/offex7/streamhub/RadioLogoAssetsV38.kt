@@ -25,12 +25,12 @@ object RadioLogoAssetsV38 {
     )
 
     private val cache = HashMap<String, ImageBitmap>()
+    private val bitmapCache = HashMap<String, android.graphics.Bitmap>()
 
-    fun image(context: Context, stationName: String): ImageBitmap? {
+    fun bitmap(context: Context, stationName: String): android.graphics.Bitmap? {
         val key = stationName.trim().uppercase(Locale.ROOT)
-        cache[key]?.let { return it }
+        bitmapCache[key]?.let { return it }
         val filename = filenames[key] ?: return null
-
         val bitmap = runCatching {
             var result: android.graphics.Bitmap? = null
             context.assets.open(ZIP).use { input ->
@@ -46,8 +46,14 @@ object RadioLogoAssetsV38 {
             }
             result
         }.getOrNull() ?: return null
+        bitmapCache[key] = bitmap
+        return bitmap
+    }
 
-        val image = bitmap.asImageBitmap()
+    fun image(context: Context, stationName: String): ImageBitmap? {
+        val key = stationName.trim().uppercase(Locale.ROOT)
+        cache[key]?.let { return it }
+        val image = bitmap(context, key)?.asImageBitmap() ?: return null
         cache[key] = image
         return image
     }

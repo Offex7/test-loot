@@ -130,7 +130,7 @@ fun ScrollTopButtonV37(
                 .graphicsLayer(scaleX = pulse, scaleY = pulse)
                 .background(Color(0xFFE53935), CircleShape)
         ) {
-            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(31.dp))
+            Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(36.dp))
         }
     }
 }

@@ -4,5 +4,7 @@
     android:minHeight="72dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_tv"
+    android:label="@string/widget_tv_label"
+    android:previewImage="@drawable/start_tv_final"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

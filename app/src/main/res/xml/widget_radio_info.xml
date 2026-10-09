@@ -4,5 +4,7 @@
     android:minHeight="72dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_radio"
+    android:label="@string/widget_radio_label"
+    android:previewImage="@drawable/start_radio_v2"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />
