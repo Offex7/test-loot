@@ -205,7 +205,7 @@ class DlnaCastController(private val context: Context) {
         connection.setRequestProperty("SOAPAction", "\"$serviceType#$action\"")
         val bytes = body.toByteArray(Charsets.UTF_8)
         connection.setFixedLengthStreamingMode(bytes.size)
-        try {
+        return try {
             connection.outputStream.use { it.write(bytes) }
             val code = connection.responseCode
             if (code !in 200..299) {
