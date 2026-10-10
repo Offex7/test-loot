@@ -50,7 +50,9 @@ class GyroAirMouseController(
             stopWith(AirMouseStatus.Off)
             return "Аэромышь выключена."
         }
-        if (gyroscope == null || sensorManager == null) {
+        val manager = sensorManager
+        val sensor = gyroscope
+        if (sensor == null || manager == null) {
             val reason = "В телефоне нет доступного гироскопа."
             statusMutable.value = AirMouseStatus.Unavailable(reason)
             return reason
@@ -62,7 +64,7 @@ class GyroAirMouseController(
         }
 
         val registered = runCatching {
-            sensorManager.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_GAME)
+            manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
         }.getOrDefault(false)
         if (!registered) {
             val reason = "Не удалось запустить гироскопический датчик."
