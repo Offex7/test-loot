@@ -157,9 +157,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         onDispose { localMediaServer.close() }
     }
 
-    val mediaPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
+    val handlePickedMedia: (Uri?) -> Unit = { uri ->
         if (uri == null) {
             castMessage = "Выбор файла отменён."
         } else {
@@ -193,6 +191,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             }
         }
     }
+
+    // Photo/video and arbitrary files use ACTION_OPEN_DOCUMENT; audio uses ACTION_GET_CONTENT.
+    val mediaPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> handlePickedMedia(uri) }
+    val audioPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri -> handlePickedMedia(uri) }
     val codeRequested = status is RemoteStatus.AwaitingCode
     val wifiConnected = status is RemoteStatus.Connected
     val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
@@ -708,7 +714,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     item {
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                             Button(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, modifier = Modifier.weight(1f)) { Text("Фото / видео") }
-                                            Button(onClick = { mediaPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.weight(1f)) { Text("Музыка / аудио") }
+                                            Button(onClick = { audioPicker.launch("audio/*") }, modifier = Modifier.weight(1f)) { Text("Музыка / аудио") }
                                         }
                                         OutlinedButton(onClick = { mediaPicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("ВЫБРАТЬ ЛЮБОЙ ФАЙЛ") }
                                     }
