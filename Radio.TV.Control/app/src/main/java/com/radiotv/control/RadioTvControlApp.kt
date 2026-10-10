@@ -2,6 +2,7 @@ package com.radiotv.control
 
 import android.app.Application
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.OtherTvRemoteController
 import com.radiotv.control.core.AndroidTvVoiceInputController
 import com.radiotv.control.core.GyroAirMouseController
 import com.radiotv.control.core.BluetoothHidController
@@ -19,6 +20,7 @@ class RadioTvControlApp : Application() {
                 single { BluetoothHidController(androidContext()) }
                 single { GyroAirMouseController(androidContext(), get()) }
                 single { AndroidTvVoiceInputController(androidContext(), get()) }
+                single { OtherTvRemoteController(androidContext()) }
             })
         }
     }

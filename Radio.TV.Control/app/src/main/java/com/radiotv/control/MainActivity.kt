@@ -72,6 +72,8 @@ import com.radiotv.control.core.BluetoothHidStatus
 import com.radiotv.control.core.DiscoveredRemoteDevice
 import com.radiotv.control.core.RemoteDeviceType
 import com.radiotv.control.core.RemoteStatus
+import com.radiotv.control.core.OtherTvRemoteController
+import com.radiotv.control.core.OtherTvRemoteStatus
 import com.radiotv.control.ui.TouchpadSurface
 import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
@@ -84,11 +86,12 @@ class MainActivity : ComponentActivity() {
     private val bluetoothHid: BluetoothHidController by inject()
     private val airMouse: GyroAirMouseController by inject()
     private val voiceInput: AndroidTvVoiceInputController by inject()
+    private val otherTvRemote: OtherTvRemoteController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput) }
+        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote) }
     }
 
     override fun onDestroy() {
@@ -97,19 +100,21 @@ class MainActivity : ComponentActivity() {
             bluetoothHid.close()
             airMouse.close()
             voiceInput.close()
+            otherTvRemote.close()
         }
         super.onDestroy()
     }
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
     val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
+    val otherRemoteStatus by otherTvRemote.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
@@ -122,7 +127,9 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var showKeyboard by rememberSaveable { mutableStateOf(false) }
     var keyboardText by rememberSaveable { mutableStateOf("") }
     val codeRequested = status is RemoteStatus.AwaitingCode
-    val connected = status is RemoteStatus.Connected
+    val wifiConnected = status is RemoteStatus.Connected
+    val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
+    val connected = wifiConnected || otherConnected
     val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
 
     val startPairing: (String) -> Unit = { target ->
@@ -246,13 +253,29 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     fun chooseDevice(device: DiscoveredRemoteDevice) {
         when (device.type) {
             RemoteDeviceType.ANDROID_TV -> startPairing(device.ip)
+            RemoteDeviceType.SAMSUNG, RemoteDeviceType.LG, RemoteDeviceType.ROKU -> {
+                scope.launch {
+                    host = device.ip
+                    statusMessage = "Подключаемся к " + device.type.label + "…"
+                    runCatching { otherTvRemote.connect(device) }
+                        .onSuccess {
+                            statusMessage = when (val current = otherTvRemote.status.value) {
+                                is OtherTvRemoteStatus.Pairing -> current.message
+                                is OtherTvRemoteStatus.Connected -> "Подключено: " + current.type.label + " · " + current.ip
+                                is OtherTvRemoteStatus.Error -> current.message
+                                else -> "Соединение инициализировано."
+                            }
+                        }
+                        .onFailure { statusMessage = it.message ?: "Не удалось подключить телевизор." }
+                }
+            }
             RemoteDeviceType.CHROMECAST -> {
                 host = device.ip
-                statusMessage = "Найден Google Cast по адресу " + device.ip + ". Управление Cast будет добавлено отдельным адаптером."
+                statusMessage = "Найден Google Cast по адресу " + device.ip + ". Управляющий Cast-адаптер добавляется отдельно."
             }
             else -> {
                 host = device.ip
-                statusMessage = "Определено: " + device.type.label + " (" + device.ip + "). Протокол этого устройства пока не подключён."
+                statusMessage = "Определено: " + device.type.label + " (" + device.ip + "). Для этого типа нужен отдельный протокол."
             }
         }
     }
@@ -398,6 +421,13 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(statusMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (otherRemoteStatus !is OtherTvRemoteStatus.Disconnected) {
+                                Text(
+                                    otherRemoteStatus.asUserLabel(),
+                                    color = if (otherConnected) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                         item {
                             if (codeRequested) {
@@ -431,7 +461,12 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 onKey = { key ->
                                     scope.launch {
                                         runCatching {
-                                            if (connected) remote.sendKey(key) else bluetoothHid.sendRemoteKey(key)
+                                            when {
+                                                wifiConnected -> remote.sendKey(key)
+                                                otherConnected -> otherTvRemote.sendKey(key)
+                                                hidConnected -> bluetoothHid.sendRemoteKey(key)
+                                                else -> error("Сначала подключитесь к телевизору.")
+                                            }
                                         }.onFailure { statusMessage = it.message ?: "Команда не отправлена." }
                                     }
                                 },
@@ -445,7 +480,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                         .onFailure { statusMessage = it.message ?: "Не удалось остановить запись." }
                                                 }
                                                 "Останавливаем голосовой ввод…"
-                                            } else if (!connected) {
+                                            } else if (!wifiConnected) {
                                                 "Для голосового ввода сначала подключитесь к Android TV по Wi-Fi."
                                             } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                                 scope.launch {
@@ -495,7 +530,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             scope.launch {
                                                 runCatching {
                                                     when {
-                                                        connected -> remote.sendText(keyboardText)
+                                                        wifiConnected -> remote.sendText(keyboardText)
+                                                        otherConnected -> otherTvRemote.sendText(keyboardText)
                                                         hidConnected -> bluetoothHid.sendText(keyboardText)
                                                         else -> error("Сначала подключитесь по Wi-Fi или Bluetooth HID.")
                                                     }
@@ -583,4 +619,12 @@ private fun VoiceInputStatus.asUserLabel(): String = when (this) {
     VoiceInputStatus.Starting -> "Запускается голосовая сессия Android TV Remote v2…"
     VoiceInputStatus.Recording -> "Идёт запись: PCM 16-bit · mono · 8 kHz."
     is VoiceInputStatus.Error -> "Голосовой ввод: " + message
+}
+
+private fun OtherTvRemoteStatus.asUserLabel(): String = when (this) {
+    OtherTvRemoteStatus.Disconnected -> "Внешний протокол отключён."
+    is OtherTvRemoteStatus.Connecting -> "Подключение: " + type.label + " · " + ip
+    is OtherTvRemoteStatus.Pairing -> "Ожидается сопряжение: " + message
+    is OtherTvRemoteStatus.Connected -> "Подключено: " + type.label + " · " + ip
+    is OtherTvRemoteStatus.Error -> "Ошибка подключения: " + message
 }

@@ -14,3 +14,4 @@
 -dontwarn org.bouncycastle.**
 -keep class com.radiotv.control.core.GyroAirMouseController { *; }
 -keep class com.radiotv.control.core.AndroidTvVoiceInputController { *; }
+-keep class com.radiotv.control.core.OtherTvRemoteController { *; }

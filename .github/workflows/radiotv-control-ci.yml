@@ -76,6 +76,7 @@ jobs:
           grep -F 'BluetoothHidController' dex-strings.txt
           grep -F 'GyroAirMouseController' dex-strings.txt
           grep -F 'AndroidTvVoiceInputController' dex-strings.txt
+          grep -F 'OtherTvRemoteController' dex-strings.txt
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
