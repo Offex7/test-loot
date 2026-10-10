@@ -153,51 +153,58 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var castMedia by remember { mutableStateOf<CastMedia?>(null) }
     var castPlaybackStatus by rememberSaveable { mutableStateOf("Остановлено") }
     var pendingLocalNetworkAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingPickedUri by remember { mutableStateOf<Uri?>(null) }
     val localMediaServer = remember(context) { LocalMediaHttpServer(context) }
     DisposableEffect(localMediaServer) {
         onDispose { localMediaServer.close() }
     }
 
+    // Picker callbacks only stage the content URI. The local-network permission is requested
+    // afterwards, because merely opening the system file picker does not need LAN access.
     val handlePickedMedia: (Uri?) -> Unit = { uri ->
         if (uri == null) {
             castMessage = "Выбор файла отменён."
         } else {
-            scope.launch {
-                castMessage = "Готовим файл для передачи на телевизор…"
+            pendingPickedUri = uri
+        }
+    }
+
+    val processPickedMedia: (Uri) -> Unit = { uri ->
+        scope.launch {
+            castMessage = "Готовим файл для передачи на телевизор…"
+            runCatching {
                 runCatching {
-                    runCatching {
-                        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    val media = withContext(Dispatchers.IO) { localMediaServer.start(uri) }
-                    val extension = media.title.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
-                    val mimeType = media.mimeType.substringBefore(';').lowercase(java.util.Locale.ROOT)
-                    val isPlaylist = extension in setOf("m3u8", "mpd") ||
-                        mimeType.contains("mpegurl") || mimeType.contains("dash+xml")
-                    if (isPlaylist) {
-                        withContext(Dispatchers.IO) { localMediaServer.close() }
-                        error("Плейлисты HLS/DASH и DRM-защищённый контент не поддерживаются. Выберите локальный незащищённый файл.")
-                    }
-                    media
-                }.onSuccess { media ->
-                    castMedia = media
-                    castMessage = "Подготовлено: ${media.title}. Выберите DLNA-приёмник."
-                    val renderer = selectedCastRenderer
-                    if (renderer != null) {
-                        runCatching { dlnaCast.play(renderer, media) }
-                            .onSuccess {
-                                castPlaybackStatus = "Воспроизведение"
-                                castMessage = "Передаём «${media.title}» на ${renderer.friendlyName ?: renderer.server ?: renderer.location}."
-                            }
-                            .onFailure {
-                                castPlaybackStatus = "Ошибка"
-                                castMessage = it.message ?: "Не удалось начать DLNA-воспроизведение."
-                            }
-                    }
-                    showCast = true
-                }.onFailure {
-                    castPlaybackStatus = "Ошибка"
-                    castMessage = it.message ?: "Не удалось подготовить выбранный файл."
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
+                val media = withContext(Dispatchers.IO) { localMediaServer.start(uri) }
+                val extension = media.title.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+                val mimeType = media.mimeType.substringBefore(';').lowercase(java.util.Locale.ROOT)
+                val isPlaylist = extension in setOf("m3u8", "mpd") ||
+                    mimeType.contains("mpegurl") || mimeType.contains("dash+xml")
+                if (isPlaylist) {
+                    withContext(Dispatchers.IO) { localMediaServer.close() }
+                    error("Плейлисты HLS/DASH и DRM-защищённый контент не поддерживаются. Выберите локальный незащищённый файл.")
+                }
+                media
+            }.onSuccess { media ->
+                castMedia = media
+                castMessage = "Подготовлено: ${media.title}. Выберите DLNA-приёмник."
+                val renderer = selectedCastRenderer
+                if (renderer != null) {
+                    runCatching { dlnaCast.play(renderer, media) }
+                        .onSuccess {
+                            castPlaybackStatus = "Воспроизведение"
+                            castMessage = "Передаём «${media.title}» на ${renderer.friendlyName ?: renderer.server ?: renderer.location}."
+                        }
+                        .onFailure {
+                            castPlaybackStatus = "Ошибка"
+                            castMessage = it.message ?: "Не удалось начать DLNA-воспроизведение."
+                        }
+                }
+                showCast = true
+            }.onFailure {
+                castPlaybackStatus = "Ошибка"
+                castMessage = it.message ?: "Не удалось подготовить выбранный файл."
             }
         }
     }
@@ -271,7 +278,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             (pendingAction ?: runDiscovery).invoke()
         } else {
             statusMessage = "Для поиска и трансляции в локальной сети разрешите доступ или введите IP вручную."
-            if (pendingAction != null) castMessage = "Для DLNA-трансляции разрешите доступ к локальной сети."
+            if (pendingAction != null) {
+                castMessage = "Для DLNA-трансляции разрешите доступ к локальной сети."
+                pendingPickedUri = null
+            }
         }
     }
 
@@ -291,11 +301,20 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     }
 
     val launchMediaPicker: (Array<String>) -> Unit = { mimeTypes ->
-        runWithLocalNetworkPermission { mediaPicker.launch(mimeTypes) }
+        mediaPicker.launch(mimeTypes)
     }
 
     val launchAudioPicker: () -> Unit = {
-        runWithLocalNetworkPermission { audioPicker.launch("audio/*") }
+        audioPicker.launch("audio/*")
+    }
+
+    androidx.compose.runtime.LaunchedEffect(pendingPickedUri) {
+        val uri = pendingPickedUri ?: return@LaunchedEffect
+        runWithLocalNetworkPermission {
+            pendingPickedUri = null
+            discoverCastDevices()
+            processPickedMedia(uri)
+        }
     }
 
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
@@ -489,11 +508,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             RemoteFeatureAction.CAST -> {
                 selectedTab = RadioTvTab.DUPLICATION
                 showCast = true
-                runWithLocalNetworkPermission {
-                    discoverCastDevices()
-                    mediaPicker.launch(arrayOf("image/*", "video/*"))
-                }
-                "Открываем системный выбор фото или видео. Для аудио и произвольных файлов доступны отдельные варианты на вкладке «Дублирование». DRM/HLS/DASH не поддерживается."
+                mediaPicker.launch(arrayOf("image/*", "video/*"))
+                "Открываем системный выбор фото или видео. Разрешение локальной сети будет запрошено после выбора файла; аудио и другие файлы доступны на вкладке «Дублирование». DRM/HLS/DASH не поддерживается."
             }
         }
         statusMessage = feedbackMessage
