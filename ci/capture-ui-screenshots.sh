@@ -43,6 +43,7 @@ adb exec-out screencap -p > "$OUT/remote.png"
 
 # Tap inside the vertical center of the bottom navigation, then verify the
 # Compose hierarchy is actually on the device-control screen before capture.
+echo "Verifying device-control tab before capturing device-search.png."
 control_screen=0
 for y in 1145 1162 1175; do
   adb shell input tap 202 "$y"
@@ -59,6 +60,7 @@ if [ "$control_screen" -ne 1 ]; then
   cat "$OUT/device-search-ui.xml" >&2 || true
   exit 1
 fi
+echo "Device-control tab verified."
 adb exec-out screencap -p > "$OUT/device-search.png"
 
 # Capture the bottom bar while Settings is selected; this also verifies tab switching.
@@ -77,6 +79,7 @@ if [ "$settings_screen" -ne 1 ]; then
   echo "Bottom navigation did not open Settings for screenshot." >&2
   exit 1
 fi
+echo "Settings tab verified."
 adb exec-out screencap -p > "$OUT/bottom-navigation.png"
 
 adb shell settings put system accelerometer_rotation 0
