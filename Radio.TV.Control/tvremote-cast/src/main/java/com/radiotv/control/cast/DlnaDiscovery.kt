@@ -105,18 +105,25 @@ class DlnaCastController(private val context: Context) {
         soap(controlUrl, renderer.serviceType ?: AVTRANSPORT_SERVICE, "Pause", "<InstanceID>0</InstanceID>")
     }
 
-    /** DLNA Seek may be rejected by renderers that do not support REL_TIME. */
+    /** Relative seek uses GetPositionInfo; unsupported renderers return a user-visible error. */
     suspend fun seek(renderer: DlnaDevice, offsetSeconds: Long) = withContext(Dispatchers.IO) {
         require(offsetSeconds != 0L) { "Смещение для перемотки не задано." }
-        val targetSeconds = offsetSeconds.coerceAtLeast(0)
+        val controlUrl = checkNotNull(renderer.controlUrl) { "У устройства нет AVTransport control URL." }
+        val service = renderer.serviceType ?: AVTRANSPORT_SERVICE
+        val positionXml = soap(controlUrl, service, "GetPositionInfo", "<InstanceID>0</InstanceID>")
+        val timeText = Regex("<RelTime>([^<]+)</RelTime>").find(positionXml)?.groupValues?.get(1)
+            ?: error("Приёмник не сообщил текущую позицию для перемотки.")
+        val fields = timeText.split(":")
+        check(fields.size == 3) { "Приёмник вернул некорректную позицию: $timeText" }
+        val currentSeconds = fields[0].toLong() * 3600 + fields[1].toLong() * 60 + fields[2].toLong()
+        val targetSeconds = (currentSeconds + offsetSeconds).coerceAtLeast(0L)
         val hours = targetSeconds / 3600
         val minutes = (targetSeconds % 3600) / 60
         val seconds = targetSeconds % 60
         val target = String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds)
-        val controlUrl = checkNotNull(renderer.controlUrl) { "У устройства нет AVTransport control URL." }
         soap(
             controlUrl,
-            renderer.serviceType ?: AVTRANSPORT_SERVICE,
+            service,
             "Seek",
             "<InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>$target</Target>"
         )
@@ -185,7 +192,7 @@ class DlnaCastController(private val context: Context) {
         )
     }
 
-    private fun soap(controlUrl: String, serviceType: String, action: String, innerXml: String) {
+    private fun soap(controlUrl: String, serviceType: String, action: String, innerXml: String): String {
         val body = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body><u:$action xmlns:u="$serviceType">$innerXml</u:$action></s:Body></s:Envelope>"""
@@ -205,7 +212,7 @@ class DlnaCastController(private val context: Context) {
                 val detail = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 error("DLNA $action завершился с HTTP $code. ${detail.take(300)}")
             }
-            connection.inputStream?.close()
+            connection.inputStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
         } finally {
             connection.disconnect()
         }

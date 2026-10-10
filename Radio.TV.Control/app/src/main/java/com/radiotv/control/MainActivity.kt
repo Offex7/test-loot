@@ -15,6 +15,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -534,7 +535,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Text(deviceIcon(device.type), fontSize = 22.sp)
+                                                Text(deviceIcon(device.type), fontSize = 11.sp, color = RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
                                                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                                     Text(device.name, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                                     Text(listOfNotNull(device.brand, device.model, device.type.label).distinct().joinToString(" · "),
@@ -955,14 +956,14 @@ private fun sendRemoteKey(
 }
 
 private fun deviceIcon(type: RemoteDeviceType): String = when (type) {
-    RemoteDeviceType.ANDROID_TV -> "📺"
-    RemoteDeviceType.CHROMECAST -> "📡"
-    RemoteDeviceType.SAMSUNG -> "📺"
-    RemoteDeviceType.LG -> "🖥"
-    RemoteDeviceType.ROKU -> "📺"
-    RemoteDeviceType.DLNA -> "🔊"
-    RemoteDeviceType.AIRPLAY -> "🍎"
-    RemoteDeviceType.UNKNOWN -> "🔎"
+    RemoteDeviceType.ANDROID_TV -> "TV"
+    RemoteDeviceType.CHROMECAST -> "CAST"
+    RemoteDeviceType.SAMSUNG -> "SAM"
+    RemoteDeviceType.LG -> "LG"
+    RemoteDeviceType.ROKU -> "ROKU"
+    RemoteDeviceType.DLNA -> "DLNA"
+    RemoteDeviceType.AIRPLAY -> "AIR"
+    RemoteDeviceType.UNKNOWN -> "?"
 }
 
 private fun AirMouseStatus.asUserLabel(): String = when (this) {
