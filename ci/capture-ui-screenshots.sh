@@ -13,8 +13,8 @@ fi
 
 mkdir -p "$OUT"
 
-adb shell wm size 1080x2400
-adb shell wm density 440
+adb shell wm size 540x1200
+adb shell wm density 220
 adb install -r "$APK"
 adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK > "$OUT/permission-grant.txt" 2>&1 || true
 adb logcat -c
@@ -26,18 +26,18 @@ adb shell pidof com.radiotv.control > "$OUT/pid.txt" 2>&1 || true
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 || true
 adb exec-out screencap -p > "$OUT/remote.png"
 
-adb shell input tap 405 2230
+adb shell input tap 202 1115
 sleep 3
 adb exec-out screencap -p > "$OUT/device-search.png"
 
-adb shell input tap 945 2230
+adb shell input tap 472 1115
 sleep 2
 adb exec-out screencap -p > "$OUT/bottom-navigation.png"
 
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
-adb shell wm size 1280x800
-adb shell wm density 200
+adb shell wm size 640x400
+adb shell wm density 100
 adb shell am force-stop com.radiotv.control
 adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/landscape-start.txt" 2>&1 || true
 sleep 5
