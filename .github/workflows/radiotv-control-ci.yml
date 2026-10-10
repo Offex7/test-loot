@@ -65,6 +65,7 @@ jobs:
           grep -Eq 'android:usesCleartextTraffic([^=]*)="true"' manifest.xml || { echo "Manifest cleartext check failed"; cat manifest.xml; exit 1; }
           grep -F 'android.permission.ACCESS_LOCAL_NETWORK' manifest.xml || { echo "Manifest local-network permission check failed"; cat manifest.xml; exit 1; }
           grep -F 'android.permission.BLUETOOTH_ADVERTISE' manifest.xml || { echo "Manifest Bluetooth advertise permission check failed"; cat manifest.xml; exit 1; }
+          grep -F 'android.permission.RECORD_AUDIO' manifest.xml || { echo "Manifest microphone permission check failed"; cat manifest.xml; exit 1; }
           mkdir -p artifact-out
           cp "$APK" artifact-out/Radio.TV.Control-debug.apk
           unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$' | while read -r dex; do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
@@ -74,6 +75,7 @@ jobs:
           grep -F 'LocalNetworkDeviceDiscovery' dex-strings.txt
           grep -F 'BluetoothHidController' dex-strings.txt
           grep -F 'GyroAirMouseController' dex-strings.txt
+          grep -F 'AndroidTvVoiceInputController' dex-strings.txt
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt

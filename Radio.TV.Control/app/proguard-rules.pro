@@ -13,3 +13,4 @@
 -keepattributes Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 -dontwarn org.bouncycastle.**
 -keep class com.radiotv.control.core.GyroAirMouseController { *; }
+-keep class com.radiotv.control.core.AndroidTvVoiceInputController { *; }

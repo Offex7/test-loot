@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radiotv.control.cast.LocalNetworkDeviceDiscovery
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.AndroidTvVoiceInputController
+import com.radiotv.control.core.VoiceInputStatus
 import com.radiotv.control.core.AirMouseStatus
 import com.radiotv.control.core.GyroAirMouseController
 import com.radiotv.control.core.BluetoothHidController
@@ -81,11 +83,12 @@ class MainActivity : ComponentActivity() {
     private val remote: AndroidTvRemoteV2Transport by inject()
     private val bluetoothHid: BluetoothHidController by inject()
     private val airMouse: GyroAirMouseController by inject()
+    private val voiceInput: AndroidTvVoiceInputController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse) }
+        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput) }
     }
 
     override fun onDestroy() {
@@ -93,18 +96,20 @@ class MainActivity : ComponentActivity() {
             remote.close()
             bluetoothHid.close()
             airMouse.close()
+            voiceInput.close()
         }
         super.onDestroy()
     }
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
+    val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
@@ -114,6 +119,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
+    var showKeyboard by rememberSaveable { mutableStateOf(false) }
+    var keyboardText by rememberSaveable { mutableStateOf("") }
     val codeRequested = status is RemoteStatus.AwaitingCode
     val connected = status is RemoteStatus.Connected
     val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
@@ -151,6 +158,20 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     ) { granted ->
         if (granted) runDiscovery()
         else statusMessage = "Для поиска в локальной сети разрешите доступ или введите IP вручную."
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scope.launch {
+                runCatching { voiceInput.start() }
+                    .onSuccess { statusMessage = it }
+                    .onFailure { statusMessage = it.message ?: "Не удалось включить микрофон." }
+            }
+        } else {
+            statusMessage = "Для голосового ввода разрешите доступ к микрофону."
+        }
     }
 
     val discoverabilityLauncher = rememberLauncherForActivityResult(
@@ -291,6 +312,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 color = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Text(
+                                voiceStatus.asUserLabel(),
+                                color = if (voiceStatus is VoiceInputStatus.Recording) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         items(devices, key = { it.ip }) { device ->
                             Card(
@@ -411,8 +437,32 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 },
                                 onFeatureAction = { action ->
                                     statusMessage = when (action) {
-                                        RemoteFeatureAction.VOICE_INPUT -> "Голосовой PCM-ввод ещё не подключён."
-                                        RemoteFeatureAction.KEYBOARD -> "Ввод текста на телевизор ещё не подключён."
+                                        RemoteFeatureAction.VOICE_INPUT -> {
+                                            if (voiceStatus is VoiceInputStatus.Recording || voiceStatus is VoiceInputStatus.Starting) {
+                                                scope.launch {
+                                                    runCatching { voiceInput.stop() }
+                                                        .onSuccess { statusMessage = it }
+                                                        .onFailure { statusMessage = it.message ?: "Не удалось остановить запись." }
+                                                }
+                                                "Останавливаем голосовой ввод…"
+                                            } else if (!connected) {
+                                                "Для голосового ввода сначала подключитесь к Android TV по Wi-Fi."
+                                            } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                scope.launch {
+                                                    runCatching { voiceInput.start() }
+                                                        .onSuccess { statusMessage = it }
+                                                        .onFailure { statusMessage = it.message ?: "Не удалось включить голосовой ввод." }
+                                                }
+                                                "Подключаем голосовой ввод…"
+                                            } else {
+                                                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                "Запрашиваем разрешение на микрофон…"
+                                            }
+                                        }
+                                        RemoteFeatureAction.KEYBOARD -> {
+                                            showKeyboard = !showKeyboard
+                                            if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый ТВ." else "Клавиатура скрыта."
+                                        }
                                         RemoteFeatureAction.AIR_MOUSE -> airMouse.toggle()
                                         RemoteFeatureAction.TOUCHPAD -> {
                                             showTouchpad = !showTouchpad
@@ -423,8 +473,45 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     }
                                 },
                                 touchpadActive = showTouchpad,
-                                airMouseActive = airMouseStatus is AirMouseStatus.Active
+                                airMouseActive = airMouseStatus is AirMouseStatus.Active,
+                                voiceActive = voiceStatus is VoiceInputStatus.Recording,
+                                keyboardActive = showKeyboard
                             )
+                        }
+                        if (showKeyboard) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = keyboardText,
+                                        onValueChange = { keyboardText = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Текст для телевизора") },
+                                        placeholder = { Text("Введите текст…") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            scope.launch {
+                                                runCatching {
+                                                    when {
+                                                        connected -> remote.sendText(keyboardText)
+                                                        hidConnected -> bluetoothHid.sendText(keyboardText)
+                                                        else -> error("Сначала подключитесь по Wi-Fi или Bluetooth HID.")
+                                                    }
+                                                }.onSuccess {
+                                                    statusMessage = "Текст отправлен."
+                                                    keyboardText = ""
+                                                }.onFailure {
+                                                    statusMessage = it.message ?: "Не удалось отправить текст."
+                                                }
+                                            }
+                                        },
+                                        enabled = keyboardText.isNotEmpty() && (connected || hidConnected),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { Text("ОТПРАВИТЬ ТЕКСТ НА ТВ") }
+                                }
+                            }
                         }
                         if (showTouchpad) {
                             item {
@@ -489,4 +576,11 @@ private fun BluetoothHidStatus.asUserLabel(): String = when (this) {
     BluetoothHidStatus.Ready -> "Профиль зарегистрирован. Откройте Bluetooth на ТВ и выберите Radio.TV.Control."
     is BluetoothHidStatus.Connected -> "Подключено: " + deviceName
     is BluetoothHidStatus.Error -> "Bluetooth HID: " + message
+}
+
+private fun VoiceInputStatus.asUserLabel(): String = when (this) {
+    VoiceInputStatus.Off -> "Голосовой ввод выключен."
+    VoiceInputStatus.Starting -> "Запускается голосовая сессия Android TV Remote v2…"
+    VoiceInputStatus.Recording -> "Идёт запись: PCM 16-bit · mono · 8 kHz."
+    is VoiceInputStatus.Error -> "Голосовой ввод: " + message
 }

@@ -37,7 +37,7 @@ R8 minification and resource shrinking are enabled for debug and release builds.
 - Automatic local network discovery using Android NSD/mDNS for `_androidtvremote2._tcp`, `_googlecast._tcp`, `_airplay._tcp`; SSDP/M-SEARCH; and bounded TCP probing of ports 6466, 6467, 8008, 8009, 9080, 8060, 8001, 8002, 3000 and 3001.
 - Manual IP entry as a fallback. Subnet probing is deliberately capped to a /24; NetBIOS and ARP-table inspection are not implemented.
 - Best-effort device-type detection for Android TV, Google Cast, Samsung, LG, Roku, DLNA, AirPlay and unknown devices. A detected type does not prove that the corresponding control protocol works.
-- Android TV Remote v2 TLS/pairing/control-channel foundation and basic key injection.
+- Android TV Remote v2 TLS/pairing/control-channel foundation, key commands, IME text injection and voice session support (PCM 16-bit mono 8 kHz).
 - Bluetooth HID Device implementation with keyboard, media/volume Consumer Control and relative mouse reports, runtime permission flow and system discoverability prompt. TV-side connection is initiated from the TV's Bluetooth settings.
 - Core unit tests for Remote key mapping and Bluetooth HID key mapping.
 - Public Compose API `TvRemotePad(enabled, onKey, modifier, onFeatureAction)`.
@@ -46,7 +46,7 @@ R8 minification and resource shrinking are enabled for debug and release builds.
 
 - Bluetooth HID connection and actual keyboard/mouse report delivery have not been tested with a real phone and TV. Some phone Bluetooth stacks may not expose the HID Device role.
 - Touchpad panel and gyroscope air mouse are implemented for a connected Bluetooth HID host. Their gesture/sensor delivery still needs testing on a physical phone and TV.
-- Voice PCM capture/streaming and complete Android TV Remote v2 text/IME injection are not implemented.
+- Voice/IME implementation needs validation with a physical TV and its Remote Service version. Voice requires runtime microphone permission.
 - Working Samsung Tizen, LG webOS, Roku ECP control adapters and external IR hardware are not implemented.
 - DLNA AVTransport `SetAVTransportURI` / `Play` / `Stop` playback is not implemented; current code discovers possible renderers only.
 - Real TV pairing and command delivery have not been physically tested. CI verifies compilation, unit tests, APK signing/manifest, selected DEX class presence, SHA-256 and byte size only.

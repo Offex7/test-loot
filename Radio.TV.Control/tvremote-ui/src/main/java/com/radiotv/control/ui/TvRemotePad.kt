@@ -70,7 +70,9 @@ fun TvRemotePad(
     modifier: Modifier = Modifier,
     onFeatureAction: (RemoteFeatureAction) -> Unit = {},
     touchpadActive: Boolean = false,
-    airMouseActive: Boolean = false
+    airMouseActive: Boolean = false,
+    voiceActive: Boolean = false,
+    keyboardActive: Boolean = false
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -143,8 +145,8 @@ fun TvRemotePad(
 
         Text("ИНСТРУМЕНТЫ", color = RadioTvPalette.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("◉", "Микрофон", onClick = { onFeatureAction(RemoteFeatureAction.VOICE_INPUT) }, modifier = Modifier.weight(1f))
-            FeatureButton("⌨", "Клавиатура", onClick = { onFeatureAction(RemoteFeatureAction.KEYBOARD) }, modifier = Modifier.weight(1f))
+            FeatureButton("◉", "Микрофон", onClick = { onFeatureAction(RemoteFeatureAction.VOICE_INPUT) }, modifier = Modifier.weight(1f), active = voiceActive)
+            FeatureButton("⌨", "Клавиатура", onClick = { onFeatureAction(RemoteFeatureAction.KEYBOARD) }, modifier = Modifier.weight(1f), active = keyboardActive)
             FeatureButton("✥", "Аэромышь", onClick = { onFeatureAction(RemoteFeatureAction.AIR_MOUSE) }, modifier = Modifier.weight(1f), active = airMouseActive)
             FeatureButton("▧", "Тачпад", onClick = { onFeatureAction(RemoteFeatureAction.TOUCHPAD) }, modifier = Modifier.weight(1f), active = touchpadActive)
             FeatureButton("▣", "Трансляция", onClick = { onFeatureAction(RemoteFeatureAction.CAST) }, modifier = Modifier.weight(1f))

@@ -12,6 +12,12 @@ message RemoteMessage {
   RemotePingRequest remote_ping_request = 8;
   RemotePingResponse remote_ping_response = 9;
   RemoteKeyInject remote_key_inject = 10;
+  RemoteImeKeyInject remote_ime_key_inject = 20;
+  RemoteImeBatchEdit remote_ime_batch_edit = 21;
+  RemoteImeShowRequest remote_ime_show_request = 22;
+  RemoteVoiceBegin remote_voice_begin = 30;
+  RemoteVoicePayload remote_voice_payload = 31;
+  RemoteVoiceEnd remote_voice_end = 32;
   RemoteStart remote_start = 40;
 }
 message RemoteConfigure { int32 code1 = 1; RemoteDeviceInfo device_info = 2; }
@@ -25,6 +31,33 @@ message RemoteDeviceInfo {
 }
 message RemoteSetActive { int32 active = 1; }
 message RemoteStart { bool started = 1; }
+message RemoteVoiceEnd { int32 session_id = 1; }
+message RemoteVoicePayload { int32 session_id = 1; bytes samples = 2; }
+message RemoteVoiceBegin { int32 session_id = 1; string package_name = 2; }
+message RemoteTextFieldStatus {
+  int32 counter_field = 1;
+  string value = 2;
+  int32 start = 3;
+  int32 end = 4;
+  int32 int5 = 5;
+  string label = 6;
+}
+message RemoteImeShowRequest { RemoteTextFieldStatus remote_text_field_status = 2; }
+message RemoteEditInfo { int32 insert = 1; RemoteImeObject text_field_status = 2; }
+message RemoteImeObject { int32 start = 1; int32 end = 2; string value = 3; }
+message RemoteImeBatchEdit { int32 ime_counter = 1; int32 field_counter = 2; repeated RemoteEditInfo edit_info = 3; }
+message RemoteAppInfo {
+  int32 counter = 1;
+  int32 int2 = 2;
+  int32 int3 = 3;
+  string int4 = 4;
+  int32 int7 = 7;
+  int32 int8 = 8;
+  string label = 10;
+  string app_package = 12;
+  int32 int13 = 13;
+}
+message RemoteImeKeyInject { RemoteAppInfo app_info = 1; RemoteTextFieldStatus text_field_status = 2; }
 message RemotePingRequest { int32 val1 = 1; int32 val2 = 2; }
 message RemotePingResponse { int32 val1 = 1; }
 message RemoteError { bool value = 1; RemoteMessage message = 2; }
@@ -53,6 +86,7 @@ enum RemoteKeyCode {
   KEYCODE_VOLUME_DOWN = 25;
   KEYCODE_POWER = 26;
   KEYCODE_MENU = 82;
+  KEYCODE_SEARCH = 84;
   KEYCODE_MEDIA_PLAY_PAUSE = 85;
   KEYCODE_MEDIA_STOP = 86;
   KEYCODE_MEDIA_REWIND = 89;

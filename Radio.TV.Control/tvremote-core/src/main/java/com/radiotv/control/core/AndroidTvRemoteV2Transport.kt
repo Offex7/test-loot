@@ -3,6 +3,7 @@ package com.radiotv.control.core
 import android.content.Context
 import com.google.polo.wire.protobuf.PoloProto
 import com.radiotv.control.core.proto.RemoteMessageProto
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
@@ -53,6 +55,10 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
     private var remoteSocket: SSLSocket? = null
     private var readerJob: Job? = null
     private var remoteOutput: DataOutputStream? = null
+    @Volatile private var pendingVoiceSession: CompletableDeferred<Int>? = null
+    @Volatile private var imeCounter: Int = 0
+    @Volatile private var imeFieldCounter: Int = 0
+    @Volatile private var activeRemoteFeatures: Int = 0
 
     override suspend fun beginPairing(host: String) = withContext(Dispatchers.IO) {
         val target = host.trim()
@@ -157,6 +163,83 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         writeRemote(output, message)
     }
 
+    suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
+        require(text.isNotEmpty()) { "Введите текст для отправки." }
+        val output = checkNotNull(remoteOutput) { "Сначала подключитесь к телевизору." }
+        check(remoteSocket?.isConnected == true) { "Нет соединения с телевизором." }
+        check(activeRemoteFeatures and FEATURE_IME != 0) { "Телевизор не включил поддержку IME-ввода." }
+        val cursor = text.length - 1
+        val edit = RemoteMessageProto.RemoteEditInfo.newBuilder()
+            .setInsert(1)
+            .setTextFieldStatus(
+                RemoteMessageProto.RemoteImeObject.newBuilder()
+                    .setStart(cursor)
+                    .setEnd(cursor)
+                    .setValue(text)
+            )
+        val batch = RemoteMessageProto.RemoteImeBatchEdit.newBuilder()
+            .setImeCounter(imeCounter)
+            .setFieldCounter(imeFieldCounter)
+            .addEditInfo(edit)
+        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder()
+            .setRemoteImeBatchEdit(batch)
+            .build())
+    }
+
+    suspend fun startVoiceSession(): Int = withContext(Dispatchers.IO) {
+        check(statusMutable.value is RemoteStatus.Connected && remoteSocket?.isConnected == true) {
+            "Сначала подключитесь к Android TV по Remote v2."
+        }
+        check(activeRemoteFeatures and FEATURE_VOICE != 0) {
+            "Телевизор не сообщил о поддержке голосовых команд Remote v2."
+        }
+        check(pendingVoiceSession == null) { "Голосовая сессия уже запускается." }
+        val output = checkNotNull(remoteOutput) { "Сначала подключитесь к телевизору." }
+        val deferred = CompletableDeferred<Int>()
+        pendingVoiceSession = deferred
+        try {
+            writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteKeyInject(
+                RemoteMessageProto.RemoteKeyInject.newBuilder()
+                    .setKeyCode(RemoteMessageProto.RemoteKeyCode.KEYCODE_SEARCH)
+                    .setDirection(RemoteMessageProto.RemoteDirection.SHORT)
+            ).build())
+            val sessionId = withTimeout(VOICE_SESSION_TIMEOUT_MS) { deferred.await() }
+            writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteVoiceBegin(
+                RemoteMessageProto.RemoteVoiceBegin.newBuilder().setSessionId(sessionId)
+            ).build())
+            sessionId
+        } finally {
+            pendingVoiceSession = null
+            deferred.cancel()
+        }
+    }
+
+    suspend fun sendVoiceChunk(sessionId: Int, pcm16Mono8k: ByteArray) = withContext(Dispatchers.IO) {
+        require(pcm16Mono8k.isNotEmpty()) { "Пустой аудиопакет." }
+        val output = checkNotNull(remoteOutput) { "Соединение с телевизором потеряно." }
+        check(remoteSocket?.isConnected == true) { "Нет соединения с телевизором." }
+        var offset = 0
+        while (offset < pcm16Mono8k.size) {
+            val end = minOf(offset + VOICE_CHUNK_MAX_BYTES, pcm16Mono8k.size)
+            var samples = pcm16Mono8k.copyOfRange(offset, end)
+            if (samples.size < VOICE_CHUNK_MIN_BYTES) samples = samples.copyOf(VOICE_CHUNK_MIN_BYTES)
+            writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteVoicePayload(
+                RemoteMessageProto.RemoteVoicePayload.newBuilder()
+                    .setSessionId(sessionId)
+                    .setSamples(com.google.protobuf.ByteString.copyFrom(samples))
+            ).build())
+            offset = end
+        }
+    }
+
+    suspend fun endVoiceSession(sessionId: Int) = withContext(Dispatchers.IO) {
+        val output = remoteOutput ?: return@withContext
+        if (remoteSocket?.isConnected != true) return@withContext
+        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteVoiceEnd(
+            RemoteMessageProto.RemoteVoiceEnd.newBuilder().setSessionId(sessionId)
+        ).build())
+    }
+
     override suspend fun disconnect() = withContext(Dispatchers.IO) {
         closePendingPairing()
         closeRemoteSocket()
@@ -177,7 +260,8 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
             val greeting = readRemote(input)
             check(greeting.hasRemoteConfigure()) { "Телевизор не прислал RemoteConfigure." }
             val supportedFeatures = greeting.remoteConfigure.code1
-            val activeFeatures = supportedFeatures and (FEATURE_PING or FEATURE_KEY)
+            val activeFeatures = supportedFeatures and (FEATURE_PING or FEATURE_KEY or FEATURE_IME or FEATURE_VOICE)
+            activeRemoteFeatures = activeFeatures
             check((activeFeatures and FEATURE_KEY) != 0) { "Телевизор не поддерживает управление клавишами." }
 
             writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteConfigure(
@@ -224,6 +308,11 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
                             writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemotePingResponse(
                                 RemoteMessageProto.RemotePingResponse.newBuilder().setVal1(message.remotePingRequest.val1)
                             ).build())
+                        } else if (message.hasRemoteImeBatchEdit()) {
+                            imeCounter = message.remoteImeBatchEdit.imeCounter
+                            imeFieldCounter = message.remoteImeBatchEdit.fieldCounter
+                        } else if (message.hasRemoteVoiceBegin()) {
+                            pendingVoiceSession?.complete(message.remoteVoiceBegin.sessionId)
                         } else if (message.hasRemoteError()) {
                             error("Телевизор отправил RemoteError.")
                         }
@@ -288,6 +377,9 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         runCatching { remoteSocket?.close() }
         remoteSocket = null
         remoteOutput = null
+        activeRemoteFeatures = 0
+        pendingVoiceSession?.cancel()
+        pendingVoiceSession = null
     }
 
     override fun close() {
@@ -326,6 +418,11 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         private const val MAX_FRAME_SIZE = 1_048_576
         private const val FEATURE_PING = 1
         private const val FEATURE_KEY = 2
+        private const val FEATURE_IME = 4
+        private const val FEATURE_VOICE = 8
+        private const val VOICE_SESSION_TIMEOUT_MS = 2_500L
+        private const val VOICE_CHUNK_MIN_BYTES = 8 * 1024
+        private const val VOICE_CHUNK_MAX_BYTES = 20 * 1024
         private val outputLock = Any()
 
         private fun sendPolo(out: DataOutputStream, message: PoloProto.OuterMessage.Builder) {
