@@ -219,7 +219,11 @@ class DlnaCastController(private val context: Context) {
     }
 
     private fun buildDidl(media: CastMedia): String {
-        val itemClass = if (media.mimeType.startsWith("audio/")) "object.item.audioItem.musicTrack" else "object.item.videoItem"
+        val itemClass = when {
+            media.mimeType.startsWith("audio/", ignoreCase = true) -> "object.item.audioItem.musicTrack"
+            media.mimeType.startsWith("image/", ignoreCase = true) -> "object.item.imageItem.photo"
+            else -> "object.item.videoItem"
+        }
         return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">
 <item id="0" parentID="-1" restricted="1"><dc:title>${xmlEscape(media.title)}</dc:title><upnp:class>$itemClass</upnp:class><res protocolInfo="http-get:*:${xmlEscape(media.mimeType)}:*">${xmlEscape(media.uri)}</res></item></DIDL-Lite>"""
     }
