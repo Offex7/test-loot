@@ -153,6 +153,10 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         }
     }
 
+    /** Stored host from the last successful Android TV Remote v2 pairing. */
+    fun pairedHost(): String? =
+        preferences.getString(KEY_HOST, null)?.takeIf { it.isNotBlank() }
+
     override suspend fun sendKey(key: RemoteKey) = withContext(Dispatchers.IO) {
         val output = checkNotNull(remoteOutput) { "Сначала подключитесь к телевизору." }
         check(remoteSocket?.isConnected == true) { "Нет соединения с телевизором." }

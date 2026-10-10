@@ -122,6 +122,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
+    var pairedHost by rememberSaveable { mutableStateOf(remote.pairedHost().orEmpty()) }
     var pairingCode by rememberSaveable { mutableStateOf("") }
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
@@ -277,11 +278,23 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         if (needsPermission) permissionLauncher.launch(ACCESS_LOCAL_NETWORK) else runDiscovery()
     }
 
+    val connectPairedHost: (String) -> Unit = { target ->
+        scope.launch {
+            statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
+            runCatching { remote.connect(target) }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target" }
+                .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
+        }
+    }
+
     LaunchedEffect(Unit) { refreshDevices() }
 
     fun chooseDevice(device: DiscoveredRemoteDevice) {
         when (device.type) {
-            RemoteDeviceType.ANDROID_TV -> startPairing(device.ip)
+            RemoteDeviceType.ANDROID_TV -> {
+                host = device.ip
+                if (device.ip == pairedHost) connectPairedHost(device.ip) else startPairing(device.ip)
+            }
             RemoteDeviceType.SAMSUNG, RemoteDeviceType.LG, RemoteDeviceType.ROKU -> {
                 scope.launch {
                     host = device.ip
@@ -350,6 +363,17 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     refreshDevices()
                                 }, enabled = !scanning) { Text("Обновить") }
+                            }
+                            if (pairedHost.isNotBlank()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        connectPairedHost(pairedHost)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ · " + pairedHost)
+                                }
                             }
                             if (scanning) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -490,7 +514,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         scope.launch {
                                             statusMessage = "Проверяем код и сохраняем сопряжение…"
                                             runCatching { remote.completePairing(pairingCode) }
-                                                .onSuccess { statusMessage = "Телевизор подключён." }
+                                                .onSuccess {
+                                                    pairedHost = remote.pairedHost().orEmpty()
+                                                    statusMessage = "Телевизор подключён."
+                                                }
                                                 .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
                                         }
                                     },
