@@ -57,11 +57,24 @@ jobs:
             echo "v4.1 source migration already committed."
           fi
 
+      - name: Install and checksum the provided Unistar logo
+        run: |
+          set -e
+          python3 tools/fix_unistar_logo.py
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "fix(v4.1): install verified local Unistar logo"
+            git push origin HEAD:main
+          fi
+
       - name: Validate Radio.TV v4.1 sources
         run: |
           set -e
           python3 - <<'PY'
           from pathlib import Path
+          import hashlib
           root = Path("app")
           gradle = (root / "build.gradle.kts").read_text(encoding="utf-8")
           main = (root / "src/main/java/com/offex7/streamhub/MainActivity.kt").read_text(encoding="utf-8")
@@ -109,7 +122,7 @@ jobs:
               "stats_timestamp_session": "data class UsageSession" in storage and "usageSessionFlow(Section.TV)" in main and "activeChannelId.value" in main and "addPlaybackUsage(section" in main,
               "stats_top3_sorted_and_minute_threshold": ".filter { it.value >= 60L }" in main and "compareByDescending<Map.Entry<String, Long>>" in main,
               "landscape_equalizer": "dialogMaxHeight" in main and "verticalScroll(rememberScrollState())" in main and "FlowRow" in main,
-              "unistar_local_logo": (root / "src/main/res/drawable-nodpi/unistar_logo.jpg").is_file() and "R.drawable.unistar_logo" in main,
+              "unistar_local_logo": (root / "src/main/res/drawable-nodpi/unistar_logo.jpg").is_file() and hashlib.sha256((root / "src/main/res/drawable-nodpi/unistar_logo.jpg").read_bytes()).hexdigest() == "161d14948fb51c243d32ac1799fe881835ec4c94c070c89d928fecd4cc1eafb8" and "R.drawable.unistar_logo" in main,
               "share_chooser_flags": "Intent.createChooser(sendIntent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)" in main and "Intent.EXTRA_TEXT" in main and 'type = "text/plain"' in main,
               "reset_confirmation": "ВОССТАНОВИТЬ ПО УМОЛЧАНИЮ" in main and "Восстановить настройки по умолчанию?" in main and 'Text("Да", color = Red)' in main and 'Text("Нет")' in main,
               "update_banner_bottom": main.rindex("ОБНОВИТЬ ПРИЛОЖЕНИЕ") > main.rindex("ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ"),
