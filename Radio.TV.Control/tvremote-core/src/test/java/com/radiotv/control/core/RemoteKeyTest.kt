@@ -7,7 +7,16 @@ import org.junit.Test
 class RemoteKeyTest {
     @Test fun allKeysMapToUniqueProtocolValues() {
         assertEquals(RemoteKey.entries.size, RemoteKey.entries.map { it.wireCode }.toSet().size)
-        @Test fun bluetoothHidMapsNavigationToKeyboardUsages() {
+    }
+
+    @Test fun basicControlAndMediaKeysExist() {
+        assertTrue(RemoteKey.UP in RemoteKey.entries)
+        assertTrue(RemoteKey.OK in RemoteKey.entries)
+        assertTrue(RemoteKey.PLAY_PAUSE in RemoteKey.entries)
+        assertTrue(RemoteKey.SOURCE in RemoteKey.entries)
+    }
+
+    @Test fun bluetoothHidMapsNavigationToKeyboardUsages() {
         assertEquals(HidInputCommand.Keyboard(0x52), hidInputFor(RemoteKey.UP))
         assertEquals(HidInputCommand.Keyboard(0x28), hidInputFor(RemoteKey.OK))
         assertEquals(HidInputCommand.Keyboard(0x27), hidInputFor(RemoteKey.NUMBER_0))
@@ -23,13 +32,5 @@ class RemoteKeyTest {
         assertEquals(0x04 to 0, asciiHidUsage('a'))
         assertEquals(0x04 to 0x02, asciiHidUsage('A'))
         assertEquals(0x1E to 0x02, asciiHidUsage('!'))
-    }
-
-}
-    @Test fun basicControlAndMediaKeysExist() {
-        assertTrue(RemoteKey.UP in RemoteKey.entries)
-        assertTrue(RemoteKey.OK in RemoteKey.entries)
-        assertTrue(RemoteKey.PLAY_PAUSE in RemoteKey.entries)
-        assertTrue(RemoteKey.SOURCE in RemoteKey.entries)
     }
 }
