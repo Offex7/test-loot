@@ -51,7 +51,6 @@ import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -351,7 +350,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         }
     }
 
-    LaunchedEffect(Unit) { refreshDevices() }
 
     fun chooseDevice(device: DiscoveredRemoteDevice) {
         when (device.type) {
@@ -860,9 +858,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                     RadioTvBottomBar(
                         selected = selectedTab,
                         onSelect = { tab ->
+                            val tabChanged = selectedTab != tab
                             selectedTab = tab
-                            if (tab == RadioTvTab.CONTROL) refreshDevices()
-                            if (tab == RadioTvTab.DUPLICATION) {
+                            if (tabChanged && tab == RadioTvTab.CONTROL) refreshDevices()
+                            if (tabChanged && tab == RadioTvTab.DUPLICATION) {
                                 showCast = true
                                 refreshCastDevices()
                             }
