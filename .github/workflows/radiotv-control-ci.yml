@@ -92,31 +92,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/Radio.TV.Control/app/build/outputs/apk/debug/app-debug.apk"
-            OUT="$GITHUB_WORKSPACE/Radio.TV.Control/ui-screenshots"
-            mkdir -p "$OUT"
-            adb shell wm size 1080x2400
-            adb shell wm density 440
-            adb install -r "$APK"
-            adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true
-            adb shell am start -n com.radiotv.control/.MainActivity
-            sleep 7
-            adb exec-out screencap -p > "$OUT/remote.png"
-            adb shell input tap 405 2230
-            sleep 2
-            adb exec-out screencap -p > "$OUT/device-search.png"
-            adb shell input tap 945 2230
-            sleep 3
-            adb exec-out screencap -p > "$OUT/bottom-navigation.png"
-            adb shell settings put system accelerometer_rotation 0
-            adb shell settings put system user_rotation 1
-            adb shell wm size 1280x800
-            adb shell wm density 200
-            adb shell am force-stop com.radiotv.control
-            adb shell am start -n com.radiotv.control/.MainActivity
-            sleep 5
-            adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
+            set -eu; if [ -d "$PWD/Radio.TV.Control" ]; then PROJ="$PWD/Radio.TV.Control"; elif [ -d "$PWD/app/src/main" ]; then PROJ="$PWD"; else echo "Cannot locate Radio.TV.Control project directory"; exit 1; fi; APK="$(find "$PROJ/app/build/outputs/apk/debug" -type f -name '*.apk' -print -quit)"; test -s "$APK"; OUT="$PROJ/ui-screenshots"; mkdir -p "$OUT"; adb shell wm size 1080x2400; adb shell wm density 440; adb install -r "$APK"; adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true; adb shell am start -n com.radiotv.control/.MainActivity; sleep 7; adb exec-out screencap -p > "$OUT/remote.png"; adb shell input tap 405 2230; sleep 2; adb exec-out screencap -p > "$OUT/device-search.png"; adb shell input tap 945 2230; sleep 3; adb exec-out screencap -p > "$OUT/bottom-navigation.png"; adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1; adb shell wm size 1280x800; adb shell wm density 200; adb shell am force-stop com.radiotv.control; adb shell am start -n com.radiotv.control/.MainActivity; sleep 5; adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
       - name: Upload UI screenshots
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'capture UI screenshots')
         uses: actions/upload-artifact@v4
@@ -156,31 +132,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim
           script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/artifact/Radio.TV.Control-debug.apk"
-            OUT="$GITHUB_WORKSPACE/ui-screenshots"
-            mkdir -p "$OUT"
-            adb shell wm size 1080x2400
-            adb shell wm density 440
-            adb install -r "$APK"
-            adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true
-            adb shell am start -n com.radiotv.control/.MainActivity
-            sleep 6
-            adb exec-out screencap -p > "$OUT/remote.png"
-            adb shell input tap 405 2230
-            sleep 2
-            adb exec-out screencap -p > "$OUT/device-search.png"
-            adb shell input tap 945 2230
-            sleep 2
-            adb exec-out screencap -p > "$OUT/bottom-navigation.png"
-            adb shell settings put system accelerometer_rotation 0
-            adb shell settings put system user_rotation 1
-            adb shell wm size 1600x1000
-            adb shell wm density 200
-            adb shell am force-stop com.radiotv.control
-            adb shell am start -n com.radiotv.control/.MainActivity
-            sleep 4
-            adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
+            set -eu; APK="$PWD/artifact/Radio.TV.Control-debug.apk"; OUT="$PWD/ui-screenshots"; test -s "$APK"; mkdir -p "$OUT"; adb shell wm size 1080x2400; adb shell wm density 440; adb install -r "$APK"; adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true; adb shell am start -n com.radiotv.control/.MainActivity; sleep 6; adb exec-out screencap -p > "$OUT/remote.png"; adb shell input tap 405 2230; sleep 2; adb exec-out screencap -p > "$OUT/device-search.png"; adb shell input tap 945 2230; sleep 2; adb exec-out screencap -p > "$OUT/bottom-navigation.png"; adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1; adb shell wm size 1600x1000; adb shell wm density 200; adb shell am force-stop com.radiotv.control; adb shell am start -n com.radiotv.control/.MainActivity; sleep 4; adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
       - name: Upload UI screenshots
         uses: actions/upload-artifact@v4
         with:
