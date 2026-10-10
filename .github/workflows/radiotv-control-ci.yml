@@ -6,6 +6,7 @@ on:
       - feature/radiotv-control-v1
     paths:
       - "Radio.TV.Control/**"
+      - "ci/**"
       - ".github/workflows/radiotv-control-ci.yml"
   pull_request:
     paths:
