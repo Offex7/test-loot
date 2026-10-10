@@ -133,3 +133,59 @@ jobs:
           path: Radio.TV.Control/artifact-out/Radio.TV.Control-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+
+  capture-ui-screenshots:
+    name: Capture UI screenshots on accelerated macOS emulator
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'accelerate UI screenshots')
+    needs: build-and-verify
+    runs-on: macos-latest
+    steps:
+      - name: Download debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Radio.TV.Control-debug-run-${{ github.run_number }}
+          path: artifact
+      - name: Capture UI screenshots in Android 35 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim
+          script: |
+            set -eu
+            APK="$GITHUB_WORKSPACE/artifact/Radio.TV.Control-debug.apk"
+            OUT="$GITHUB_WORKSPACE/ui-screenshots"
+            mkdir -p "$OUT"
+            adb shell wm size 1080x2400
+            adb shell wm density 440
+            adb install -r "$APK"
+            adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true
+            adb shell am start -n com.radiotv.control/.MainActivity
+            sleep 6
+            adb exec-out screencap -p > "$OUT/remote.png"
+            adb shell input tap 405 2230
+            sleep 2
+            adb exec-out screencap -p > "$OUT/device-search.png"
+            adb shell input tap 945 2230
+            sleep 2
+            adb exec-out screencap -p > "$OUT/bottom-navigation.png"
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            adb shell wm size 1600x1000
+            adb shell wm density 200
+            adb shell am force-stop com.radiotv.control
+            adb shell am start -n com.radiotv.control/.MainActivity
+            sleep 4
+            adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
+          path: ui-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+
