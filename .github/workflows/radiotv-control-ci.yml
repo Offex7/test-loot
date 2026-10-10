@@ -1,0 +1,74 @@
+name: Radio.TV.Control Android CI
+
+on:
+  push:
+    branches:
+      - feature/radiotv-control-v1
+    paths:
+      - "Radio.TV.Control/**"
+      - ".github/workflows/radiotv-control-ci.yml"
+  pull_request:
+    paths:
+      - "Radio.TV.Control/**"
+      - ".github/workflows/radiotv-control-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    name: Build, test and inspect APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Radio.TV.Control
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.13"
+      - name: Assemble debug APK and run core tests
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :tvremote-core:test
+      - name: Verify APK, manifest, DEX modules, hash and size
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "package: name='com.radiotv.control'" badging.txt
+          grep -F "sdkVersion:'31'" badging.txt
+          grep -F "targetSdkVersion:'36'" badging.txt
+          grep -F "application-label:'Radio.TV.Control'" badging.txt
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$APK" > manifest.xml
+          grep -F 'android:screenOrientation="portrait"' manifest.xml
+          grep -F 'android:usesCleartextTraffic="true"' manifest.xml
+          mkdir -p artifact-out
+          cp "$APK" artifact-out/Radio.TV.Control-debug.apk
+          unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$' | while read -r dex; do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -F 'AndroidTvRemoteV2Transport' dex-strings.txt
+          grep -F 'TvRemotePad' dex-strings.txt
+          grep -F 'DlnaCastController' dex-strings.txt
+          sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
+          stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio.TV.Control-debug-run-${{ github.run_number }}
+          path: Radio.TV.Control/artifact-out/Radio.TV.Control-debug.apk
+          if-no-files-found: error
+          retention-days: 30

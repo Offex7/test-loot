@@ -1,0 +1,1 @@
+Radio.TV.Control includes protocol message definitions authored in this project from the publicly documented Android TV Remote v2 / Google TV pairing protocol field definitions. No implementation source code from GT-TAHAKOM or Atharok/BtRemote is copied into this project. Those projects are references only.
