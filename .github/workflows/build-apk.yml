@@ -78,6 +78,7 @@ jobs:
           storage = (root / "src/main/java/com/offex7/streamhub/Storage.kt").read_text(encoding="utf-8")
           checks = {
               "version": "versionCode = 14" in gradle and 'versionName = "4.1"' in gradle,
+              "version_label": 'append("v$APP_VERSION")' in main,
               "application_id": 'applicationId = "com.offex7.streamhub"' in gradle,
               "R8": "isMinifyEnabled = true" in gradle and "isShrinkResources = true" in gradle,
               "original_signing_key": (root / "signing/radio-tv-v5-debug.keystore").is_file(),

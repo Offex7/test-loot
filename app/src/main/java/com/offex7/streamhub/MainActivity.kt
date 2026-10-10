@@ -963,7 +963,7 @@ private fun Home(
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Color.White)) { append("Radio.TV ") }
-                        withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append(APP_VERSION) }
+                        withStyle(SpanStyle(color = Color(0xFF4CAF50))) { append("v$APP_VERSION") }
                     },
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
