@@ -70,6 +70,7 @@ import com.radiotv.control.core.BluetoothHidStatus
 import com.radiotv.control.core.DiscoveredRemoteDevice
 import com.radiotv.control.core.RemoteDeviceType
 import com.radiotv.control.core.RemoteStatus
+import com.radiotv.control.ui.TouchpadSurface
 import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -115,6 +116,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
     val codeRequested = status is RemoteStatus.AwaitingCode
     val connected = status is RemoteStatus.Connected
+    val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
 
     val startPairing: (String) -> Unit = { target ->
         scope.launch {
@@ -398,7 +400,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         }
                         item {
                             Text("ПУЛЬТ", fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                            val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
                             TvRemotePad(
                                 enabled = connected || hidConnected,
                                 onKey = { key ->
@@ -473,6 +474,13 @@ private fun deviceIcon(type: RemoteDeviceType): String = when (type) {
     RemoteDeviceType.DLNA -> "🔊"
     RemoteDeviceType.AIRPLAY -> "🍎"
     RemoteDeviceType.UNKNOWN -> "🔎"
+}
+
+private fun AirMouseStatus.asUserLabel(): String = when (this) {
+    AirMouseStatus.Off -> "Аэромышь выключена."
+    AirMouseStatus.Active -> "Аэромышь активна: поворачивайте телефон для движения курсора."
+    is AirMouseStatus.Unavailable -> reason
+    is AirMouseStatus.Error -> reason
 }
 
 private fun BluetoothHidStatus.asUserLabel(): String = when (this) {
