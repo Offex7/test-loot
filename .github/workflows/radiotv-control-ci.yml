@@ -81,10 +81,10 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Capture UI screenshots in API 37 emulator
+      - name: Capture UI screenshots in API 35 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37
+          api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
