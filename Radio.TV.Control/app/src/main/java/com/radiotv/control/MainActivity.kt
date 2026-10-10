@@ -471,8 +471,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         modifier = Modifier
                                             .widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp)
                                             .fillMaxWidth()
-                                            .verticalScroll(rememberScrollState())
-                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                            .fillMaxHeight()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
                                         onKey = { key ->
                                             scope.launch {
                                                 runCatching {
@@ -629,7 +629,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             ControlActionButton("▧\nТачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
                                             ControlActionButton("▣\nТрансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
                                         }
-                                        Text("Разрешение микрофона запрашивается только после подключения к Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (showKeyboard) {
                                         item {

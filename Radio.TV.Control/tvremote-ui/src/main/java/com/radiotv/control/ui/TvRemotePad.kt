@@ -35,7 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -120,14 +120,31 @@ fun TvRemotePad(
     showFeatureActions: Boolean = true
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val compact = maxHeight < 620.dp
-        val topHeight = if (compact) 46.dp else 54.dp
-        val padHeight = if (compact) 298.dp else 350.dp
-        val sideHeight = if (compact) 170.dp else 218.dp
-        val circleSize = if (compact) 64.dp else 74.dp
+        val tight = maxHeight < 500.dp
+        val compact = maxHeight < 660.dp
+        val topHeight = when {
+            tight -> (maxHeight * 0.09f).coerceAtLeast(22.dp)
+            compact -> 46.dp
+            else -> 54.dp
+        }
+        val padHeight = when {
+            tight -> (maxHeight * 0.43f).coerceAtLeast(90.dp)
+            compact -> 298.dp
+            else -> 350.dp
+        }
+        val sideHeight = when {
+            tight -> (maxHeight * 0.27f).coerceAtLeast(60.dp)
+            compact -> 170.dp
+            else -> 218.dp
+        }
+        val circleSize = when {
+            tight -> 38.dp
+            compact -> 64.dp
+            else -> 74.dp
+        }
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp),
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceEvenly,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
@@ -172,7 +189,7 @@ fun TvRemotePad(
                     )
                 }
             ) {
-                val sideSize = if (compact) 68.dp else 76.dp
+                val sideSize = when { tight -> 40.dp; compact -> 68.dp; else -> 76.dp }
                 SoftCircleButton("TOOLS", "Инструменты", enabled, { onKey(RemoteKey.MENU) },
                     Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp).size(sideSize), fontSize = 13)
                 SoftCircleButton("INFO", "Информация", enabled, { onKey(RemoteKey.MENU) },
@@ -182,7 +199,7 @@ fun TvRemotePad(
                 SoftCircleButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
                     Modifier.align(Alignment.CenterStart).padding(start = 30.dp).size(circleSize), fontSize = 28)
                 SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
-                    Modifier.align(Alignment.Center).size(if (compact) 82.dp else 90.dp), fontSize = 28, active = true)
+                    Modifier.align(Alignment.Center).size(when { tight -> 48.dp; compact -> 82.dp; else -> 90.dp }), fontSize = if (tight) 21 else 28, active = true)
                 SoftCircleButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
                     Modifier.align(Alignment.CenterEnd).padding(end = 30.dp).size(circleSize), fontSize = 28)
                 SoftCircleButton("↶", "Назад", enabled, { onKey(RemoteKey.BACK) },
@@ -204,9 +221,9 @@ fun TvRemotePad(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    SoftCircleButton("MENU", "Меню", enabled, { onKey(RemoteKey.MENU) }, Modifier.size(if (compact) 62.dp else 72.dp), fontSize = 14)
-                    SoftCircleButton("◖×", "Без звука", enabled, { onKey(RemoteKey.MUTE) }, Modifier.size(if (compact) 62.dp else 72.dp), fontSize = 23)
-                    SoftCircleButton("▣→", "Источник", enabled, { onKey(RemoteKey.SOURCE) }, Modifier.size(if (compact) 62.dp else 72.dp), fontSize = 22)
+                    SoftCircleButton("MENU", "Меню", enabled, { onKey(RemoteKey.MENU) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 9 else 14)
+                    SoftCircleButton("◖×", "Без звука", enabled, { onKey(RemoteKey.MUTE) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 17 else 23)
+                    SoftCircleButton("▣→", "Источник", enabled, { onKey(RemoteKey.SOURCE) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 15 else 22)
                 }
                 VolumePill("CH", RemoteKey.CHANNEL_UP, RemoteKey.CHANNEL_DOWN, enabled, onKey,
                     Modifier.weight(0.88f).height(sideHeight))
