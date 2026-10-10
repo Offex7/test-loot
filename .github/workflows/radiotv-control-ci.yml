@@ -82,7 +82,7 @@ jobs:
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Capture UI screenshots in API 35 emulator
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'capture UI screenshots')
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -92,7 +92,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -euo pipefail
+            set -eu
             APK="$GITHUB_WORKSPACE/Radio.TV.Control/app/build/outputs/apk/debug/app-debug.apk"
             OUT="$GITHUB_WORKSPACE/Radio.TV.Control/ui-screenshots"
             mkdir -p "$OUT"
@@ -104,7 +104,7 @@ jobs:
             sleep 7
             adb exec-out screencap -p > "$OUT/remote.png"
             adb shell input tap 405 2230
-            sleep 10
+            sleep 2
             adb exec-out screencap -p > "$OUT/device-search.png"
             adb shell input tap 945 2230
             sleep 3
@@ -118,7 +118,7 @@ jobs:
             sleep 5
             adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
       - name: Upload UI screenshots
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'capture UI screenshots')
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
