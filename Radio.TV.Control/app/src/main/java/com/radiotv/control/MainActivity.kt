@@ -311,17 +311,19 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
         if (grants[Manifest.permission.BLUETOOTH_CONNECT] == true &&
+            grants[Manifest.permission.BLUETOOTH_SCAN] == true &&
             grants[Manifest.permission.BLUETOOTH_ADVERTISE] == true
         ) {
             startBluetoothSession()
         } else {
-            statusMessage = "Для Bluetooth HID разрешите Bluetooth Connect и Advertise."
+            statusMessage = "Для Bluetooth HID разрешите Bluetooth Connect, Scan и Advertise."
         }
     }
 
     val beginBluetoothSession: () -> Unit = {
         val required = arrayOf(
             Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_ADVERTISE
         )
         val missing = required.any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
