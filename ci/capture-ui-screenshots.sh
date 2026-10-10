@@ -5,7 +5,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 APP="$ROOT/Radio.TV.Control"
 APK="$APP/app/build/outputs/apk/debug/app-debug.apk"
 OUT="$APP/ui-screenshots"
-echo "Capturing UI screenshots at equivalent 540x1200/220dpi and 640x400/100dpi viewports."
+echo "Capturing API 37 UI screenshots at 540x1200/220dpi and a 1280x800/160dpi landscape viewport (smallest width 800dp)."
 wait_for_main_activity() {
   timeout=${1:-90}
   elapsed=0
@@ -63,8 +63,9 @@ adb exec-out screencap -p > "$OUT/bottom-navigation.png"
 
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
-adb shell wm size 640x400
-adb shell wm density 100
+# 1280x800 at 160 dpi yields an 800 dp short edge, exercising the >=600 dp large-screen layout branch.
+adb shell wm size 1280x800
+adb shell wm density 160
 adb shell am force-stop com.radiotv.control
 adb logcat -c
 adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/landscape-start.txt" 2>&1 || true
