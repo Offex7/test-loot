@@ -151,6 +151,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var selectedTab by rememberSaveable { mutableStateOf(RadioTvTab.REMOTE) }
     var castMedia by remember { mutableStateOf<CastMedia?>(null) }
     var castPlaybackStatus by rememberSaveable { mutableStateOf("Остановлено") }
+    var pendingLocalNetworkAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val localMediaServer = remember(context) { LocalMediaHttpServer(context) }
     DisposableEffect(localMediaServer) {
         onDispose { localMediaServer.close() }
@@ -232,7 +233,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         }
     }
 
-    val refreshCastDevices: () -> Unit = {
+    val discoverCastDevices: () -> Unit = {
         scope.launch {
             castScanning = true
             castMessage = "Ищем DLNA / UPnP renderers…"
@@ -254,8 +255,37 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) runDiscovery()
-        else statusMessage = "Для поиска в локальной сети разрешите доступ или введите IP вручную."
+        val pendingAction = pendingLocalNetworkAction
+        pendingLocalNetworkAction = null
+        if (granted) {
+            (pendingAction ?: runDiscovery).invoke()
+        } else {
+            statusMessage = "Для поиска и трансляции в локальной сети разрешите доступ или введите IP вручную."
+            if (pendingAction != null) castMessage = "Для DLNA-трансляции разрешите доступ к локальной сети."
+        }
+    }
+
+    val runWithLocalNetworkPermission: ((() -> Unit) -> Unit) = { action ->
+        val needsPermission = Build.VERSION.SDK_INT >= 37 &&
+            context.checkSelfPermission(ACCESS_LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingLocalNetworkAction = action
+            permissionLauncher.launch(ACCESS_LOCAL_NETWORK)
+        } else {
+            action()
+        }
+    }
+
+    val refreshCastDevices: () -> Unit = {
+        runWithLocalNetworkPermission { discoverCastDevices() }
+    }
+
+    val launchMediaPicker: (Array<String>) -> Unit = { mimeTypes ->
+        runWithLocalNetworkPermission { mediaPicker.launch(mimeTypes) }
+    }
+
+    val launchAudioPicker: () -> Unit = {
+        runWithLocalNetworkPermission { audioPicker.launch("audio/*") }
     }
 
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
@@ -336,9 +366,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     }
 
     val refreshDevices: () -> Unit = {
-        val needsPermission = Build.VERSION.SDK_INT >= 37 &&
-            context.checkSelfPermission(ACCESS_LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED
-        if (needsPermission) permissionLauncher.launch(ACCESS_LOCAL_NETWORK) else runDiscovery()
+        runWithLocalNetworkPermission { runDiscovery() }
     }
 
     val connectPairedHost: (String) -> Unit = { target ->
@@ -447,8 +475,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             RemoteFeatureAction.CAST -> {
                 selectedTab = RadioTvTab.DUPLICATION
                 showCast = true
-                refreshCastDevices()
-                mediaPicker.launch(arrayOf("image/*", "video/*", "audio/*"))
+                runWithLocalNetworkPermission {
+                    discoverCastDevices()
+                    mediaPicker.launch(arrayOf("image/*", "video/*", "audio/*"))
+                }
                 "Открываем системный выбор медиа. DRM/HLS/DASH-контент не поддерживается."
             }
         }
@@ -711,10 +741,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     }
                                     item {
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                            Button(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, modifier = Modifier.weight(1f)) { Text("Фото / видео") }
-                                            Button(onClick = { audioPicker.launch("audio/*") }, modifier = Modifier.weight(1f)) { Text("Музыка / аудио") }
+                                            Button(onClick = { launchMediaPicker(arrayOf("image/*", "video/*")) }, modifier = Modifier.weight(1f)) { Text("Фото / видео") }
+                                            Button(onClick = { launchAudioPicker() }, modifier = Modifier.weight(1f)) { Text("Музыка / аудио") }
                                         }
-                                        OutlinedButton(onClick = { mediaPicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("ВЫБРАТЬ ЛЮБОЙ ФАЙЛ") }
+                                        OutlinedButton(onClick = { launchMediaPicker(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("ВЫБРАТЬ ЛЮБОЙ ФАЙЛ") }
                                     }
                                     item {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
