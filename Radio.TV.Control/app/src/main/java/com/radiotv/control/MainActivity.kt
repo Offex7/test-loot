@@ -569,10 +569,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         Text(
                                             when (val current = status) {
                                                 RemoteStatus.Disconnected -> "Android TV: не подключено"
-                                                is RemoteStatus.Connecting -> "Подключение: \${current.host}"
+                                                is RemoteStatus.Connecting -> "Подключение: ${current.host}"
                                                 is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения"
-                                                is RemoteStatus.Connected -> "Android TV: подключено · \${current.host}"
-                                                is RemoteStatus.Error -> "Ошибка: \${current.message}"
+                                                is RemoteStatus.Connected -> "Android TV: подключено · ${current.host}"
+                                                is RemoteStatus.Error -> "Ошибка: ${current.message}"
                                             },
                                             color = if (wifiConnected) RadioTvPalette.Red else RadioTvPalette.Muted
                                         )
@@ -711,7 +711,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             Text("DLNA-приёмники", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                             OutlinedButton(onClick = refreshCastDevices, enabled = !castScanning) { Text(if (castScanning) "ПОИСК…" else "ОБНОВИТЬ") }
                                         }
-                                        Text(castMedia?.let { "Медиа: \${it.title}" } ?: "Медиа ещё не выбрано.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text(castMedia?.let { "Медиа: ${it.title}" } ?: "Медиа ещё не выбрано.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         Text("Состояние: $castPlaybackStatus", color = if (castPlaybackStatus == "Воспроизведение") RadioTvPalette.Red else RadioTvPalette.Muted)
                                     }
                                     items(castDevices, key = { it.location }) { renderer ->
@@ -732,7 +732,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                         runCatching { dlnaCast.play(renderer, media) }
                                                             .onSuccess {
                                                                 castPlaybackStatus = "Воспроизведение"
-                                                                castMessage = "Передаём «\${media.title}» на \${renderer.friendlyName ?: renderer.location}."
+                                                                castMessage = "Передаём «${media.title}» на ${renderer.friendlyName ?: renderer.location}."
                                                             }
                                                             .onFailure {
                                                                 castPlaybackStatus = "Ошибка"
@@ -861,6 +861,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             }
         }
     }
+}
 
 private enum class RadioTvTab(val title: String, val icon: String) {
     REMOTE("Пульт", "▣"),
@@ -928,7 +929,7 @@ private fun ControlActionButton(
     }
 }
 
-private fun digitKey(number: Int): RemoteKey = RemoteKey.entries.first { it.name == "NUMBER_\$number" }
+private fun digitKey(number: Int): RemoteKey = RemoteKey.entries.first { it.name == "NUMBER_$number" }
 
 private fun sendRemoteKey(
     key: RemoteKey,
