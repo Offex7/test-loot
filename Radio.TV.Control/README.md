@@ -130,6 +130,12 @@ when (selectedRadioTvTab) {
 
 The UI module emits `RemoteKey` and `RemoteFeatureAction` callbacks; it does not own a standalone Activity or connection singleton. The Radio.TV host must provide its live connection state and action dispatch. For local media handoff, use `LocalMediaHttpServer` together with `DlnaCastController` and a selected renderer.
 
+## Licensing notes
+
+- Original project code is covered by the repository's `LICENSE` file (MIT).
+- Protocol schema material is attributed in `NOTICE`; the referenced Android TV Remote v2 material retains the applicable MIT and Apache-2.0 texts in `licenses/`.
+- GT-TAHAKOM and Atharok/BtRemote are architecture references only; no implementation source from those GPL-3.0 projects is included according to the current `NOTICE`. If their code is incorporated in a future version, reassess compatibility and satisfy GPL-3.0 source, licensing and redistribution requirements before distributing that version.
+
 ## Safe-area and device-validation checklist
 
 Implemented in source:
