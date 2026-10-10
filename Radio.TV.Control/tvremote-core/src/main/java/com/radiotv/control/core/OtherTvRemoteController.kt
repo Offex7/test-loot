@@ -52,7 +52,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
         .writeTimeout(5, TimeUnit.SECONDS)
         .pingInterval(25, TimeUnit.SECONDS)
         .build()
-    private val localTlsClient: OkHttpClient by lazy { createLocalTlsClient() }
+    private val localTlsClient: OkHttpClient get() = lazyLocalTlsClient
 
     suspend fun connect(device: DiscoveredRemoteDevice) = withContext(Dispatchers.IO) {
         disconnectCurrent()
@@ -249,7 +249,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
 
     private fun sendLgRequest(uri: String, payload: JSONObject = JSONObject()) {
         val socket = checkNotNull(webSocket) { "WebSocket LG не подключён." }
-        check(statusMutable.value is OtherTvRemoteStatus.Connected && lgClientKey != null) {
+        check(stateMutable.value is OtherTvRemoteStatus.Connected && lgClientKey != null) {
             "Сначала подтвердите сопряжение на телевизоре LG."
         }
         val request = JSONObject().put("type", "request").put("id", "rtv-${nextMessageId++}").put("uri", uri)
@@ -258,7 +258,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
     }
 
     private fun requireLgReady() {
-        check(statusMutable.value is OtherTvRemoteStatus.Connected && lgClientKey != null) {
+        check(stateMutable.value is OtherTvRemoteStatus.Connected && lgClientKey != null) {
             "Подтвердите сопряжение Radio.TV.Control на телевизоре LG."
         }
     }
@@ -330,7 +330,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
         protocol = null
         currentHost = null
         lgClientKey = null
-        statusMutable.value = OtherTvRemoteStatus.Disconnected
+        stateMutable.value = OtherTvRemoteStatus.Disconnected
     }
 
     private fun createLocalTlsClient(): OkHttpClient {
@@ -356,14 +356,11 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
         disconnectCurrent()
         plainClient.connectionPool.evictAll()
         plainClient.dispatcher.executorService.shutdown()
-        if (localTlsClientInitialized) {
-            localTlsClient.connectionPool.evictAll()
-            localTlsClient.dispatcher.executorService.shutdown()
+        if (localTlsClientDelegate.isInitialized()) {
+            lazyLocalTlsClient.connectionPool.evictAll()
+            lazyLocalTlsClient.dispatcher.executorService.shutdown()
         }
     }
-
-    private val localTlsClientInitialized: Boolean
-        get() = localTlsClientDelegate.isInitialized()
 
     private val localTlsClientDelegate = lazy { createLocalTlsClient() }
     private val lazyLocalTlsClient: OkHttpClient by localTlsClientDelegate
