@@ -19,8 +19,8 @@ adb install -r "$APK"
 adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK > "$OUT/permission-grant.txt" 2>&1 || true
 adb logcat -c
 adb shell am force-stop com.radiotv.control
-adb shell am start -W -n com.radiotv.control/.MainActivity > "$OUT/am-start.txt" 2>&1 || true
-sleep 5
+adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/am-start.txt" 2>&1 || true
+sleep 8
 adb shell dumpsys activity activities > "$OUT/activities.txt" 2>&1 || true
 adb shell pidof com.radiotv.control > "$OUT/pid.txt" 2>&1 || true
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 || true
@@ -39,7 +39,7 @@ adb shell settings put system user_rotation 1
 adb shell wm size 1280x800
 adb shell wm density 200
 adb shell am force-stop com.radiotv.control
-adb shell am start -W -n com.radiotv.control/.MainActivity > "$OUT/landscape-start.txt" 2>&1 || true
+adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/landscape-start.txt" 2>&1 || true
 sleep 5
 adb shell dumpsys activity activities > "$OUT/landscape-activities.txt" 2>&1 || true
 adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
