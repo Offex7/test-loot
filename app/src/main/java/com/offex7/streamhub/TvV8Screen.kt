@@ -755,6 +755,7 @@ fun TvV8Screen(
                             val offline = health[channel.url] == AvailabilityStatus.OFFLINE
                             TvV9ChannelRow(
                                 item = channel,
+                                active = selectedIndex in channels.indices && channels[selectedIndex].key == channel.key,
                                 favorite = favorite,
                                 logoCache = logoCache,
                                 offline = offline,
@@ -1003,6 +1004,7 @@ private fun TvV9Header(
 @Composable
 private fun TvV9ChannelRow(
     item: StreamItem,
+    active: Boolean,
     favorite: Boolean,
     logoCache: TvLogoCache,
     offline: Boolean,
@@ -1111,8 +1113,13 @@ private fun TvV9ChannelRow(
                         )
                     },
                 colors = CardDefaults.cardColors(
-                    containerColor = if (favorite) TvV9Red.copy(alpha = .08f) else TvV9Panel
+                    containerColor = when {
+                        active -> TvV9Red.copy(alpha = .14f)
+                        favorite -> TvV9Red.copy(alpha = .08f)
+                        else -> TvV9Panel
+                    }
                 ),
+                border = if (active) BorderStroke(2.dp, TvV9Red) else null,
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1785,12 +1792,16 @@ private fun TvV9Player(
                         }
                     }
 
-                    if (channelNotice) {
+                    AnimatedVisibility(
+                        visible = channelNotice,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
+                            .padding(bottom = 92.dp),
+                        enter = fadeIn(animationSpec = tween(180)),
+                        exit = fadeOut(animationSpec = tween(260))
+                    ) {
                         Card(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
-                                .padding(bottom = 92.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .72f)),
                             border = BorderStroke(1.dp, TvV9Red),
                             shape = RoundedCornerShape(12.dp)
