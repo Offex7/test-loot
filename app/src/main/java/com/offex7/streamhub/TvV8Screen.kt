@@ -416,9 +416,19 @@ fun TvV8Screen(
 
     fun adjacentIndex(start: Int, delta: Int): Int {
         val order = navigationSession
-        if (order.size <= 1 || start !in channels.indices) return -1
+        if (order.isEmpty() || start !in channels.indices) return -1
         val pos = order.indexOf(start)
-        if (pos < 0) return -1
+        if (pos < 0) {
+            // A channel marked offline may be absent from the navigation session.
+            // Walk raw playlist indices until the next currently navigable candidate is found.
+            var candidate = start
+            repeat(channels.size) {
+                candidate = (candidate + delta + channels.size) % channels.size
+                if (candidate in order) return candidate
+            }
+            return -1
+        }
+        if (order.size <= 1) return -1
         return order[(pos + delta + order.size) % order.size]
     }
 
