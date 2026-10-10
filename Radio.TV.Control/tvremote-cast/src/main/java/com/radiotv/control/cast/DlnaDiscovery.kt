@@ -100,6 +100,28 @@ class DlnaCastController(private val context: Context) {
         soap(controlUrl, renderer.serviceType ?: AVTRANSPORT_SERVICE, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>")
     }
 
+    suspend fun pause(renderer: DlnaDevice) = withContext(Dispatchers.IO) {
+        val controlUrl = checkNotNull(renderer.controlUrl) { "У устройства нет AVTransport control URL." }
+        soap(controlUrl, renderer.serviceType ?: AVTRANSPORT_SERVICE, "Pause", "<InstanceID>0</InstanceID>")
+    }
+
+    /** DLNA Seek may be rejected by renderers that do not support REL_TIME. */
+    suspend fun seek(renderer: DlnaDevice, offsetSeconds: Long) = withContext(Dispatchers.IO) {
+        require(offsetSeconds != 0L) { "Смещение для перемотки не задано." }
+        val targetSeconds = offsetSeconds.coerceAtLeast(0)
+        val hours = targetSeconds / 3600
+        val minutes = (targetSeconds % 3600) / 60
+        val seconds = targetSeconds % 60
+        val target = String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds)
+        val controlUrl = checkNotNull(renderer.controlUrl) { "У устройства нет AVTransport control URL." }
+        soap(
+            controlUrl,
+            renderer.serviceType ?: AVTRANSPORT_SERVICE,
+            "Seek",
+            "<InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>$target</Target>"
+        )
+    }
+
     suspend fun stop(renderer: DlnaDevice) = withContext(Dispatchers.IO) {
         val controlUrl = checkNotNull(renderer.controlUrl) { "У устройства нет AVTransport control URL." }
         soap(controlUrl, renderer.serviceType ?: AVTRANSPORT_SERVICE, "Stop", "<InstanceID>0</InstanceID>")
