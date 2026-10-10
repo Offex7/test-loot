@@ -41,17 +41,19 @@ adb shell pidof com.radiotv.control > "$OUT/pid.txt" 2>&1 || true
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 || true
 adb exec-out screencap -p > "$OUT/remote.png"
 
-# Tap near the center of each bottom-navigation hit target. Capture the real UI
-# directly; uiautomator hierarchy dumping is unreliable in the headless runner.
-adb shell input tap 202 1165
-sleep 1
-adb shell input tap 202 1165
-sleep 4
+# Let the automatic discovery launched at startup finish before navigating.
+# Tap near the center of the Control tab's icon (540x1200 logical viewport).
+sleep 8
+adb shell input tap 202 1138
+sleep 2
+adb shell input tap 202 1138
+sleep 8
 adb exec-out screencap -p > "$OUT/device-search.png"
 adb logcat -d -v time > "$OUT/navigation-logcat.txt" 2>&1 || true
 
-adb shell input tap 472 1165
-sleep 3
+# Settings verifies that navigation remains responsive after the network scan.
+adb shell input tap 472 1138
+sleep 4
 adb exec-out screencap -p > "$OUT/bottom-navigation.png"
 
 adb shell settings put system accelerometer_rotation 0
