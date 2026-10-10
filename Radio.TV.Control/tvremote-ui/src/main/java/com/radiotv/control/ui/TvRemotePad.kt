@@ -140,11 +140,23 @@ fun TvRemotePad(
             compact -> 170.dp
             else -> 218.dp
         }
-        val circleSize = when {
-            tight -> 38.dp
-            compact -> 64.dp
-            else -> 74.dp
+        val okSize = when {
+            tight -> 48.dp
+            compact -> 82.dp
+            else -> 90.dp
         }
+        val armWidth = when {
+            tight -> 44.dp
+            compact -> 60.dp
+            else -> 68.dp
+        }
+        val armHeight = when {
+            tight -> 38.dp
+            compact -> 48.dp
+            else -> 54.dp
+        }
+        val armStart = (maxWidth - okSize) / 2 - armHeight
+        val armTop = (padHeight - okSize) / 2 - armHeight
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceEvenly,
@@ -197,20 +209,20 @@ fun TvRemotePad(
                     Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp).size(sideSize), fontSize = 13)
                 SoftCircleButton("INFO", "Информация", enabled, { onKey(RemoteKey.MENU) },
                     Modifier.align(Alignment.TopEnd).padding(end = 3.dp, top = 2.dp).size(sideSize), fontSize = 13)
-                SoftCircleButton("▲", "Вверх", enabled, { onKey(RemoteKey.UP) },
-                    Modifier.align(Alignment.TopCenter).padding(top = if (compact) 34.dp else 38.dp).size(circleSize), fontSize = 27)
-                SoftCircleButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
-                    Modifier.align(Alignment.CenterStart).padding(start = 30.dp).size(circleSize), fontSize = 28)
+                DirectionPadButton("▲", "Вверх", enabled, { onKey(RemoteKey.UP) },
+                    Modifier.align(Alignment.TopCenter).padding(top = armTop).width(armWidth).height(armHeight), fontSize = if (tight) 20 else 25)
+                DirectionPadButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
+                    Modifier.align(Alignment.CenterStart).padding(start = armStart).width(armHeight).height(armWidth), fontSize = if (tight) 20 else 25)
                 SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
-                    Modifier.align(Alignment.Center).size(when { tight -> 48.dp; compact -> 82.dp; else -> 90.dp }), fontSize = if (tight) 21 else 28, active = true)
-                SoftCircleButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
-                    Modifier.align(Alignment.CenterEnd).padding(end = 30.dp).size(circleSize), fontSize = 28)
+                    Modifier.align(Alignment.Center).size(okSize), fontSize = if (tight) 21 else 28, active = true)
+                DirectionPadButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
+                    Modifier.align(Alignment.CenterEnd).padding(end = armStart).width(armHeight).height(armWidth), fontSize = if (tight) 20 else 25)
                 SoftCircleButton("↶", "Назад", enabled, { onKey(RemoteKey.BACK) },
                     Modifier.align(Alignment.BottomStart).padding(start = 3.dp, bottom = 2.dp).size(sideSize), fontSize = 31)
                 SoftCircleButton("EXIT", "Выход", enabled, { onKey(RemoteKey.BACK) },
                     Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).size(sideSize), fontSize = 13)
-                SoftCircleButton("▼", "Вниз", enabled, { onKey(RemoteKey.DOWN) },
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = if (compact) 34.dp else 38.dp).size(circleSize), fontSize = 27)
+                DirectionPadButton("▼", "Вниз", enabled, { onKey(RemoteKey.DOWN) },
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = armTop).width(armWidth).height(armHeight), fontSize = if (tight) 20 else 25)
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -295,6 +307,39 @@ private fun TopRemoteButton(
         } else {
             Text(label, color = RadioTvPalette.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
         }
+    }
+}
+
+@Composable
+private fun DirectionPadButton(
+    label: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    fontSize: Int = 25
+) {
+    val view = LocalView.current
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(RadioTvPalette.Raised)
+            .border(BorderStroke(1.dp, RadioTvPalette.Border), shape)
+            .semantics { contentDescription = description }
+            .clickable(enabled = enabled, onClickLabel = description) {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = RadioTvPalette.White,
+            fontSize = fontSize.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
