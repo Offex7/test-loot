@@ -270,7 +270,12 @@ private fun rememberSystemPowerSave(): Boolean {
 }
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
-private fun shareText(context: Context, text: String, chooserTitle: String): Boolean {
+private fun shareText(
+    context: Context,
+    text: String,
+    chooserTitle: String,
+    showFailureToast: Boolean = true
+): Boolean {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
@@ -279,7 +284,12 @@ private fun shareText(context: Context, text: String, chooserTitle: String): Boo
     return runCatching {
         context.startActivity(chooser)
         true
-    }.getOrDefault(false)
+    }.getOrElse {
+        if (showFailureToast) {
+            Toast.makeText(context, "Не удалось открыть меню «Поделиться»", Toast.LENGTH_LONG).show()
+        }
+        false
+    }
 }
 
 private val SleepOptions = listOf(
@@ -2578,7 +2588,7 @@ private fun Settings(
                     onClick = {
                         val clipboard = settingsContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV logs", logText))
-                        val shared = shareText(settingsContext, logText, "Поделиться логами Radio.TV")
+                        val shared = shareText(settingsContext, logText, "Поделиться логами Radio.TV", showFailureToast = false)
                         notify("Скопировано", if (shared) 3000L else 2000L)
                     }
                 ) { Text("СКОПИРОВАТЬ", color = Red) }

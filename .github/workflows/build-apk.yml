@@ -87,7 +87,7 @@ jobs:
               "PIN_prompt_hidden_and_landscape": "showPinEntry" in main and 'setNegativeButtonText("Ввести PIN")' in main and "ОТСКАНИРУЙТЕ ОТПЕЧАТОК ПАЛЬЦА" not in main and "activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT" not in main,
               "biometric_lockout_bypass_preserved": "if (!biometricAvailable) return" in main and "biometricAvailable && lockoutRemaining <= 0L" not in main,
               "battery_status_safe": "isIgnoringBatteryOptimizations" in main and "isBackgroundRestricted" in main and "getOrNull()" in main and "shouldWarnAboutBackgroundLimits" in main,
-              "log_share_intent": 'val shared = shareText(settingsContext, logText, "Поделиться логами Radio.TV")' in main and 'notify("Скопировано", if (shared) 3000L else 2000L)' in main and "Intent.createChooser(sendIntent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)" in main,
+              "log_share_intent": 'val shared = shareText(settingsContext, logText, "Поделиться логами Radio.TV", showFailureToast = false)' in main and 'notify("Скопировано", if (shared) 3000L else 2000L)' in main and "Intent.createChooser(sendIntent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)" in main,
               "share_icon_pulse": "log-share-pulse" in main and "if (energySaving) 1f else logSharePulse" in main,
               "all_switch_feedback": main.count("toggleFeedback()") >= 7 and "store.setHapticsEnabled(enabled)" in main and "store.setSoundFeedbackEnabled(enabled)" in main,
               "autostart_above_haptics": main.index('Text("АВТОЗАПУСК"') < main.index('Text("ВИБРАЦИОННЫЙ ОТКЛИК"'),
