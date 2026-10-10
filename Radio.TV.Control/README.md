@@ -1,75 +1,82 @@
-# Radio.TV.Control
+name: Radio.TV.Control Android CI
 
-Standalone Android remote prototype designed to become a Radio.TV feature module.
+on:
+  push:
+    branches:
+      - feature/radiotv-control-v1
+    paths:
+      - "Radio.TV.Control/**"
+      - ".github/workflows/radiotv-control-ci.yml"
+  pull_request:
+    paths:
+      - "Radio.TV.Control/**"
+      - ".github/workflows/radiotv-control-ci.yml"
+  workflow_dispatch:
 
-## Project layout
+permissions:
+  contents: read
 
-- `:app` — standalone demo host; app label `Radio.TV.Control`.
-- `:tvremote-core` — transport contracts, command models and Android TV Remote v2 TLS/protobuf transport.
-- `:tvremote-ui` — reusable Jetpack Compose remote pad.
-- `:tvremote-cast` — DLNA primitives and local-network discovery.
-
-**Package:** `com.radiotv.control`  
-**Minimum Android:** 12 / API 31  
-**Compile/target SDK:** Android 17 / API 37  
-**Orientation:** portrait requested in the manifest. Content is capped at 520 dp and centered on wider screens; Android 17 may ignore forced orientation on large-screen devices.
-
-## Build
-
-Requires JDK 17, Android SDK platform 37 and compatible Android Gradle Plugin 9.x tooling. CI uses Gradle 9.5.0.
-
-```bash
-cd Radio.TV.Control
-gradle :app:assembleDebug :tvremote-core:test
-```
-
-Install:
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Current implementation
-
-- Material 3 dark UI, TV IP fallback, pairing-code input and remote controls.
-- Automatic local-network discovery using Android NSD/mDNS for `_androidtvremote2._tcp`, `_googlecast._tcp`, `_airplay._tcp`; SSDP/M-SEARCH; and bounded TCP probing of ports 6466, 6467, 8008, 8009, 9080, 8060, 8001, 8002, 3000 and 3001.
-- Subnet probing is deliberately bounded to the current /24 to avoid flooding larger networks. NetBIOS and ARP-table inspection are not used.
-- Best-effort type estimates for Android TV, Google Cast, Samsung, LG, Roku, DLNA, AirPlay and unknown devices. A detected type does not prove its remote-control protocol works.
-- Android TV Remote v2 TLS/pairing/control-channel foundation and basic key injection.
-- Red/black Material 3 palette, compact side-mounted volume/channel controls, centered D-pad, 48 dp minimum control targets, digit pad and tactile feedback.
-- R8/ProGuard minification and resource shrinking enabled for debug and release APKs.
-- Public Compose API `TvRemotePad(enabled, onKey, modifier)`.
-
-## Not implemented / not verified on hardware
-
-- Bluetooth HID peripheral registration and HID reports.
-- Voice PCM capture/streaming and complete TV IME injection.
-- Working Samsung Tizen, LG webOS, Roku ECP adapters and IR hardware.
-- DLNA AVTransport `SetAVTransportURI` / `Play` / `Stop`.
-- Touchpad gestures and gyroscope air mouse (UI entry points are present; operation remains unimplemented).
-- Physical TV pairing and real command delivery have not been tested; CI checks compilation, unit tests, APK signature/manifest and class presence.
-
-## Integration in Radio.TV (stage 2)
-
-Move the modules into Radio.TV and add:
-
-```kotlin
-implementation(project(":tvremote-core"))
-implementation(project(":tvremote-ui"))
-implementation(project(":tvremote-cast"))
-```
-
-Embed the shared Compose controls:
-
-```kotlin
-TvRemotePad(
-    enabled = remoteIsConnected,
-    onKey = { key -> lifecycleScope.launch { transport.sendKey(key) } }
-)
-```
-
-Connection and protocol state stay in `:tvremote-core`; UI does not depend on the demo app. For media handoff, implement `RadioTvMediaProvider.currentMedia(): CastMedia?` after DLNA AVTransport is added.
-
-## CI
-
-GitHub Actions builds `:app:assembleDebug`, runs `:tvremote-core:test`, verifies APK signature and SDK/label/orientation/cleartext/local-network manifest values, scans DEX for remote/UI/cast/discovery classes, computes SHA-256 and APK size, and uploads `Radio.TV.Control-debug-run-N`. The artifact is debug-signed and intended for testing rather than Play Store release.
+jobs:
+  build-and-verify:
+    name: Build, test and inspect APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Radio.TV.Control
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+          accept-android-sdk-licenses: true
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+      - name: Set up Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+      - name: Assemble debug APK and run core tests
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :tvremote-core:test
+      - name: Verify APK, manifest, DEX modules, hash and size
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/37.0.0"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "package: name='com.radiotv.control'" badging.txt
+          grep -F "sdkVersion:'31'" badging.txt
+          grep -F "targetSdkVersion:'37'" badging.txt
+          grep -F "application-label:'Radio.TV.Control'" badging.txt
+          APK_ANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer -print -quit)"
+          test -n "$APK_ANALYZER" || { echo "apkanalyzer not found under $ANDROID_HOME/cmdline-tools"; exit 1; }
+          "$APK_ANALYZER" manifest print "$APK" > manifest.xml
+          # Android ActivityInfo.SCREEN_ORIENTATION_PORTRAIT is encoded as 1 in the APK manifest.
+          grep -Eq 'android:screenOrientation([^=]*)="1"' manifest.xml || { echo "Manifest portrait-orientation check failed (expected SCREEN_ORIENTATION_PORTRAIT=1)"; cat manifest.xml; exit 1; }
+          grep -Eq 'android:usesCleartextTraffic([^=]*)="true"' manifest.xml || { echo "Manifest cleartext check failed"; cat manifest.xml; exit 1; }
+          grep -F 'android.permission.ACCESS_LOCAL_NETWORK' manifest.xml || { echo "Manifest local-network permission check failed"; cat manifest.xml; exit 1; }
+          mkdir -p artifact-out
+          cp "$APK" artifact-out/Radio.TV.Control-debug.apk
+          unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$' | while read -r dex; do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -F 'AndroidTvRemoteV2Transport' dex-strings.txt
+          grep -F 'TvRemotePad' dex-strings.txt
+          grep -F 'DlnaCastController' dex-strings.txt
+          grep -F 'LocalNetworkDeviceDiscovery' dex-strings.txt
+          sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
+          stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio.TV.Control-debug-run-${{ github.run_number }}
+          path: Radio.TV.Control/artifact-out/Radio.TV.Control-debug.apk
+          if-no-files-found: error
+          retention-days: 30

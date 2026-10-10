@@ -1,5 +1,9 @@
 package com.radiotv.control
 
+import android.Manifest
+import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -59,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radiotv.control.cast.LocalNetworkDeviceDiscovery
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.BluetoothHidController
+import com.radiotv.control.core.BluetoothHidStatus
 import com.radiotv.control.core.DiscoveredRemoteDevice
 import com.radiotv.control.core.RemoteDeviceType
 import com.radiotv.control.core.RemoteStatus
@@ -70,6 +76,7 @@ private const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWOR
 
 class MainActivity : ComponentActivity() {
     private val remote: AndroidTvRemoteV2Transport by inject()
+    private val bluetoothHid: BluetoothHidController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +85,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) remote.close()
+        if (isFinishing) {
+            remote.close()
+            bluetoothHid.close()
+        }
         super.onDestroy()
     }
 }
@@ -88,6 +98,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
+    val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
@@ -132,6 +143,67 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
     ) { granted ->
         if (granted) runDiscovery()
         else statusMessage = "Для поиска в локальной сети разрешите доступ или введите IP вручную."
+    }
+
+    val discoverabilityLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        statusMessage = if (result.resultCode == Activity.RESULT_OK) {
+            "Телефон обнаруживаем по Bluetooth. На телевизоре откройте Bluetooth → добавить устройство → Radio.TV.Control."
+        } else {
+            "Разрешите обнаружение телефона, чтобы телевизор мог подключиться по Bluetooth HID."
+        }
+    }
+
+    val enableBluetoothLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            bluetoothHid.start()
+            discoverabilityLauncher.launch(
+                Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+            )
+        } else {
+            statusMessage = "Bluetooth не включён."
+        }
+    }
+
+    val startBluetoothSession: () -> Unit = {
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        when {
+            adapter == null -> statusMessage = "На этом устройстве отсутствует Bluetooth."
+            !runCatching { adapter.isEnabled }.getOrDefault(false) ->
+                enableBluetoothLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            else -> {
+                bluetoothHid.start()
+                discoverabilityLauncher.launch(
+                    Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                        .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+                )
+            }
+        }
+    }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants[Manifest.permission.BLUETOOTH_CONNECT] == true &&
+            grants[Manifest.permission.BLUETOOTH_ADVERTISE] == true
+        ) {
+            startBluetoothSession()
+        } else {
+            statusMessage = "Для Bluetooth HID разрешите Bluetooth Connect и Advertise."
+        }
+    }
+
+    val beginBluetoothSession: () -> Unit = {
+        val required = arrayOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        )
+        val missing = required.any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing) bluetoothPermissionLauncher.launch(required) else startBluetoothSession()
     }
 
     val refreshDevices: () -> Unit = {
@@ -190,6 +262,22 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                             } else if (devices.isEmpty()) {
                                 Text("Устройства не найдены", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                        }
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Bluetooth HID", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                OutlinedButton(
+                                    onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        beginBluetoothSession()
+                                    }
+                                ) { Text("Подключить") }
+                            }
+                            Text(
+                                bluetoothStatus.asUserLabel(),
+                                color = if (bluetoothStatus is BluetoothHidStatus.Connected) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         items(devices, key = { it.ip }) { device ->
                             Card(
@@ -299,12 +387,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                         }
                         item {
                             Text("ПУЛЬТ", fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                            val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
                             TvRemotePad(
-                                enabled = connected,
+                                enabled = connected || hidConnected,
                                 onKey = { key ->
                                     scope.launch {
-                                        runCatching { remote.sendKey(key) }
-                                            .onFailure { statusMessage = it.message ?: "Команда не отправлена." }
+                                        runCatching {
+                                            if (connected) remote.sendKey(key) else bluetoothHid.sendRemoteKey(key)
+                                        }.onFailure { statusMessage = it.message ?: "Команда не отправлена." }
                                     }
                                 },
                                 onFeatureAction = { action ->
@@ -341,4 +431,12 @@ private fun deviceIcon(type: RemoteDeviceType): String = when (type) {
     RemoteDeviceType.DLNA -> "🔊"
     RemoteDeviceType.AIRPLAY -> "🍎"
     RemoteDeviceType.UNKNOWN -> "🔎"
+}
+
+private fun BluetoothHidStatus.asUserLabel(): String = when (this) {
+    BluetoothHidStatus.Idle -> "HID выключен. Нажмите «Подключить» и выберите Radio.TV.Control на ТВ."
+    BluetoothHidStatus.Starting -> "Запускаем HID-профиль или ждём соединения с телевизором…"
+    BluetoothHidStatus.Ready -> "Профиль зарегистрирован. Откройте Bluetooth на ТВ и выберите Radio.TV.Control."
+    is BluetoothHidStatus.Connected -> "Подключено: " + deviceName
+    is BluetoothHidStatus.Error -> "Bluetooth HID: " + message
 }
