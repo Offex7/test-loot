@@ -2,6 +2,7 @@ package com.radiotv.control.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,9 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -152,7 +155,7 @@ fun TvRemotePad(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TopRemoteButton("⏻", "Питание", RemoteKey.POWER, enabled, onKey, Modifier.width(112.dp).height(topHeight))
+                TopRemoteButton("Power", "Питание", RemoteKey.POWER, enabled, onKey, Modifier.width(112.dp).height(topHeight), powerIcon = true)
                 TopRemoteButton("⌂", "Домой", RemoteKey.HOME, enabled, onKey, Modifier.width(112.dp).height(topHeight))
             }
             Box(
@@ -252,7 +255,8 @@ private fun TopRemoteButton(
     key: RemoteKey,
     enabled: Boolean,
     onKey: (RemoteKey) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    powerIcon: Boolean = false
 ) {
     val view = LocalView.current
     Box(
@@ -267,7 +271,30 @@ private fun TopRemoteButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = RadioTvPalette.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
+        if (powerIcon) {
+            Canvas(Modifier.size(30.dp)) {
+                val stroke = 2.8.dp.toPx()
+                val radius = size.minDimension * 0.30f
+                drawArc(
+                    color = RadioTvPalette.White,
+                    startAngle = 135f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    topLeft = Offset(size.width / 2 - radius, size.height / 2 - radius),
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+                drawLine(
+                    color = RadioTvPalette.White,
+                    start = Offset(size.width / 2, size.height * 0.10f),
+                    end = Offset(size.width / 2, size.height * 0.52f),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round
+                )
+            }
+        } else {
+            Text(label, color = RadioTvPalette.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
 
