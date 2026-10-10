@@ -87,8 +87,7 @@ class GyroAirMouseController(
             lastTimestamp = event.timestamp
             return
         }
-        val elapsed = ((event.timestamp - lastTimestamp).coerceAtLeast(0L) / NANOS_PER_SECOND)
-            .toFloat()
+        val elapsed = ((event.timestamp - lastTimestamp).coerceAtLeast(0L).toFloat() / NANOS_PER_SECOND.toFloat())
             .coerceIn(0f, MAX_FRAME_SECONDS)
         lastTimestamp = event.timestamp
         if (elapsed <= 0f) return
