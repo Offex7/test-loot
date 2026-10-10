@@ -60,7 +60,8 @@ jobs:
           APK_ANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer -print -quit)"
           test -n "$APK_ANALYZER" || { echo "apkanalyzer not found under $ANDROID_HOME/cmdline-tools"; exit 1; }
           "$APK_ANALYZER" manifest print "$APK" > manifest.xml
-          grep -Eq 'android:screenOrientation([^=]*)="portrait"' manifest.xml || { echo "Manifest orientation check failed"; cat manifest.xml; exit 1; }
+          # Android ActivityInfo.SCREEN_ORIENTATION_PORTRAIT is encoded as 1 in the APK manifest.
+          grep -Eq 'android:screenOrientation([^=]*)="1"' manifest.xml || { echo "Manifest portrait-orientation check failed (expected SCREEN_ORIENTATION_PORTRAIT=1)"; cat manifest.xml; exit 1; }
           grep -Eq 'android:usesCleartextTraffic([^=]*)="true"' manifest.xml || { echo "Manifest cleartext check failed"; cat manifest.xml; exit 1; }
           grep -F 'android.permission.ACCESS_LOCAL_NETWORK' manifest.xml || { echo "Manifest local-network permission check failed"; cat manifest.xml; exit 1; }
           mkdir -p artifact-out
