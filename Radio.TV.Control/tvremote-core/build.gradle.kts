@@ -17,7 +17,7 @@ protobuf {
     protoc { artifact = "com.google.protobuf:protoc:4.31.1" }
     generateProtoTasks {
         all().configureEach {
-            builtins { getByName("java") { option("lite") } }
+            builtins { id("java") { option("lite") } }
         }
     }
 }
