@@ -18,6 +18,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
@@ -43,6 +44,32 @@ class LocalNetworkDeviceDiscovery(context: Context) {
             awaitAll(mdns, ssdp, tcp)
         }
         found.values.sortedWith(compareBy<DiscoveredRemoteDevice> { rank(it.type) }.thenBy { it.name.lowercase(Locale.ROOT) })
+    }
+
+    /** Probes only the user-entered local IPv4 address, then maps open control ports to a protocol. */
+    suspend fun detectHost(host: String): DiscoveredRemoteDevice = withContext(Dispatchers.IO) {
+        val target = host.trim()
+        val address = runCatching { InetAddress.getByName(target) }.getOrNull() as? Inet4Address
+            ?: error("Введите IPv4-адрес телевизора, например 192.168.1.100.")
+        require(address.isSiteLocalAddress || address.isLinkLocalAddress) {
+            "Ручной поиск разрешён только для адреса в локальной сети."
+        }
+        val open = TCP_PORTS.filter { port ->
+            runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(address, port), TCP_CONNECT_TIMEOUT_MS)
+                    true
+                }
+            }.getOrDefault(false)
+        }.toSet()
+        val type = inferPortType(open)
+        DiscoveredRemoteDevice(
+            ip = address.hostAddress ?: target,
+            name = if (type == RemoteDeviceType.UNKNOWN) "Устройство $target" else type.label + " · " + target,
+            type = type,
+            brand = brandFor(type, null),
+            ports = open
+        )
     }
 
     private suspend fun browseMdns(

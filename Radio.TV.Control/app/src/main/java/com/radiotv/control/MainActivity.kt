@@ -302,10 +302,26 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 host = device.ip
                 statusMessage = "Найден Google Cast по адресу " + device.ip + ". Управляющий Cast-адаптер добавляется отдельно."
             }
+            RemoteDeviceType.UNKNOWN -> startPairing(device.ip)
             else -> {
                 host = device.ip
                 statusMessage = "Определено: " + device.type.label + " (" + device.ip + "). Для этого типа нужен отдельный протокол."
             }
+        }
+    }
+
+    val connectManualHost: () -> Unit = {
+        val target = host.trim()
+        scope.launch {
+            statusMessage = "Определяем протокол по IP-адресу…"
+            runCatching { discovery.detectHost(target) }
+                .onSuccess { detected ->
+                    statusMessage = "Определён тип: " + detected.type.label + ". Подключаемся…"
+                    chooseDevice(detected)
+                }
+                .onFailure { error ->
+                    statusMessage = error.message ?: "Не удалось определить устройство."
+                }
         }
     }
 
@@ -431,7 +447,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 Button(
                                     onClick = {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        startPairing(host)
+                                        connectManualHost()
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     enabled = host.isNotBlank()

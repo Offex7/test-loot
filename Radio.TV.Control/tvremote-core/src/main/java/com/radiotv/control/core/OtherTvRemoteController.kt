@@ -135,10 +135,8 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
 
     private suspend fun connectLg(host: String) {
         lgClientKey = preferences.getString("lg-client-key:$host", null)
+        // onOpen requests pairing and onMessage("registered") owns the final state transition.
         openWebSocket("ws://$host:3000", RemoteDeviceType.LG)
-        stateMutable.value = OtherTvRemoteStatus.Pairing(
-            host, RemoteDeviceType.LG, "Подтвердите запрос Radio.TV.Control на экране телевизора LG."
-        )
     }
 
     private fun connectRoku(host: String) {
