@@ -131,6 +131,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
     val otherRemoteStatus by otherTvRemote.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
     var pairedHost by rememberSaveable { mutableStateOf(remote.pairedHost().orEmpty()) }
@@ -167,7 +168,16 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                     runCatching {
                         context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    withContext(Dispatchers.IO) { localMediaServer.start(uri) }
+                    val media = withContext(Dispatchers.IO) { localMediaServer.start(uri) }
+                    val extension = media.title.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+                    val mimeType = media.mimeType.substringBefore(';').lowercase(java.util.Locale.ROOT)
+                    val isPlaylist = extension in setOf("m3u8", "mpd") ||
+                        mimeType.contains("mpegurl") || mimeType.contains("dash+xml")
+                    if (isPlaylist) {
+                        withContext(Dispatchers.IO) { localMediaServer.close() }
+                        error("Плейлисты HLS/DASH и DRM-защищённый контент не поддерживаются. Выберите локальный незащищённый файл.")
+                    }
+                    media
                 }.onSuccess { media ->
                     castMedia = media
                     castMessage = "Подготовлено: ${media.title}. Выберите DLNA-приёмник."
@@ -429,7 +439,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     }
 
     val handleFeatureAction: (RemoteFeatureAction) -> Unit = { action ->
-        statusMessage = when (action) {
+        val feedbackMessage = when (action) {
             RemoteFeatureAction.VOICE_INPUT -> {
                 if (voiceStatus is VoiceInputStatus.Recording || voiceStatus is VoiceInputStatus.Starting) {
                     scope.launch {
@@ -439,7 +449,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                     }
                     "Останавливаем голосовой ввод…"
                 } else if (!wifiConnected) {
-                    "Сначала подключитесь к телевизору."
+                    if (otherConnected) {
+                        "Голосовой ввод доступен через Android TV Remote v2. Подключитесь к Android TV по Wi-Fi."
+                    } else {
+                        "Сначала подключитесь к телевизору."
+                    }
                 } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     scope.launch {
                         runCatching { voiceInput.start() }
@@ -477,9 +491,19 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 showCast = true
                 runWithLocalNetworkPermission {
                     discoverCastDevices()
-                    mediaPicker.launch(arrayOf("image/*", "video/*", "audio/*"))
+                    mediaPicker.launch(arrayOf("image/*", "video/*"))
                 }
-                "Открываем системный выбор медиа. DRM/HLS/DASH-контент не поддерживается."
+                "Открываем системный выбор фото или видео. Для аудио и произвольных файлов доступны отдельные варианты на вкладке «Дублирование». DRM/HLS/DASH не поддерживается."
+            }
+        }
+        statusMessage = feedbackMessage
+        scope.launch {
+            runCatching {
+                snackbarHostState.showSnackbar(
+                    message = feedbackMessage,
+                    withDismissAction = true,
+                    duration = androidx.compose.material3.SnackbarDuration.Short
+                )
             }
         }
     }
@@ -899,6 +923,13 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         modifier = Modifier.fillMaxWidth().height(72.dp)
                     )
                 }
+                androidx.compose.material3.SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 84.dp)
+                )
             }
         }
     }
