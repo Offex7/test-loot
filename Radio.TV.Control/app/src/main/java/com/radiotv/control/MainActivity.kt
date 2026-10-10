@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote) }
+        setContent { RadioTvControlScreen(remote, bluetoothHid) }
     }
 
     override fun onDestroy() {
@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
