@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("streamhub_settings")
 
-internal data class UsageSession(
+data class UsageSession(
     val channelId: String,
     val startedAtMs: Long,
     val baseTotalSeconds: Long,

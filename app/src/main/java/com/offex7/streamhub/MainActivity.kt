@@ -4018,7 +4018,7 @@ internal class UsageTicker(
             return null
         }
         if (elapsedSeconds == 0L) {
-            store.saveUsageSession(session)
+            store.saveUsageSession(section, session)
             return session
         }
         val rebased = UsageSession(
@@ -4027,7 +4027,7 @@ internal class UsageTicker(
             baseTotalSeconds = store.usageTotalSeconds(section),
             baseChannelSeconds = store.channelUsageSnapshot(section)[session.channelId] ?: 0L
         )
-        store.saveUsageSession(rebased)
+        store.saveUsageSession(section, rebased)
         return rebased
     }
 
@@ -4070,7 +4070,7 @@ internal class UsageTicker(
                         baseTotalSeconds = store.usageTotalSeconds(section),
                         baseChannelSeconds = store.channelUsageSnapshot(section)[activeId] ?: 0L
                     )
-                    store.saveUsageSession(started)
+                    store.saveUsageSession(section, started)
                     session = started
                     lastActiveTickMs = now
                 } else {

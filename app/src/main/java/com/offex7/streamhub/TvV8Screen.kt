@@ -491,9 +491,7 @@ fun TvV8Screen(
                             .distinctBy { it.url }
                         if (neighbors.isNotEmpty()) {
                             scope.launch {
-                                val pending = neighbors
-                                    .mapNotNull { channels.getOrNull(it) }
-                                    .filter { health[it.url] == null }
+                                val pending = neighbors.filter { health[it.url] == null }
                                 if (pending.isNotEmpty()) {
                                     health = health + scanTvV9(pending, repo)
                                 }

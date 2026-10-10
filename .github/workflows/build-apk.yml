@@ -117,6 +117,7 @@ jobs:
               "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = if (fastSwitch) 1_200L else 10_000L" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Не удалось воспроизвести канал, переключаю на следующий" in tv and "autoRecoveryTargets" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
+              "TV_neighbor_precheck_types": "val pending = neighbors.filter { health[it.url] == null }" in tv,
               "autostart_and_keep_screen_on": "autoStartKey" in storage and "FLAG_KEEP_SCREEN_ON" in main,
           }
           failures = [name for name, ok in checks.items() if not ok]
