@@ -41,11 +41,12 @@ adb shell pidof com.radiotv.control > "$OUT/pid.txt" 2>&1 || true
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 || true
 adb exec-out screencap -p > "$OUT/remote.png"
 
-# Enter Control once. Discovery starts on tab entry (not behind the remote screen).
+# Enter Control; grab the immediate auto-discovery state before the local scan settles.
 adb shell input tap 202 1138
-sleep 5
-# Store a UIAutomator hierarchy and a machine-readable check to ensure this is the
-# Control/search page, not just the remote with a pressed navigation ripple.
+sleep 1
+adb exec-out screencap -p > "$OUT/device-search.png"
+# Save a hierarchy and check the selected destination after capturing the initial state.
+sleep 4
 adb shell uiautomator dump /sdcard/device-search-ui.xml > "$OUT/uiautomator-dump.txt" 2>&1 || true
 adb shell cat /sdcard/device-search-ui.xml > "$OUT/device-search-ui.xml" 2>/dev/null || true
 if grep -Fq 'КОНТРОЛЬ УСТРОЙСТВ' "$OUT/device-search-ui.xml"; then
@@ -53,7 +54,6 @@ if grep -Fq 'КОНТРОЛЬ УСТРОЙСТВ' "$OUT/device-search-ui.xml"; t
 else
   echo "WARN: control/search title not present in UI hierarchy; inspect PNG and diagnostics" > "$OUT/device-search-screen-check.txt"
 fi
-adb exec-out screencap -p > "$OUT/device-search.png"
 adb logcat -d -v time > "$OUT/navigation-logcat.txt" 2>&1 || true
 
 # Settings screenshot also verifies that a second tab remains reachable.
