@@ -422,7 +422,7 @@ class PlayerController(context: Context) {
                     generation == playbackGeneration &&
                     !released
                 ) {
-                    if (currentPlayer.playbackState == Player.STATE_READY && currentPlayer.isPlaying) {
+                    if (currentPlayer.playbackState == Player.STATE_READY && (currentPlayer.isPlaying || currentPlayer.playWhenReady)) {
                         _error.value = null
                         internalRetryEnabled = true
                         return index

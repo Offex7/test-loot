@@ -124,6 +124,7 @@ jobs:
               "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = 25_000L" in tv,
               "TV_banner_after_settle": "LaunchedEffect(channel.key, switching, silentSwitching)" in tv and "channelNotice = silentSwitching" in tv and "delay(3000L)" in tv,
               "TV_candidate_stays_until_timeout": "selectedIndex = cursor" in tv and "attemptTimeoutMs = 25_000L" in tv and "suppressChannelNotice" not in tv,
+              "TV_ready_signal_prevents_false_failover": "currentPlayer.playbackState == Player.STATE_READY && (currentPlayer.isPlaying || currentPlayer.playWhenReady)" in player,
               "TV_fast_switch_state": "fullscreen && (player.isPlaying.value || player.player.playWhenReady)" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Не удалось воспроизвести канал, переключаю на следующий" in tv and "autoRecoveryTargets" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
