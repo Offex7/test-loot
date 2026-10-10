@@ -5,6 +5,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 APP="$ROOT/Radio.TV.Control"
 APK="$APP/app/build/outputs/apk/debug/app-debug.apk"
 OUT="$APP/ui-screenshots"
+echo "Capturing UI screenshots at equivalent 540x1200/220dpi and 640x400/100dpi viewports."
 
 if [ ! -s "$APK" ]; then
   echo "Debug APK was not found: $APK" >&2
