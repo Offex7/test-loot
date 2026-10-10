@@ -39,7 +39,6 @@ Palette colors used in `tvremote-ui/.../TvRemotePad.kt`:
 | --- | --- |
 | `#000000` | Root / letterbox background |
 | `#0A0A0A` | Surface |
-| `#141414` | Reserved older raised tone (not an accent) |
 | `#252525` | Raised controls / button background |
 | `#E53935` | Active red / primary accent / D-pad outline |
 | `#D32F2F` | Deep red for active containers |
