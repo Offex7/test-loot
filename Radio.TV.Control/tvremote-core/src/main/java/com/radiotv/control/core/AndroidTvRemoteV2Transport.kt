@@ -109,15 +109,16 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
             val pinBytes = pin.substring(2).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             val digest = MessageDigest.getInstance("SHA-256")
             digest.update(clientKey.modulus.toUnsignedBytes())
-            digest.update(0.toByte())
             digest.update(clientKey.publicExponent.toUnsignedBytes())
-            digest.update(0.toByte())
             digest.update(serverKey.modulus.toUnsignedBytes())
-            digest.update(0.toByte())
             digest.update(serverKey.publicExponent.toUnsignedBytes())
             digest.update(pinBytes)
+            val secret = digest.digest()
+            require((secret[0].toInt() and 0xFF) == pin.substring(0, 2).toInt(16)) {
+                "Код не совпадает. Проверьте PIN на экране телевизора."
+            }
             sendPolo(pending.output, PoloProto.OuterMessage.newBuilder().setSecret(
-                PoloProto.Secret.newBuilder().setSecret(com.google.protobuf.ByteString.copyFrom(digest.digest()))
+                PoloProto.Secret.newBuilder().setSecret(com.google.protobuf.ByteString.copyFrom(secret))
             ).build())
             check(readPolo(pending.input).hasSecretAck()) { "Телевизор отклонил код сопряжения." }
 
@@ -165,48 +166,78 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
     private suspend fun openRemoteConnection(host: String, fingerprint: String?) {
         val identity = loadOrCreateIdentity()
         val socket = newTlsSocket(identity, fingerprint)
-        socket.connect(InetSocketAddress(host, REMOTE_PORT), CONNECT_TIMEOUT_MS)
-        socket.soTimeout = IO_TIMEOUT_MS
-        socket.startHandshake()
-        val input = DataInputStream(socket.getInputStream())
-        val output = DataOutputStream(socket.getOutputStream())
+        try {
+            socket.connect(InetSocketAddress(host, REMOTE_PORT), CONNECT_TIMEOUT_MS)
+            socket.soTimeout = IO_TIMEOUT_MS
+            socket.startHandshake()
+            val input = DataInputStream(socket.getInputStream())
+            val output = DataOutputStream(socket.getOutputStream())
 
-        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteConfigure(
-            RemoteMessageProto.RemoteConfigure.newBuilder().setCode1(1).setDeviceInfo(
-                RemoteMessageProto.RemoteDeviceInfo.newBuilder()
-                    .setModel("Radio.TV.Control").setVendor("Offex7")
-                    .setPackageName(appContext.packageName).setAppVersion("0.1.0")
-            )
-        ).build())
-        runCatching { readRemote(input) }
-        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteSetActive(
-            RemoteMessageProto.RemoteSetActive.newBuilder().setActive(1)
-        ).build())
-        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteStart(
-            RemoteMessageProto.RemoteStart.newBuilder().setStarted(true)
-        ).build())
+            // The TV initiates the protocol negotiation with the supported-feature bit mask.
+            val greeting = readRemote(input)
+            check(greeting.hasRemoteConfigure()) { "Телевизор не прислал RemoteConfigure." }
+            val supportedFeatures = greeting.remoteConfigure.code1
+            val activeFeatures = supportedFeatures and (FEATURE_PING or FEATURE_KEY)
+            check((activeFeatures and FEATURE_KEY) != 0) { "Телевизор не поддерживает управление клавишами." }
 
-        socket.soTimeout = 0
-        remoteSocket = socket
-        remoteOutput = output
-        statusMutable.value = RemoteStatus.Connected(host)
-        readerJob?.cancel()
-        readerJob = scope.launch {
-            try {
-                while (true) {
-                    val message = readRemote(input)
-                    if (message.hasRemotePingRequest()) {
+            writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteConfigure(
+                RemoteMessageProto.RemoteConfigure.newBuilder().setCode1(activeFeatures).setDeviceInfo(
+                    RemoteMessageProto.RemoteDeviceInfo.newBuilder()
+                        .setModel("Radio.TV.Control")
+                        .setVendor("Offex7")
+                        .setUnknown1(1)
+                        .setUnknown2("1")
+                        .setPackageName(appContext.packageName)
+                        .setAppVersion("0.1.0")
+                )
+            ).build())
+
+            var activationResponded = false
+            while (!activationResponded) {
+                val message = readRemote(input)
+                when {
+                    message.hasRemoteSetActive() -> {
+                        writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemoteSetActive(
+                            RemoteMessageProto.RemoteSetActive.newBuilder().setActive(activeFeatures)
+                        ).build())
+                        activationResponded = true
+                    }
+                    message.hasRemotePingRequest() -> {
                         writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemotePingResponse(
                             RemoteMessageProto.RemotePingResponse.newBuilder().setVal1(message.remotePingRequest.val1)
                         ).build())
                     }
-                }
-            } catch (_: Exception) {
-                if (remoteSocket === socket) {
-                    statusMutable.value = RemoteStatus.Error("Соединение с телевизором потеряно.")
-                    closeRemoteSocket()
+                    message.hasRemoteError() -> error("Телевизор отклонил протокол Remote v2.")
                 }
             }
+
+            socket.soTimeout = 0
+            remoteSocket = socket
+            remoteOutput = output
+            statusMutable.value = RemoteStatus.Connected(host)
+            readerJob?.cancel()
+            readerJob = scope.launch {
+                try {
+                    while (true) {
+                        val message = readRemote(input)
+                        if (message.hasRemotePingRequest()) {
+                            writeRemote(output, RemoteMessageProto.RemoteMessage.newBuilder().setRemotePingResponse(
+                                RemoteMessageProto.RemotePingResponse.newBuilder().setVal1(message.remotePingRequest.val1)
+                            ).build())
+                        } else if (message.hasRemoteError()) {
+                            error("Телевизор отправил RemoteError.")
+                        }
+                    }
+                } catch (_: Exception) {
+                    if (remoteSocket === socket) {
+                        statusMutable.value = RemoteStatus.Error("Соединение с телевизором потеряно.")
+                        closeRemoteSocket()
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            runCatching { socket.close() }
+            throw error
         }
     }
 
@@ -294,6 +325,8 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         private const val KEY_HOST = "paired_host"
         private const val KEY_SERVER_FINGERPRINT = "server_fingerprint"
         private const val MAX_FRAME_SIZE = 1_048_576
+        private const val FEATURE_PING = 1
+        private const val FEATURE_KEY = 2
         private val outputLock = Any()
 
         private fun sendPolo(out: DataOutputStream, message: PoloProto.OuterMessage.Builder) {
@@ -305,10 +338,25 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         }
         private fun readRemote(input: DataInputStream) = RemoteMessageProto.RemoteMessage.parseFrom(readFrame(input))
         private fun writeFrame(out: DataOutputStream, bytes: ByteArray) {
-            out.writeInt(bytes.size); out.write(bytes); out.flush()
+            var remaining = bytes.size
+            while (remaining >= 0x80) {
+                out.writeByte((remaining and 0x7F) or 0x80)
+                remaining = remaining ushr 7
+            }
+            out.writeByte(remaining)
+            out.write(bytes)
+            out.flush()
         }
         private fun readFrame(input: DataInputStream): ByteArray {
-            val length = input.readInt()
+            var length = 0
+            var shift = 0
+            while (true) {
+                val next = input.readUnsignedByte()
+                length = length or ((next and 0x7F) shl shift)
+                if ((next and 0x80) == 0) break
+                shift += 7
+                require(shift < 32) { "Слишком длинный varint protobuf frame." }
+            }
             require(length in 1..MAX_FRAME_SIZE) { "Некорректный размер protobuf frame: $length" }
             return ByteArray(length).also { input.readFully(it) }
         }
