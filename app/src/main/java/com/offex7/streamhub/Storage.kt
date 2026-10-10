@@ -14,6 +14,13 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("streamhub_settings")
 
+internal data class UsageSession(
+    val channelId: String,
+    val startedAtMs: Long,
+    val baseTotalSeconds: Long,
+    val baseChannelSeconds: Long
+)
+
 class SettingsStore(private val context: Context) {
     private val sectionKey = stringPreferencesKey("last_section")
     private val sourceKey = intPreferencesKey("tv_source_index")
@@ -36,6 +43,15 @@ class SettingsStore(private val context: Context) {
     private val radioUsageKey = longPreferencesKey("usage_radio_seconds")
     private val tvChannelUsageKey = stringPreferencesKey("usage_tv_channels")
     private val radioStationUsageKey = stringPreferencesKey("usage_radio_stations")
+    private val energyWarningLastShownKey = longPreferencesKey("energy_warning_last_shown_at_v1")
+    private val tvUsageSessionChannelKey = stringPreferencesKey("usage_session_tv_channel_v1")
+    private val tvUsageSessionStartedKey = longPreferencesKey("usage_session_tv_started_at_v1")
+    private val tvUsageSessionBaseTotalKey = longPreferencesKey("usage_session_tv_base_total_v1")
+    private val tvUsageSessionBaseChannelKey = longPreferencesKey("usage_session_tv_base_channel_v1")
+    private val radioUsageSessionChannelKey = stringPreferencesKey("usage_session_radio_channel_v1")
+    private val radioUsageSessionStartedKey = longPreferencesKey("usage_session_radio_started_at_v1")
+    private val radioUsageSessionBaseTotalKey = longPreferencesKey("usage_session_radio_base_total_v1")
+    private val radioUsageSessionBaseChannelKey = longPreferencesKey("usage_session_radio_base_channel_v1")
     private val tvScrollIndexKey = intPreferencesKey("tv_scroll_index")
     private val tvScrollOffsetKey = intPreferencesKey("tv_scroll_offset")
     private val radioScrollIndexKey = intPreferencesKey("radio_scroll_index")
@@ -312,10 +328,78 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun resetUsage(section: Section) {
-        context.dataStore.edit {
-            it[if (section == Section.TV) tvUsageKey else radioUsageKey] = 0L
-            it[if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey] = "{}"
+        val now = System.currentTimeMillis()
+        val session = usageSession(section)
+        context.dataStore.edit { prefs ->
+            prefs[if (section == Section.TV) tvUsageKey else radioUsageKey] = 0L
+            prefs[if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey] = "{}"
+            val channelKey = if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey
+            val startedKey = if (section == Section.TV) tvUsageSessionStartedKey else radioUsageSessionStartedKey
+            val baseTotalKey = if (section == Section.TV) tvUsageSessionBaseTotalKey else radioUsageSessionBaseTotalKey
+            val baseChannelKey = if (section == Section.TV) tvUsageSessionBaseChannelKey else radioUsageSessionBaseChannelKey
+            if (session != null) {
+                prefs[channelKey] = session.channelId
+                prefs[startedKey] = now
+                prefs[baseTotalKey] = 0L
+                prefs[baseChannelKey] = 0L
+            } else {
+                prefs.remove(channelKey)
+                prefs.remove(startedKey)
+                prefs.remove(baseTotalKey)
+                prefs.remove(baseChannelKey)
+            }
         }
+    }
+
+    suspend fun usageTotalSeconds(section: Section): Long =
+        context.dataStore.data.first()[if (section == Section.TV) tvUsageKey else radioUsageKey] ?: 0L
+
+    suspend fun channelUsageSnapshot(section: Section): Map<String, Long> {
+        val prefs = context.dataStore.data.first()
+        return decodeUsageMap(prefs[if (section == Section.TV) tvChannelUsageKey else radioStationUsageKey])
+    }
+
+    suspend fun usageSession(section: Section): UsageSession? {
+        val prefs = context.dataStore.data.first()
+        val channelKey = if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey
+        val startedKey = if (section == Section.TV) tvUsageSessionStartedKey else radioUsageSessionStartedKey
+        val baseTotalKey = if (section == Section.TV) tvUsageSessionBaseTotalKey else radioUsageSessionBaseTotalKey
+        val baseChannelKey = if (section == Section.TV) tvUsageSessionBaseChannelKey else radioUsageSessionBaseChannelKey
+        val channelId = prefs[channelKey]?.takeIf { it.isNotBlank() } ?: return null
+        val startedAt = prefs[startedKey]?.takeIf { it > 0L } ?: return null
+        return UsageSession(
+            channelId = channelId,
+            startedAtMs = startedAt,
+            baseTotalSeconds = prefs[baseTotalKey] ?: 0L,
+            baseChannelSeconds = prefs[baseChannelKey] ?: 0L
+        )
+    }
+
+    suspend fun saveUsageSession(section: Section, session: UsageSession) {
+        context.dataStore.edit { prefs ->
+            prefs[if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey] = session.channelId
+            prefs[if (section == Section.TV) tvUsageSessionStartedKey else radioUsageSessionStartedKey] = session.startedAtMs
+            prefs[if (section == Section.TV) tvUsageSessionBaseTotalKey else radioUsageSessionBaseTotalKey] = session.baseTotalSeconds
+            prefs[if (section == Section.TV) tvUsageSessionBaseChannelKey else radioUsageSessionBaseChannelKey] = session.baseChannelSeconds
+        }
+    }
+
+    suspend fun clearUsageSession(section: Section) {
+        context.dataStore.edit { prefs ->
+            prefs.remove(if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey)
+            prefs.remove(if (section == Section.TV) tvUsageSessionStartedKey else radioUsageSessionStartedKey)
+            prefs.remove(if (section == Section.TV) tvUsageSessionBaseTotalKey else radioUsageSessionBaseTotalKey)
+            prefs.remove(if (section == Section.TV) tvUsageSessionBaseChannelKey else radioUsageSessionBaseChannelKey)
+        }
+    }
+
+    suspend fun canShowEnergyWarning(now: Long = System.currentTimeMillis()): Boolean {
+        val last = context.dataStore.data.first()[energyWarningLastShownKey] ?: 0L
+        return last <= 0L || (now >= last && now - last >= 92L * 60L * 60L * 1000L)
+    }
+
+    suspend fun markEnergyWarningShown(now: Long = System.currentTimeMillis()) {
+        context.dataStore.edit { it[energyWarningLastShownKey] = now }
     }
 
     private fun decodeUsageMap(raw: String?): Map<String, Long> {

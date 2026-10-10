@@ -203,6 +203,10 @@ fun TvV8Screen(
         (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ||
             configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var isSwitching by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var silentSwitching by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var suppressChannelNotice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var playbackRequestToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var autoRecoveryTargets by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
 
     var channels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<StreamItem>()) }
     var favorites by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
@@ -329,15 +333,6 @@ fun TvV8Screen(
         onViewingChanged(fullscreen)
     }
 
-    LaunchedEffect(Unit) {
-        UsageTicker(
-            store = store,
-            section = Section.TV,
-            channelIdProvider = { channels.getOrNull(selectedIndex)?.name },
-            activeProvider = { fullscreen && selectedIndex in channels.indices && player.isPlaying.value }
-        ).run()
-    }
-
     LaunchedEffect(fullscreen) {
         val activity = context as? androidx.activity.ComponentActivity
         if (fullscreen) {
@@ -427,7 +422,7 @@ fun TvV8Screen(
         return order[(pos + delta + order.size) % order.size]
     }
 
-    fun startPlayback(start: Int, fromFavorites: Boolean? = null) {
+    fun startPlayback(start: Int, fromFavorites: Boolean? = null, fastSwitch: Boolean = false, direction: Int = 1, automaticRecovery: Boolean = false) {
         if (start !in channels.indices || hiddenChannels.contains(channels[start].key)) return
         if (fromFavorites != null || navigationSession.isEmpty() || start !in navigationSession) {
             navigationMode =
@@ -440,34 +435,50 @@ fun TvV8Screen(
                 start,
                 navigationMode == TvNavigationMode.FAVORITES_THEN_GENERAL
             )
+            if (!fastSwitch && !automaticRecovery && start !in navigationSession) {
+                navigationSession = listOf(start) + navigationSession
+            }
         }
+        if (!automaticRecovery) autoRecoveryTargets = emptySet()
         playbackJob?.cancel()
+        val requestToken = playbackRequestToken + 1L
+        playbackRequestToken = requestToken
         selectedIndex = start
         fullscreen = true
         notice = null
         isSwitching = true
+        silentSwitching = fastSwitch
+        suppressChannelNotice = fastSwitch
         playbackJob = scope.launch {
             var cursor = start
             var attempts = 0
+            val step = if (fastSwitch) if (direction < 0) -1 else 1 else 1
             try {
                 while (attempts < channels.size.coerceAtLeast(1)) {
                     attempts++
-                    if (!isNavigable(cursor)) {
-                        cursor = adjacentIndex(cursor, 1)
+                    val forcedInitialSelection = cursor == start && !fastSwitch && !automaticRecovery &&
+                        cursor in channels.indices && !hiddenChannels.contains(channels[cursor].key)
+                    if (!isNavigable(cursor) && !forcedInitialSelection) {
+                        cursor = adjacentIndex(cursor, step)
                         if (cursor < 0) break
                         continue
                     }
 
                     val candidate = channels[cursor]
-                    val result = player.playWithFallback(listOf(candidate.url))
+                    player.setActiveChannelId(candidate.name)
+                    val result = player.playWithFallback(
+                        listOf(candidate.url),
+                        attemptTimeoutMs = if (fastSwitch) 1_200L else 10_000L,
+                        suppressRecovery = fastSwitch
+                    )
                     if (result >= 0) {
                         selectedIndex = cursor
                         health = health + (candidate.url to AvailabilityStatus.ONLINE)
                         saveLast(candidate)
-                        val neighbors = listOf(
-                            adjacentIndex(cursor, -1),
-                            adjacentIndex(cursor, 1)
-                        ).filter { it >= 0 }.distinct()
+                        val neighbors = (1..3)
+                            .mapNotNull { offset -> channels.getOrNull(adjacentIndex(cursor, step * offset)) }
+                            .filterNot { it.url == candidate.url }
+                            .distinctBy { it.url }
                         if (neighbors.isNotEmpty()) {
                             scope.launch {
                                 val pending = neighbors
@@ -482,20 +493,57 @@ fun TvV8Screen(
                     }
 
                     health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                    cursor = adjacentIndex(cursor, 1)
+                    if (!fastSwitch && !automaticRecovery) {
+                        notify("Не удалось воспроизвести канал, переключаю на следующий", 3000L)
+                    }
+                    cursor = adjacentIndex(cursor, step)
                     if (cursor < 0) break
                 }
 
-                isSwitching = false
-                fullscreen = false
-                notify("Не удалось найти рабочий канал", 2500L)
+                if (requestToken == playbackRequestToken) {
+                    isSwitching = false
+                    silentSwitching = false
+                    fullscreen = false
+                    player.setActiveChannelId(null)
+                    if (!fastSwitch) notify("Не удалось найти рабочий канал", 2500L)
+                }
             } finally {
-                isSwitching = false
+                if (requestToken == playbackRequestToken) {
+                    isSwitching = false
+                    silentSwitching = false
+                }
             }
         }
     }
+
+    LaunchedEffect(error, fullscreen, isSwitching, selectedIndex) {
+        if (error == null || !fullscreen || isSwitching || selectedIndex !in channels.indices) return@LaunchedEffect
+        val failed = channels[selectedIndex]
+        if (failed.url in autoRecoveryTargets) {
+            fullscreen = false
+            player.stop()
+            notify("Не удалось найти рабочий канал", 3000L)
+            return@LaunchedEffect
+        }
+        autoRecoveryTargets = autoRecoveryTargets + failed.url
+        health = health + (failed.url to AvailabilityStatus.OFFLINE)
+        val next = adjacentIndex(selectedIndex, 1)
+        if (next >= 0 && next !in channels.indices.filter { channels[it].url in autoRecoveryTargets }) {
+            notify("Не удалось воспроизвести канал, переключаю на следующий", 3000L)
+            startPlayback(next, automaticRecovery = true)
+        } else {
+            fullscreen = false
+            player.stop()
+            notify("Не удалось найти рабочий канал", 3000L)
+        }
+    }
+
     fun closePlayer() {
         playbackJob?.cancel()
+        playbackRequestToken += 1L
+        isSwitching = false
+        silentSwitching = false
+        suppressChannelNotice = false
         player.stop()
         notice = null
         fullscreen = false
@@ -527,11 +575,11 @@ fun TvV8Screen(
             onBack = ::closePlayer,
             onPrev = {
                 val i = adjacentIndex(selectedIndex, -1)
-                if (i >= 0) startPlayback(i)
+                if (i >= 0) startPlayback(i, fastSwitch = player.isPlaying.value, direction = -1)
             },
             onNext = {
                 val i = adjacentIndex(selectedIndex, 1)
-                if (i >= 0) startPlayback(i)
+                if (i >= 0) startPlayback(i, fastSwitch = player.isPlaying.value, direction = 1)
             },
             onPause = { player.toggle() },
             onFavoriteSelected = { index ->
@@ -568,6 +616,8 @@ fun TvV8Screen(
             pipMode = pipMode,
             onWeakNetworkNotice = { message -> notify(message, 5000L) },
             switching = isSwitching,
+            silentSwitching = silentSwitching,
+            suppressChannelNotice = suppressChannelNotice,
             hapticsEnabled = hapticsEnabled,
             soundEnabled = soundEnabled,
             radioPlaying = radioPlaying
@@ -1269,6 +1319,8 @@ private fun TvV9Player(
     pipMode: Boolean,
     onWeakNetworkNotice: (String) -> Unit,
     switching: Boolean,
+    silentSwitching: Boolean,
+    suppressChannelNotice: Boolean,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     radioPlaying: Boolean
@@ -1399,9 +1451,9 @@ private fun TvV9Player(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(channel.key, switching) {
+    androidx.compose.runtime.LaunchedEffect(channel.key, switching, suppressChannelNotice) {
         channelNotice = false
-        if (switching) return@LaunchedEffect
+        if (switching || suppressChannelNotice) return@LaunchedEffect
         player.resetWeakNetworkSession()
         channelNotice = true
         delay(3000L)
@@ -1689,6 +1741,7 @@ private fun TvV9Player(
                     }
 
                     val showBuffering = !pipMode &&
+                        !silentSwitching &&
                         !switching &&
                         !waiting &&
                         error == null &&
@@ -1785,9 +1838,9 @@ private fun TvV9Player(
                         )
                     }
 
-                    val showLoading = switching || (!waiting && error == null && !isPlaying && !buffering)
+                    val showLoading = !silentSwitching && (switching || (!waiting && error == null && !isPlaying && !buffering))
 
-                    if (!pipMode && noticeMessage == null && (showLoading || waiting || error != null)) {
+                    if (!pipMode && !silentSwitching && noticeMessage == null && (showLoading || waiting || error != null)) {
                         Text(
                             when {
                                 switching -> "Загрузка…"

@@ -1,3 +1,7 @@
 <resources><string name="app_name">TV / Radio. Online</string>    <string name="widget_radio_label">Радио</string>
     <string name="widget_tv_label">Телевизор</string>
+    <string name="shortcut_radio_short">Радио</string>
+    <string name="shortcut_radio_long">Открыть раздел Радио</string>
+    <string name="shortcut_tv_short">Телевизор</string>
+    <string name="shortcut_tv_long">Открыть раздел Телевизор</string>
 </resources>

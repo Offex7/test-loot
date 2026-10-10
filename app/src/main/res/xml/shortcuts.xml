@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_radio"
+        android:enabled="true"
+        android:icon="@drawable/start_radio_v2"
+        android:shortcutShortLabel="@string/shortcut_radio_short"
+        android:shortcutLongLabel="@string/shortcut_radio_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.offex7.streamhub"
+            android:targetClass="com.offex7.streamhub.MainActivity">
+            <extra android:name="widget_section" android:value="RADIO" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_tv"
+        android:enabled="true"
+        android:icon="@drawable/start_tv_final"
+        android:shortcutShortLabel="@string/shortcut_tv_short"
+        android:shortcutLongLabel="@string/shortcut_tv_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.offex7.streamhub"
+            android:targetClass="com.offex7.streamhub.MainActivity">
+            <extra android:name="widget_section" android:value="TV" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -24,8 +24,8 @@ class PlayerController(context: Context) {
     private companion object {
         const val BUFFER_TARGET_MS = 6_000L
         const val BUFFER_MAX_MS = 30_000
-        const val BUFFER_TIMEOUT_MS = 15_000L
-        const val WEAK_NETWORK_NOTICE_MS = 4_000L
+        const val BUFFER_TIMEOUT_MS = 10_000L
+        const val WEAK_NETWORK_NOTICE_MS = 3_000L
     }
 
     private val appContext = context.applicationContext
@@ -35,6 +35,13 @@ class PlayerController(context: Context) {
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    private val _activeChannelId = MutableStateFlow<String?>(null)
+    val activeChannelId: StateFlow<String?> = _activeChannelId.asStateFlow()
+
+    fun setActiveChannelId(channelId: String?) {
+        _activeChannelId.value = channelId?.trim()?.takeIf { it.isNotBlank() }
+    }
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -77,6 +84,7 @@ class PlayerController(context: Context) {
     private var fadeAnimator: ValueAnimator? = null
     private var fadeRestoreVolume = 1f
     private var internalRetryEnabled = true
+    private var suppressBufferRecovery = false
     private var resumeAfterInterruption = false
     private var userPaused = false
     private var userStopped = false
@@ -249,7 +257,8 @@ class PlayerController(context: Context) {
                 generation == bufferingGeneration &&
                 player === currentPlayer &&
                 player.playbackState == Player.STATE_BUFFERING &&
-                System.currentTimeMillis() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS
+                System.currentTimeMillis() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS &&
+                !suppressBufferRecovery
             ) {
                 if (_weakNetworkNoticeCount.value < 1) {
                     _weakNetworkNoticeCount.value = 1
@@ -268,9 +277,9 @@ class PlayerController(context: Context) {
                 System.currentTimeMillis() - bufferingStartedAt >= BUFFER_TIMEOUT_MS
             ) {
                 resumeAfterInterruption = false
-                _error.value = "Буферизация не завершилась за 15 секунд. Переключите канал."
+                _error.value = "Буферизация не завершилась за 10 секунд. Переключите канал."
                 runCatching { setPlayWhenReadySystem(player, false) }
-                LogExporter.log("TV buffering timeout after 15s")
+                LogExporter.log("TV buffering timeout after 10s")
             }
         }, BUFFER_TIMEOUT_MS)
         updateBufferProgress(player, generation)
@@ -375,16 +384,18 @@ class PlayerController(context: Context) {
         }
     }
 
-    suspend fun playWithFallback(urls: List<String>): Int {
+    suspend fun playWithFallback(urls: List<String>, attemptTimeoutMs: Long = BUFFER_TIMEOUT_MS, suppressRecovery: Boolean = false): Int {
         if (released) return -1
         val candidates = urls.filter { it.isNotBlank() }.distinct()
         if (candidates.isEmpty()) {
+            suppressBufferRecovery = false
             _error.value = "Поток недоступен"
             return -1
         }
 
         val generation = ++playbackGeneration
         internalRetryEnabled = false
+        suppressBufferRecovery = suppressRecovery
         userPaused = false
         userStopped = false
         resumeAfterInterruption = false
@@ -405,7 +416,7 @@ class PlayerController(context: Context) {
                 }.isSuccess
                 if (!started) continue
 
-                val until = System.currentTimeMillis() + BUFFER_TIMEOUT_MS
+                val until = System.currentTimeMillis() + attemptTimeoutMs.coerceAtLeast(300L)
                 while (
                     System.currentTimeMillis() < until &&
                     generation == playbackGeneration &&
@@ -428,7 +439,10 @@ class PlayerController(context: Context) {
                 _error.value = null
             }
         } finally {
-            if (generation == playbackGeneration) internalRetryEnabled = true
+            if (generation == playbackGeneration) {
+                internalRetryEnabled = true
+                suppressBufferRecovery = false
+            }
         }
 
         if (generation == playbackGeneration) {
@@ -458,6 +472,8 @@ class PlayerController(context: Context) {
         if (released) return
         playbackGeneration++
         lastUrl = null
+        _activeChannelId.value = null
+        suppressBufferRecovery = false
         reconnectAttempts = 0
         internalRetryEnabled = true
         userPaused = false

@@ -192,6 +192,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -269,17 +270,16 @@ private fun rememberSystemPowerSave(): Boolean {
 }
 private val zoomByChannel = mutableMapOf<String, Float>()
 private val logoHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(7, TimeUnit.SECONDS).build()
-private fun shareText(context: Context, text: String, chooserTitle: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
+private fun shareText(context: Context, text: String, chooserTitle: String): Boolean {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    runCatching {
-        context.startActivity(Intent.createChooser(intent, chooserTitle))
-    }.onFailure {
-        Toast.makeText(context, "Не удалось открыть меню «Поделиться»", Toast.LENGTH_LONG).show()
-    }
+    val chooser = Intent.createChooser(sendIntent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return runCatching {
+        context.startActivity(chooser)
+        true
+    }.getOrDefault(false)
 }
 
 private val SleepOptions = listOf(
@@ -487,6 +487,35 @@ private fun App(
         if (token == notificationToken) notification = null
     }
 
+    LaunchedEffect(section, settings) {
+        val trackedSections = if (settings) {
+            listOf(Section.TV, Section.RADIO)
+        } else {
+            listOfNotNull(section)
+        }
+        if (trackedSections.isEmpty()) return@LaunchedEffect
+        coroutineScope {
+            trackedSections.forEach { target ->
+                launch {
+                    when (target) {
+                        Section.TV -> UsageTicker(
+                            store = store,
+                            section = Section.TV,
+                            channelIdProvider = { tv.activeChannelId.value },
+                            activeProvider = { tv.isPlaying.value }
+                        ).run()
+                        Section.RADIO -> UsageTicker(
+                            store = store,
+                            section = Section.RADIO,
+                            channelIdProvider = { RADIO_STATIONS.getOrNull(radio.currentIndex.value)?.name },
+                            activeProvider = { radio.isPlaying.value && radio.currentIndex.value >= 0 }
+                        ).run()
+                    }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(activity.requestedSection, pinUnlocked) {
         val requested = activity.requestedSection ?: return@LaunchedEffect
         if (!pinUnlocked) return@LaunchedEffect
@@ -518,14 +547,14 @@ private fun App(
         val backgroundRestricted = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) activityManager?.isBackgroundRestricted else null
         }.getOrNull()
-        // A confirmed battery-optimization exemption always suppresses the warning.
-        // Unknown status is not treated as restricted unless ActivityManager confirms it.
+        // Exemption suppresses the warning. Unknown status is not treated as a restriction.
         val shouldWarnAboutBackgroundLimits = when (ignoringBatteryOptimizations) {
             true -> false
             false -> true
             null -> backgroundRestricted == true
         }
-        if (shouldWarnAboutBackgroundLimits) {
+        if (shouldWarnAboutBackgroundLimits && store.canShowEnergyWarning()) {
+            store.markEnergyWarningShown()
             notify("Фоновая работа Radio.TV может быть ограничена ОС. Добавьте приложение в исключения энергосбережения.", 3000L)
         }
     }
@@ -1350,15 +1379,6 @@ private fun Radio(
     }
 
     LaunchedEffect(Unit) {
-        UsageTicker(
-            store = store,
-            section = Section.RADIO,
-            channelIdProvider = { RADIO_STATIONS.getOrNull(player.currentIndex.value)?.name },
-            activeProvider = { player.isPlaying.value && player.currentIndex.value >= 0 }
-        ).run()
-    }
-
-    LaunchedEffect(Unit) {
         snapshotFlow {
             list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset
         }.collect { current ->
@@ -2133,6 +2153,35 @@ private fun Settings(
     val tvChannels by store.channelUsageFlow(Section.TV).collectAsState(emptyMap())
     val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
     val hiddenChannels by store.hiddenChannelsFlow().collectAsState(emptySet())
+    var statsNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var tvSession by remember { mutableStateOf<UsageSession?>(null) }
+    var radioSession by remember { mutableStateOf<UsageSession?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            statsNow = System.currentTimeMillis()
+            tvSession = runCatching { store.usageSession(Section.TV) }.getOrNull()
+            radioSession = runCatching { store.usageSession(Section.RADIO) }.getOrNull()
+            delay(10_000L)
+        }
+    }
+    val tvProjectedUsage = tvUsage + ((statsNow - (tvSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
+    val radioProjectedUsage = radioUsage + ((statsNow - (radioSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
+    val tvChannelsLive = remember(tvChannels, tvSession, statsNow) {
+        tvChannels.toMutableMap().apply {
+            tvSession?.let { session ->
+                val elapsed = ((statsNow - session.startedAtMs).coerceAtLeast(0L) / 1000L)
+                if (elapsed > 0L) this[session.channelId] = (this[session.channelId] ?: 0L) + elapsed
+            }
+        }
+    }
+    val radioStationsLive = remember(radioStations, radioSession, statsNow) {
+        radioStations.toMutableMap().apply {
+            radioSession?.let { session ->
+                val elapsed = ((statsNow - session.startedAtMs).coerceAtLeast(0L) / 1000L)
+                if (elapsed > 0L) this[session.channelId] = (this[session.channelId] ?: 0L) + elapsed
+            }
+        }
+    }
     val scope = rememberCoroutineScope()
     val settingsContext = LocalContext.current.applicationContext
     val tvRepo = remember(settingsContext, store) { TvPlaylistRepositoryV8(settingsContext, store) }
@@ -2162,6 +2211,7 @@ private fun Settings(
     var pinDialog by remember { mutableStateOf(false) }
     var pinDisableDialog by remember { mutableStateOf(false) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
+    var resetAllConfirm by remember { mutableStateOf(false) }
     val pinStore = remember(settingsContext) { PinSecurityStore(settingsContext) }
 
     fun toggleFeedback() {
@@ -2229,25 +2279,6 @@ private fun Settings(
         }
         item { DonationCard() }
         item {
-            Card(
-                onClick = onCheckUpdate,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                colors = CardDefaults.cardColors(containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "ОБНОВИТЬ ПРИЛОЖЕНИЕ",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        item {
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp)) {
                     Text("СТАТИСТИКА", color = Red, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
@@ -2255,10 +2286,10 @@ private fun Settings(
                     Spacer(Modifier.height(8.dp))
                     Text("ТЕЛЕВИЗОР", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    UsageLine("Общее время просмотра Телевизора", tvUsage)
+                    UsageLine("Общее время просмотра Телевизора", tvProjectedUsage)
                     Spacer(Modifier.height(4.dp))
                     Text("ТОП-3 Активных канала:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    TopStats(tvChannels)
+                    TopStats(tvChannelsLive)
                     Spacer(Modifier.height(6.dp))
                     Button(
                         onClick = { onResetStats(Section.TV) },
@@ -2270,10 +2301,10 @@ private fun Settings(
                     Spacer(Modifier.height(12.dp))
                     Text("РАДИО", color = Pink, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    UsageLine("Общее время прослушивания Радио", radioUsage)
+                    UsageLine("Общее время прослушивания Радио", radioProjectedUsage)
                     Spacer(Modifier.height(4.dp))
                     Text("ТОП-3 Активных станции:", color = Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    TopStats(radioStations)
+                    TopStats(radioStationsLive)
                     Spacer(Modifier.height(6.dp))
                     Button(
                         onClick = { onResetStats(Section.RADIO) },
@@ -2481,16 +2512,51 @@ private fun Settings(
         }
         item {
             Button(
-                onClick = onResetAll,
+                onClick = { resetAllConfirm = true },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)
-            ) { Text("СБРОСИТЬ НАСТРОЙКИ ДО ЗАВОДСКИХ") }
+            ) { Text("ВОССТАНОВИТЬ ПО УМОЛЧАНИЮ") }
         }
         item {
             OutlinedButton(onClick = onDisclaimer, modifier = Modifier.fillMaxWidth()) {
                 Text("ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ")
             }
         }
+        item {
+            Card(
+                onClick = onCheckUpdate,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                colors = CardDefaults.cardColors(containerColor = if (updateAvailable) Color(0xFF2E7D32) else Red),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "ОБНОВИТЬ ПРИЛОЖЕНИЕ",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+
+    if (resetAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { resetAllConfirm = false },
+            text = { Text("Восстановить настройки по умолчанию?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    resetAllConfirm = false
+                    onResetAll()
+                }) { Text("Да", color = Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { resetAllConfirm = false }) { Text("Нет") }
+            }
+        )
     }
 
     logDialogText?.let { logText ->
@@ -2512,8 +2578,8 @@ private fun Settings(
                     onClick = {
                         val clipboard = settingsContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Radio.TV logs", logText))
-                        notify("Скопировано", 3000L)
-                        shareText(settingsContext, logText, "Поделиться логами Radio.TV")
+                        val shared = shareText(settingsContext, logText, "Поделиться логами Radio.TV")
+                        notify("Скопировано", if (shared) 3000L else 2000L)
                     }
                 ) { Text("СКОПИРОВАТЬ", color = Red) }
             },
@@ -2772,14 +2838,10 @@ private fun PinGate(
 ) {
     val context = LocalContext.current
 
-    DisposableEffect(activity) {
-        val previousOrientation = activity.requestedOrientation
-        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose { activity.requestedOrientation = previousOrientation }
-    }
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     var biometricAvailable by rememberSaveable { mutableStateOf(false) }
+    var showPinEntry by rememberSaveable { mutableStateOf(false) }
     var failedAttempts by remember { mutableIntStateOf(store.failedAttempts()) }
     var lockoutUntil by remember { mutableLongStateOf(store.lockoutUntil()) }
     var lockoutRemaining by remember { mutableLongStateOf(store.lockoutRemainingMs()) }
@@ -2813,11 +2875,15 @@ private fun PinGate(
                     failedAttempts = 0
                     onUnlocked()
                 }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    showPinEntry = true
+                }
             }
         ).authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Radio.TV")
-                .setSubtitle("ОТСКАНИРУЙТЕ ОТПЕЧАТОК ПАЛЬЦА")
+                .setTitle("\u00a0")
+                .setSubtitle("\u00a0")
                 .setNegativeButtonText("Ввести PIN")
                 .build()
         )
@@ -2830,7 +2896,7 @@ private fun PinGate(
         biometricAvailable =
             BiometricManager.from(context).canAuthenticate(authenticators) ==
                 BiometricManager.BIOMETRIC_SUCCESS
-        if (biometricAvailable) promptBiometric()
+        if (biometricAvailable) promptBiometric() else showPinEntry = true
     }
 
     fun tryPin(value: String) {
@@ -2872,62 +2938,109 @@ private fun PinGate(
         }
     }
 
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val pinButtonSize = if (landscape) 52.dp else 74.dp
+    val pinContent = Modifier
+        .fillMaxSize()
+        .padding(horizontal = if (landscape) 12.dp else 20.dp, vertical = if (landscape) 4.dp else 18.dp)
     Surface(Modifier.fillMaxSize(), color = Color.Black) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(Icons.Default.Lock, null, tint = Red, modifier = Modifier.size(46.dp))
-            Spacer(Modifier.height(10.dp))
-            Spacer(Modifier.height(14.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                if (landscape) pinContent.verticalScroll(rememberScrollState()) else pinContent,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = if (landscape) Arrangement.Top else Arrangement.Center
             ) {
-                repeat(4) { i ->
-                    Box(
-                        Modifier
-                            .size(15.dp)
-                            .background(if (i < pin.length) Red else PanelAlt, CircleShape)
-                            .border(1.dp, if (error) Red else Gray, CircleShape)
+                Icon(Icons.Default.Fingerprint, "Биометрическая проверка", tint = Red, modifier = Modifier.size(if (landscape) 34.dp else 46.dp))
+                Spacer(Modifier.height(if (landscape) 4.dp else 10.dp))
+                if (!showPinEntry) {
+                    TextButton(onClick = { showPinEntry = true }) {
+                        Text("Ввести PIN", color = Red, fontSize = 14.sp)
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(4) { i ->
+                            Box(
+                                Modifier
+                                    .size(if (landscape) 12.dp else 15.dp)
+                                    .background(if (i < pin.length) Red else PanelAlt, CircleShape)
+                                    .border(1.dp, if (error) Red else Gray, CircleShape)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(if (landscape) 6.dp else 12.dp))
+                    if (lockoutRemaining > 0L) {
+                        val seconds = (lockoutRemaining + 999L) / 1000L
+                        Text(
+                            "Ввод заблокирован на 5 минут • %02d:%02d".format(seconds / 60L, seconds % 60L),
+                            color = Red,
+                            fontSize = if (landscape) 10.sp else 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (failedAttempts > 0) {
+                        Text("Неверных попыток: $failedAttempts/5", color = Red, fontSize = if (landscape) 10.sp else 11.sp)
+                    }
+                    Spacer(Modifier.height(if (landscape) 4.dp else 10.dp))
+                    val rows = listOf(
+                        listOf('1', '2', '3'),
+                        listOf('4', '5', '6'),
+                        listOf('7', '8', '9')
                     )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            if (lockoutRemaining > 0L) {
-                val seconds = (lockoutRemaining + 999L) / 1000L
-                Text(
-                    "Ввод заблокирован на 5 минут • %02d:%02d".format(seconds / 60L, seconds % 60L),
-                    color = Red,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-            } else if (failedAttempts > 0) {
-                Text("Неверных попыток: $failedAttempts/5", color = Red, fontSize = 11.sp)
-            }
-            Spacer(Modifier.height(10.dp))
-            val rows = listOf(
-                listOf('1', '2', '3'),
-                listOf('4', '5', '6'),
-                listOf('7', '8', '9')
-            )
-            rows.forEach { row ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
-                ) {
-                    row.forEach { digit ->
+                    rows.forEach { row ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 10.dp, Alignment.CenterHorizontally)
+                        ) {
+                            row.forEach { digit ->
+                                Button(
+                                    onClick = {
+                                        InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
+                                        appendDigit(digit)
+                                    },
+                                    enabled = lockoutRemaining <= 0L && pin.length < 4,
+                                    modifier = Modifier.size(pinButtonSize),
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Panel,
+                                        contentColor = Color.White,
+                                        disabledContainerColor = PanelAlt
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(digit.toString(), fontSize = if (landscape) 19.sp else 24.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(if (landscape) 4.dp else 10.dp))
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 10.dp, Alignment.CenterHorizontally)
+                    ) {
                         Button(
                             onClick = {
                                 InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
-                                appendDigit(digit)
+                                if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                                error = false
+                            },
+                            enabled = lockoutRemaining <= 0L && pin.isNotEmpty(),
+                            modifier = Modifier.size(pinButtonSize),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, "Удалить последнюю цифру", tint = Color.White, modifier = Modifier.size(if (landscape) 20.dp else 25.dp))
+                        }
+                        Button(
+                            onClick = {
+                                InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
+                                appendDigit('0')
                             },
                             enabled = lockoutRemaining <= 0L && pin.length < 4,
-                            modifier = Modifier.size(74.dp),
+                            modifier = Modifier.size(pinButtonSize),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Panel,
@@ -2936,66 +3049,29 @@ private fun PinGate(
                             ),
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text(digit.toString(), fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                            Text("0", fontSize = if (landscape) 19.sp else 24.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Button(
+                            onClick = { promptBiometric() },
+                            enabled = biometricAvailable,
+                            modifier = Modifier.size(pinButtonSize),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Fingerprint, "Переключиться на биометрию", tint = Red, modifier = Modifier.size(if (landscape) 23.dp else 28.dp))
                         }
                     }
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
-            ) {
-                Button(
-                    onClick = {
-                        InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
-                        if (pin.isNotEmpty()) pin = pin.dropLast(1)
-                        error = false
-                    },
-                    enabled = lockoutRemaining <= 0L && pin.isNotEmpty(),
-                    modifier = Modifier.size(74.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Default.Delete, "Удалить последнюю цифру", tint = Color.White, modifier = Modifier.size(25.dp))
-                }
-                Button(
-                    onClick = {
-                        InteractionFeedback.click(context, hapticsEnabled, soundEnabled, allowSound = false)
-                        appendDigit('0')
-                    },
-                    enabled = lockoutRemaining <= 0L && pin.length < 4,
-                    modifier = Modifier.size(74.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Panel,
-                        contentColor = Color.White,
-                        disabledContainerColor = PanelAlt
-                    ),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("0", fontSize = 24.sp, fontWeight = FontWeight.Medium)
-                }
-                Button(
-                    onClick = { promptBiometric() },
-                    enabled = biometricAvailable,
-                    modifier = Modifier.size(74.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Panel, disabledContainerColor = PanelAlt),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Default.Fingerprint, "Переключиться на биометрию", tint = Red, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = {
+                        Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show()
+                    }) {
+                        Text("Забыли PIN?", color = Red, fontSize = if (landscape) 10.sp else 12.sp)
+                    }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = {
-                Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show()
-            }) {
-                Text("Забыли PIN?", color = Red, fontSize = 12.sp)
-            }
+            Box(Modifier.matchParentSize().background(redFlash))
         }
-        Box(Modifier.fillMaxSize().background(redFlash))
     }
 }
 
@@ -3366,23 +3442,25 @@ private fun RadioEqualizerDialog(
         title = { Text("ЭКВАЛАЙЗЕР РАДИО") },
         text = {
             val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val dialogMaxHeight = (LocalConfiguration.current.screenHeightDp - 150).coerceAtLeast(140).dp
             val contentModifier = if (landscape) {
                 Modifier
-                    .heightIn(max = 260.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = dialogMaxHeight)
                     .verticalScroll(rememberScrollState())
             } else {
                 Modifier
             }
             Column(
                 modifier = contentModifier,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(if (landscape) 3.dp else 6.dp)
             ) {
-                Text("Bass", color = Gray, fontSize = 11.sp)
-                Slider(value = bass, onValueChange = { bass = it; preset = "Flat" }, valueRange = -1500f..1500f)
-                Text("Mid", color = Gray, fontSize = 11.sp)
-                Slider(value = mid, onValueChange = { mid = it; preset = "Flat" }, valueRange = -1500f..1500f)
-                Text("Treble", color = Gray, fontSize = 11.sp)
-                Slider(value = treble, onValueChange = { treble = it; preset = "Flat" }, valueRange = -1500f..1500f)
+                Text("Bass", color = Gray, fontSize = if (landscape) 10.sp else 11.sp)
+                Slider(value = bass, onValueChange = { bass = it; preset = "Flat" }, valueRange = -1500f..1500f, modifier = Modifier.fillMaxWidth())
+                Text("Mid", color = Gray, fontSize = if (landscape) 10.sp else 11.sp)
+                Slider(value = mid, onValueChange = { mid = it; preset = "Flat" }, valueRange = -1500f..1500f, modifier = Modifier.fillMaxWidth())
+                Text("Treble", color = Gray, fontSize = if (landscape) 10.sp else 11.sp)
+                Slider(value = treble, onValueChange = { treble = it; preset = "Flat" }, valueRange = -1500f..1500f, modifier = Modifier.fillMaxWidth())
                 Text("Пресет", color = Gray, fontSize = 11.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     presets.forEach { name ->
@@ -3511,10 +3589,12 @@ private fun LogoImage(
     }
     val localRadioImage = remember(item.name, isRadio) {
         if (!isRadio) null
-        else if (item.name.equals("РАДИУС FM", ignoreCase = true)) {
-            BitmapFactory.decodeResource(context.resources, R.drawable.radius_fm_logo)?.asImageBitmap()
-        } else {
-            RadioLogoAssets.image(item.name)
+        else when {
+            item.name.equals("РАДИУС FM", ignoreCase = true) ->
+                BitmapFactory.decodeResource(context.resources, R.drawable.radius_fm_logo)?.asImageBitmap()
+            item.name.equals("ЮНИСТАР", ignoreCase = true) ->
+                BitmapFactory.decodeResource(context.resources, R.drawable.unistar_logo)?.asImageBitmap()
+            else -> RadioLogoAssets.image(item.name)
                 ?: RadioLogoAssetsV38.image(context, item.name)
         }
     }
@@ -3654,7 +3734,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.0")
+                            .header("User-Agent", "Radio.TV/4.1")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -3923,34 +4003,95 @@ internal class UsageTicker(
     private val channelIdProvider: () -> String?,
     private val activeProvider: () -> Boolean
 ) {
+    private suspend fun flushSession(local: UsageSession, now: Long, keepSession: Boolean): UsageSession? {
+        val persisted = store.usageSession(section)
+        val session = if (
+            persisted != null &&
+            persisted.channelId == local.channelId &&
+            persisted.startedAtMs > local.startedAtMs
+        ) persisted else local
+        // Display = previous total + (now - saved playback-start timestamp).
+        val elapsedSeconds = ((now - session.startedAtMs).coerceAtLeast(0L) / 1000L)
+        if (elapsedSeconds > 0L) store.addPlaybackUsage(section, mapOf(session.channelId to elapsedSeconds))
+        if (!keepSession) {
+            store.clearUsageSession(section)
+            return null
+        }
+        if (elapsedSeconds == 0L) {
+            store.saveUsageSession(session)
+            return session
+        }
+        val rebased = UsageSession(
+            channelId = session.channelId,
+            startedAtMs = now,
+            baseTotalSeconds = store.usageTotalSeconds(section),
+            baseChannelSeconds = store.channelUsageSnapshot(section)[session.channelId] ?: 0L
+        )
+        store.saveUsageSession(rebased)
+        return rebased
+    }
+
     suspend fun run() {
-        val pending = mutableMapOf<String, Long>()
-        var totalPending = 0L
-        var lastFlush = System.currentTimeMillis()
+        var session: UsageSession? = null
+        var inactiveSessionChecked = false
+        var lastActiveTickMs = 0L
         try {
             while (true) {
                 delay(1000L)
-                if (activeProvider()) {
-                    val id = channelIdProvider()?.trim().orEmpty()
-                    if (id.isNotBlank()) {
-                        pending[id] = (pending[id] ?: 0L) + 1L
-                        totalPending++
+                val now = System.currentTimeMillis()
+                val activeId = if (runCatching { activeProvider() }.getOrDefault(false)) {
+                    runCatching { channelIdProvider()?.trim()?.takeIf { it.isNotBlank() } }.getOrNull()
+                } else null
+                val current = session
+                if (activeId == null) {
+                    if (current != null) {
+                        val stoppedAt = lastActiveTickMs.takeIf { it >= current.startedAtMs } ?: current.startedAtMs
+                        session = flushSession(current, stoppedAt, keepSession = false)
+                    } else if (!inactiveSessionChecked) {
+                        if (store.usageSession(section) != null) store.clearUsageSession(section)
+                        inactiveSessionChecked = true
                     }
+                    lastActiveTickMs = 0L
+                    continue
                 }
-                if (System.currentTimeMillis() - lastFlush >= 5000L) {
-                    if (totalPending > 0L) {
-                        store.addUsageSeconds(section, totalPending)
-                        store.addChannelUsage(section, pending.toMap())
+                inactiveSessionChecked = false
+                if (current == null || current.channelId != activeId) {
+                    if (current != null) {
+                        val switchedAt = lastActiveTickMs.takeIf { it >= current.startedAtMs } ?: current.startedAtMs
+                        flushSession(current, switchedAt, keepSession = false)
                     }
-                    pending.clear()
-                    totalPending = 0L
-                    lastFlush = System.currentTimeMillis()
+                    val saved = store.usageSession(section)
+                    val reusable = saved?.takeIf {
+                        it.channelId == activeId && now >= it.startedAtMs && now - it.startedAtMs <= 15_000L
+                    }
+                    val started = reusable ?: UsageSession(
+                        channelId = activeId,
+                        startedAtMs = now,
+                        baseTotalSeconds = store.usageTotalSeconds(section),
+                        baseChannelSeconds = store.channelUsageSnapshot(section)[activeId] ?: 0L
+                    )
+                    store.saveUsageSession(started)
+                    session = started
+                    lastActiveTickMs = now
+                } else {
+                    lastActiveTickMs = now
+                    if (now - current.startedAtMs >= 10_000L) {
+                        session = flushSession(current, now, keepSession = true)
+                    }
                 }
             }
         } finally {
-            if (totalPending > 0L) {
-                store.addUsageSeconds(section, totalPending)
-                store.addChannelUsage(section, pending.toMap())
+            withContext(NonCancellable) {
+                val current = session
+                val currentId = runCatching {
+                    if (activeProvider()) channelIdProvider()?.trim()?.takeIf { it.isNotBlank() } else null
+                }.getOrNull()
+                if (current != null) {
+                    val stoppedAt = lastActiveTickMs.takeIf { it >= current.startedAtMs } ?: current.startedAtMs
+                    flushSession(current, stoppedAt, keepSession = currentId == current.channelId)
+                } else if (currentId == null && store.usageSession(section) != null) {
+                    store.clearUsageSession(section)
+                }
             }
         }
     }
