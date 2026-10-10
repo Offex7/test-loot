@@ -81,6 +81,49 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
+      - name: Capture UI screenshots in API 37 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 37
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+            APK="$GITHUB_WORKSPACE/Radio.TV.Control/app/build/outputs/apk/debug/app-debug.apk"
+            OUT="$GITHUB_WORKSPACE/Radio.TV.Control/ui-screenshots"
+            mkdir -p "$OUT"
+            adb shell wm size 1080x2400
+            adb shell wm density 440
+            adb install -r "$APK"
+            adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK || true
+            adb shell am start -n com.radiotv.control/.MainActivity
+            sleep 7
+            adb exec-out screencap -p > "$OUT/remote.png"
+            adb shell input tap 405 2230
+            sleep 10
+            adb exec-out screencap -p > "$OUT/device-search.png"
+            adb shell input tap 945 2230
+            sleep 3
+            adb exec-out screencap -p > "$OUT/bottom-navigation.png"
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            adb shell wm size 1280x800
+            adb shell wm density 200
+            adb shell am force-stop com.radiotv.control
+            adb shell am start -n com.radiotv.control/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
+          path: Radio.TV.Control/ui-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
