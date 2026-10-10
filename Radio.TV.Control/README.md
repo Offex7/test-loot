@@ -1,59 +1,99 @@
 # Radio.TV.Control
 
-Standalone Android remote prototype designed to become a Radio.TV feature module.
+Standalone Kotlin + Jetpack Compose TV-remote module, structured for later integration as a tab in Radio.TV. The branch contains the demo host and reusable modules; CI checks buildability but cannot certify compatibility with every TV firmware.
 
-## Project layout
+## Modules
 
-- `:app` — standalone demo host; app label `Radio.TV.Control`.
-- `:tvremote-core` — transport contracts, command models, Android TV Remote v2, and Bluetooth HID.
-- `:tvremote-ui` — reusable Jetpack Compose remote pad.
-- `:tvremote-cast` — local network discovery and DLNA discovery foundation.
+- `:app` — standalone demo, discovery, connection and settings tabs.
+- `:tvremote-core` — transport contracts, Android TV Remote v2 voice/key sessions, Bluetooth HID, gyro air-mouse controller and other TV protocol adapters.
+- `:tvremote-ui` — reusable `TvRemotePad` Compose UI.
+- `:tvremote-cast` — DLNA/UPnP discovery, AVTransport commands and an on-demand local HTTP server for a user-selected media URI.
 
-**Package:** `com.radiotv.control`  
+**Application ID:** `com.radiotv.control`  
 **Minimum Android:** 12 / API 31  
-**Compile/target SDK:** Android 17 / API 37  
-**Orientation:** portrait requested by manifest. Content is capped at 520 dp and centered on wider screens. Android 17 may ignore forced orientation on large-screen devices; physical tablet letterbox behavior still needs validation.
+**Compile SDK / target SDK:** API 37  
+**UI palette:** black/red with neutral white/gray  
+**Orientation and layout:** portrait requested in the manifest; UI also caps width in code for large-screen/landscape configurations.
 
-## Build
+## Build and install
 
-Requires JDK 17, Android SDK platform 37 and compatible Android Gradle Plugin 9.x tooling. CI uses Gradle 9.5.0.
+Requirements: JDK 17, Android SDK platform 37, Build Tools 37.0.0, Gradle 9.5.0.
 
 ```bash
 cd Radio.TV.Control
-gradle :app:assembleDebug :tvremote-core:test
-```
-
-Install:
-
-```bash
+gradle --no-daemon :app:assembleDebug :tvremote-core:test
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-R8 minification and resource shrinking are enabled for debug and release builds.
+R8 minification and resource shrinking are enabled for both debug and release builds. The CI APK is debug-signed, for testing rather than Play Store distribution.
 
-## Implemented in this baseline
+## UI, insets, and large screens
 
-- Red/black Material 3 palette with compact D-pad, side volume/channel controls, digit pad, media keys and haptic feedback.
-- Automatic local network discovery using Android NSD/mDNS for `_androidtvremote2._tcp`, `_googlecast._tcp`, `_airplay._tcp`; SSDP/M-SEARCH; and bounded TCP probing of ports 6466, 6467, 8008, 8009, 9080, 8060, 8001, 8002, 3000 and 3001.
-- Manual IP entry as a fallback: the entered private IPv4 address is probed on the control ports to choose Android TV, Samsung, LG, Roku or Google Cast before falling back to Android TV pairing when the type remains unknown. Subnet probing is deliberately capped to a /24; NetBIOS and ARP-table inspection are not implemented.
-- Best-effort device-type detection for Android TV, Google Cast, Samsung, LG, Roku, DLNA, AirPlay and unknown devices. A detected type does not prove that the corresponding control protocol works.
-- Android TV Remote v2 TLS/pairing/control-channel foundation, saved certificate/host for reconnection, key commands, IME text injection and voice session support (PCM 16-bit mono 8 kHz).
-- Bluetooth HID Device implementation with keyboard, media/volume Consumer Control and relative mouse reports, runtime permission flow and system discoverability prompt. TV-side connection is initiated from the TV's Bluetooth settings.
-- Core unit tests for Remote key mapping and Bluetooth HID key mapping.
-- Public Compose API `TvRemotePad(enabled, onKey, modifier, onFeatureAction)`.
+The root content in `app/src/main/java/com/radiotv/control/MainActivity.kt` is wrapped in `WindowInsets.safeDrawing`. Compose's safe drawing insets reserve space for the display cutout and system bars, including the bottom navigation area. The bottom app navigation is placed inside this inset-aware column.
 
-## Not implemented / not verified on physical hardware
+The root uses `BoxWithConstraints` to detect landscape dimensions and centers a width-capped black panel: up to 520 dp in portrait and 460 dp in landscape. The reusable remote's height and button sizes also shrink when the available height is short. This is a programmatic content letterbox; the app does not depend solely on `android:screenOrientation="portrait"`, which a large-screen Android version may disregard. The result should still be visually checked on the actual target tablet/foldable and its system-bar configuration.
 
-- Bluetooth HID connection and actual keyboard/mouse report delivery have not been tested with a real phone and TV. Some phone Bluetooth stacks may not expose the HID Device role.
-- Touchpad panel and gyroscope air mouse are implemented for a connected Bluetooth HID host. Their gesture/sensor delivery still needs testing on a physical phone and TV.
-- Voice/IME implementation needs validation with a physical TV and its Remote Service version. Voice requires runtime microphone permission.
-- Working Samsung Tizen, LG webOS, Roku ECP control adapters and external IR hardware are not implemented.
-- DLNA renderer discovery resolves device descriptions and AVTransport control URLs; the UI can send SOAP `SetAVTransportURI`, `Play` and `Stop`. TV must be able to reach the supplied absolute HTTP(S) media URL. This still needs testing on real renderers.
-- Real TV pairing and command delivery have not been physically tested. CI verifies compilation, unit tests, APK signing/manifest, selected DEX class presence, SHA-256 and byte size only.
+Palette colors used in `tvremote-ui/.../TvRemotePad.kt`:
 
-## Integration in Radio.TV (stage 2)
+| Hex | Use |
+| --- | --- |
+| `#000000` | Root / letterbox background |
+| `#0A0A0A` | Surface |
+| `#141414` | Reserved older raised tone (not an accent) |
+| `#252525` | Raised controls / button background |
+| `#E53935` | Active red / primary accent / D-pad outline |
+| `#D32F2F` | Deep red for active containers |
+| `#FFFFFF` | Main text and icons |
+| `#B0B0B0` | Secondary text and icons |
+| `#383838` | Neutral button borders |
+| `#651B1B` | Dark red outline variant |
+| `#FF5252` | Error state |
 
-Move the modules into the Radio.TV Gradle build and add:
+The Material 3 color scheme explicitly assigns primary, secondary, tertiary, background, surface, container, outline and error roles to this red/black/white/gray palette. Some operating-system dialogs (such as the system document picker, permission prompts and Bluetooth pairing screens) remain Android system UI and may use the device's system theme.
+
+## Remote actions and status feedback
+
+- **Microphone / Android TV voice:** tapping the voice action checks the Wi-Fi Android TV Remote v2 connection, requests `RECORD_AUDIO` when needed, starts a PCM 16-bit mono / 8 kHz `AudioRecord` stream and opens a Remote v2 voice session. The red active state indicates recording. Voice streaming is specific to Android TV Remote v2; a successful compile does not prove compatibility with every TV firmware.
+- **Air mouse:** the action checks that the phone exposes a gyroscope and Bluetooth HID is connected. When HID is not connected, the app starts the Bluetooth discovery/advertising flow and explains that the TV must select the phone from its Bluetooth settings. Active mode is shown red; missing sensor/connection errors are reported in the control tab. The HID Device role depends on phone vendor firmware.
+- **Touchpad:** swipes, tap, and long press are forwarded as relative Bluetooth HID mouse reports when the TV is connected as an HID host.
+- **Media casting:** the system document picker can select photos/videos, audio or any file. The cast module reads the selected `content://` URI with Android's `ContentResolver`, serves it through an on-demand LAN HTTP endpoint (including byte-range requests), and sends that absolute URL to a selected DLNA/UPnP AVTransport renderer using `SetAVTransportURI` / `Play`. The phone and TV must be on the same LAN and the router must allow clients to communicate. Play/Pause/Stop and best-effort relative seek commands are exposed; renderer support varies. DRM-protected streams and HLS/DASH playlists are not supported by this local-file path. This is **DLNA casting**, not Android's system screen mirroring; MediaProjection/Cast receiver integration is not included.
+
+## TV discovery and protocols
+
+Discovery uses Android NSD/mDNS, SSDP/M-SEARCH and bounded TCP probing. The subnet scan is capped at /24. Results are best-effort device-type guesses, not a guarantee that the matching protocol can control the device.
+
+- Android TV Remote v2: TLS pairing, saved host/certificate reconnection, key input, text/IME and voice stream foundations.
+- Bluetooth HID: keyboard/media/mouse reports and gyroscope-driven relative cursor.
+- Samsung Tizen / LG webOS / Roku ECP: adapter implementations are present in `:tvremote-core`; they still need real-device validation across models and firmware revisions.
+- DLNA / UPnP: renderer discovery and AVTransport play/pause/stop/seek commands.
+- Google Cast and AirPlay: service discovery exists, but full control/cast adapters are not implemented by this prototype.
+- External IR hardware is not implemented.
+
+Do not assume any protocol has been physically validated solely because its classes are present in the APK. The CI workflow builds, runs core unit tests and verifies the package, manifest, selected DEX classes, signature, hash and size. The optional emulator screenshots show the UI only and do not test pairing with a physical TV.
+
+## Public Compose API
+
+The reusable public Composable is `TvRemotePad` in package `com.radiotv.control.ui`:
+
+```kotlin
+@Composable
+fun TvRemoteTab(
+    remoteIsConnected: Boolean,
+    onRemoteKey: (RemoteKey) -> Unit,
+    onRemoteFeature: (RemoteFeatureAction) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TvRemotePad(
+        enabled = remoteIsConnected,
+        onKey = onRemoteKey,
+        onFeatureAction = onRemoteFeature,
+        modifier = modifier,
+        showFeatureActions = true
+    )
+}
+```
+
+To integrate it in Radio.TV, include the modules in the host Gradle project:
 
 ```kotlin
 implementation(project(":tvremote-core"))
@@ -61,17 +101,34 @@ implementation(project(":tvremote-ui"))
 implementation(project(":tvremote-cast"))
 ```
 
-Embed the shared Compose API in the host UI:
+Then render it from the host's tab navigation:
 
 ```kotlin
-TvRemotePad(
-    enabled = remoteIsConnected,
-    onKey = { key -> lifecycleScope.launch { transport.sendKey(key) } }
-)
+when (selectedRadioTvTab) {
+    RadioTvTab.TV_REMOTE -> TvRemoteTab(
+        remoteIsConnected = radioTvRemoteConnected,
+        onRemoteKey = { key ->
+            lifecycleScope.launch { radioTvTransport.sendKey(key) }
+        },
+        onRemoteFeature = { action ->
+            // Dispatch to the host-owned microphone / keyboard / air-mouse /
+            // touchpad / casting and permission flows for that tab.
+            handleTvRemoteFeature(action)
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+    else -> ExistingRadioTvTabContent()
+}
 ```
 
-Protocol and connection state stay in `:tvremote-core`; `:tvremote-ui` does not depend on the standalone app. For media handoff, implement `RadioTvMediaProvider.currentMedia(): CastMedia?` after DLNA AVTransport has been added.
+The UI module emits `RemoteKey` and `RemoteFeatureAction` callbacks; it does not own a standalone Activity or connection singleton. The Radio.TV host must provide its live connection state and action dispatch. For local media handoff, use `LocalMediaHttpServer` together with `DlnaCastController` and a selected renderer.
 
-## CI
+## Safe-area and device-validation checklist
 
-GitHub Actions builds `:app:assembleDebug`, runs `:tvremote-core:test`, verifies APK signature and package/SDK/label/orientation/cleartext/local-network/Bluetooth permissions, scans DEX for transport/UI/discovery classes, computes SHA-256 and size, and uploads `Radio.TV.Control-debug-run-N`. The APK is debug-signed for testing, not a Play Store release.
+- [ ] Test a phone with a camera cutout and gestures navigation.
+- [ ] Test a phone with three-button navigation.
+- [ ] Test a tablet / foldable in portrait and landscape at smallest-width >= 600 dp.
+- [ ] Test permission-denial/retry flows for microphone and Bluetooth.
+- [ ] Test local media cast against a real DLNA renderer and check seeking support.
+
+The code uses safe drawing insets and width/height constraints for these cases, but the checks above require the actual form factor or an appropriately configured emulator before calling device-specific behavior verified.
