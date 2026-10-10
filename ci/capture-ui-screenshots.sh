@@ -6,6 +6,20 @@ APP="$ROOT/Radio.TV.Control"
 APK="$APP/app/build/outputs/apk/debug/app-debug.apk"
 OUT="$APP/ui-screenshots"
 echo "Capturing UI screenshots at equivalent 540x1200/220dpi and 640x400/100dpi viewports."
+wait_for_main_activity() {
+  timeout=${1:-90}
+  elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if adb logcat -d -v brief 2>/dev/null | grep -Fq "Displayed com.radiotv.control/.MainActivity"; then
+      sleep 2
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  echo "MainActivity did not report Displayed within ${timeout}s; preserving current screen and logcat." >&2
+  return 1
+}
 
 if [ ! -s "$APK" ]; then
   echo "Debug APK was not found: $APK" >&2
@@ -21,7 +35,7 @@ adb shell pm grant com.radiotv.control android.permission.ACCESS_LOCAL_NETWORK >
 adb logcat -c
 adb shell am force-stop com.radiotv.control
 adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/am-start.txt" 2>&1 || true
-sleep 8
+wait_for_main_activity 90 || true
 adb shell dumpsys activity activities > "$OUT/activities.txt" 2>&1 || true
 adb shell pidof com.radiotv.control > "$OUT/pid.txt" 2>&1 || true
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 || true
@@ -40,9 +54,11 @@ adb shell settings put system user_rotation 1
 adb shell wm size 640x400
 adb shell wm density 100
 adb shell am force-stop com.radiotv.control
+adb logcat -c
 adb shell am start -n com.radiotv.control/.MainActivity > "$OUT/landscape-start.txt" 2>&1 || true
-sleep 5
+wait_for_main_activity 90 || true
 adb shell dumpsys activity activities > "$OUT/landscape-activities.txt" 2>&1 || true
+adb logcat -d -v time > "$OUT/landscape-logcat.txt" 2>&1 || true
 adb exec-out screencap -p > "$OUT/large-screen-landscape.png"
 
 for file in remote.png device-search.png bottom-navigation.png large-screen-landscape.png; do
