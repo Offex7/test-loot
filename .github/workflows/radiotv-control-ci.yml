@@ -73,6 +73,8 @@ jobs:
           grep -F 'DlnaCastController' dex-strings.txt
           grep -F 'LocalNetworkDeviceDiscovery' dex-strings.txt
           grep -F 'BluetoothHidController' dex-strings.txt
+          grep -F 'GyroAirMouseController' dex-strings.txt
+          grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Upload debug APK

@@ -45,7 +45,7 @@ R8 minification and resource shrinking are enabled for debug and release builds.
 ## Not implemented / not verified on physical hardware
 
 - Bluetooth HID connection and actual keyboard/mouse report delivery have not been tested with a real phone and TV. Some phone Bluetooth stacks may not expose the HID Device role.
-- Touchpad gesture surface and gyroscope air mouse are not wired yet.
+- Touchpad panel and gyroscope air mouse are implemented for a connected Bluetooth HID host. Their gesture/sensor delivery still needs testing on a physical phone and TV.
 - Voice PCM capture/streaming and complete Android TV Remote v2 text/IME injection are not implemented.
 - Working Samsung Tizen, LG webOS, Roku ECP control adapters and external IR hardware are not implemented.
 - DLNA AVTransport `SetAVTransportURI` / `Play` / `Stop` playback is not implemented; current code discovers possible renderers only.

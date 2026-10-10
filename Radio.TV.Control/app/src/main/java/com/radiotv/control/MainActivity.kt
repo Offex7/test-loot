@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radiotv.control.cast.LocalNetworkDeviceDiscovery
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.AirMouseStatus
+import com.radiotv.control.core.GyroAirMouseController
 import com.radiotv.control.core.BluetoothHidController
 import com.radiotv.control.core.BluetoothHidStatus
 import com.radiotv.control.core.DiscoveredRemoteDevice
@@ -77,28 +79,31 @@ private const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWOR
 class MainActivity : ComponentActivity() {
     private val remote: AndroidTvRemoteV2Transport by inject()
     private val bluetoothHid: BluetoothHidController by inject()
+    private val airMouse: GyroAirMouseController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote, bluetoothHid) }
+        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse) }
     }
 
     override fun onDestroy() {
         if (isFinishing) {
             remote.close()
             bluetoothHid.close()
+            airMouse.close()
         }
         super.onDestroy()
     }
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
+    val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
@@ -107,6 +112,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
+    var showTouchpad by rememberSaveable { mutableStateOf(false) }
     val codeRequested = status is RemoteStatus.AwaitingCode
     val connected = status is RemoteStatus.Connected
 
@@ -278,6 +284,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 color = if (bluetoothStatus is BluetoothHidStatus.Connected) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Text(
+                                airMouseStatus.asUserLabel(),
+                                color = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         items(devices, key = { it.ip }) { device ->
                             Card(
@@ -401,12 +412,43 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     statusMessage = when (action) {
                                         RemoteFeatureAction.VOICE_INPUT -> "Голосовой PCM-ввод ещё не подключён."
                                         RemoteFeatureAction.KEYBOARD -> "Ввод текста на телевизор ещё не подключён."
-                                        RemoteFeatureAction.AIR_MOUSE -> "Аэромышь будет активирована после реализации гироскопического управления."
-                                        RemoteFeatureAction.TOUCHPAD -> "Сенсорный тачпад будет подключён отдельным этапом."
+                                        RemoteFeatureAction.AIR_MOUSE -> airMouse.toggle()
+                                        RemoteFeatureAction.TOUCHPAD -> {
+                                            showTouchpad = !showTouchpad
+                                            if (showTouchpad) "Тачпад включён. Для управления курсором подключите Bluetooth HID."
+                                            else "Тачпад скрыт."
+                                        }
                                         RemoteFeatureAction.CAST -> "Трансляция DLNA пока поддерживает обнаружение, но не запуск воспроизведения."
                                     }
-                                }
+                                },
+                                touchpadActive = showTouchpad,
+                                airMouseActive = airMouseStatus is AirMouseStatus.Active
                             )
+                        }
+                        if (showTouchpad) {
+                            item {
+                                TouchpadSurface(
+                                    enabled = hidConnected,
+                                    onMove = { dx, dy ->
+                                        scope.launch {
+                                            runCatching { bluetoothHid.moveMouse(dx, dy) }
+                                                .onFailure { statusMessage = it.message ?: "Не удалось переместить Bluetooth-курсор." }
+                                        }
+                                    },
+                                    onTap = {
+                                        scope.launch {
+                                            runCatching { bluetoothHid.clickMouse(1) }
+                                                .onFailure { statusMessage = it.message ?: "Не удалось нажать Bluetooth-мышь." }
+                                        }
+                                    },
+                                    onLongPress = {
+                                        scope.launch {
+                                            runCatching { bluetoothHid.clickMouse(2) }
+                                                .onFailure { statusMessage = it.message ?: "Не удалось отправить контекстный клик." }
+                                        }
+                                    }
+                                )
+                            }
                         }
                         item {
                             Text(

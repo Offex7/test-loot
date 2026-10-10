@@ -2,12 +2,18 @@ package com.radiotv.control.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -17,11 +23,14 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.radiotv.control.core.RemoteKey
 
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST }
@@ -59,7 +68,9 @@ fun TvRemotePad(
     enabled: Boolean,
     onKey: (RemoteKey) -> Unit,
     modifier: Modifier = Modifier,
-    onFeatureAction: (RemoteFeatureAction) -> Unit = {}
+    onFeatureAction: (RemoteFeatureAction) -> Unit = {},
+    touchpadActive: Boolean = false,
+    airMouseActive: Boolean = false
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -134,8 +145,8 @@ fun TvRemotePad(
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
             FeatureButton("◉", "Микрофон", onClick = { onFeatureAction(RemoteFeatureAction.VOICE_INPUT) }, modifier = Modifier.weight(1f))
             FeatureButton("⌨", "Клавиатура", onClick = { onFeatureAction(RemoteFeatureAction.KEYBOARD) }, modifier = Modifier.weight(1f))
-            FeatureButton("✥", "Аэромышь", onClick = { onFeatureAction(RemoteFeatureAction.AIR_MOUSE) }, modifier = Modifier.weight(1f))
-            FeatureButton("▧", "Тачпад", onClick = { onFeatureAction(RemoteFeatureAction.TOUCHPAD) }, modifier = Modifier.weight(1f))
+            FeatureButton("✥", "Аэромышь", onClick = { onFeatureAction(RemoteFeatureAction.AIR_MOUSE) }, modifier = Modifier.weight(1f), active = airMouseActive)
+            FeatureButton("▧", "Тачпад", onClick = { onFeatureAction(RemoteFeatureAction.TOUCHPAD) }, modifier = Modifier.weight(1f), active = touchpadActive)
             FeatureButton("▣", "Трансляция", onClick = { onFeatureAction(RemoteFeatureAction.CAST) }, modifier = Modifier.weight(1f))
         }
     }
@@ -178,7 +189,8 @@ private fun FeatureButton(
     icon: String,
     label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    active: Boolean = false
 ) {
     val view = LocalView.current
     OutlinedButton(
@@ -189,14 +201,75 @@ private fun FeatureButton(
         modifier = modifier.height(58.dp),
         border = BorderStroke(1.dp, RadioTvPalette.Red),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = RadioTvPalette.Black,
-            contentColor = RadioTvPalette.Red
+            containerColor = if (active) RadioTvPalette.Red else RadioTvPalette.Black,
+            contentColor = if (active) RadioTvPalette.Black else RadioTvPalette.Red
         ),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 1.dp, vertical = 2.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(icon, color = RadioTvPalette.Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text(label, color = RadioTvPalette.Muted, fontSize = 8.sp, maxLines = 1)
+            Text(icon, color = if (active) RadioTvPalette.Black else RadioTvPalette.Red, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = if (active) RadioTvPalette.Black else RadioTvPalette.Muted, fontSize = 8.sp, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * Bluetooth HID touch surface: drag reports relative cursor movement, tap is left click,
+ * long press is right click. It is disabled unless the TV is connected as a HID host.
+ */
+@Composable
+fun TouchpadSurface(
+    enabled: Boolean,
+    onMove: (Int, Int) -> Unit,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(12.dp)
+    val view = LocalView.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(176.dp)
+            .clip(shape)
+            .background(RadioTvPalette.Black)
+            .border(1.dp, if (enabled) RadioTvPalette.Red else Color(0xFF424242), shape)
+            .pointerInput(enabled) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    if (enabled) {
+                        val dx = dragAmount.x.roundToInt()
+                        val dy = dragAmount.y.roundToInt()
+                        if (dx != 0 || dy != 0) onMove(dx, dy)
+                    }
+                }
+            }
+            .pointerInput(enabled) {
+                detectTapGestures(
+                    onTap = {
+                        if (enabled) {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            onTap()
+                        }
+                    },
+                    onLongPress = {
+                        if (enabled) {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            onLongPress()
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("ТАЧПАД", color = if (enabled) RadioTvPalette.Red else RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
+            Text(
+                if (enabled) "Свайп — курсор · тап — клик · долгий тап — контекстное меню"
+                else "Сначала подключите Bluetooth HID на телевизоре",
+                color = RadioTvPalette.Muted,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

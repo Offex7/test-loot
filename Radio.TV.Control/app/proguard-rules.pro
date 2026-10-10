@@ -12,3 +12,4 @@
 -keep class com.radiotv.control.cast.DlnaCastController { *; }
 -keepattributes Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 -dontwarn org.bouncycastle.**
+-keep class com.radiotv.control.core.GyroAirMouseController { *; }
