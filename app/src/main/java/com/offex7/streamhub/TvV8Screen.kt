@@ -583,11 +583,11 @@ fun TvV8Screen(
             onBack = ::closePlayer,
             onPrev = {
                 val i = adjacentIndex(selectedIndex, -1)
-                if (i >= 0) startPlayback(i, fastSwitch = player.isPlaying.value, direction = -1)
+                if (i >= 0) startPlayback(i, fastSwitch = fullscreen && (player.isPlaying.value || player.player.playWhenReady), direction = -1)
             },
             onNext = {
                 val i = adjacentIndex(selectedIndex, 1)
-                if (i >= 0) startPlayback(i, fastSwitch = player.isPlaying.value, direction = 1)
+                if (i >= 0) startPlayback(i, fastSwitch = fullscreen && (player.isPlaying.value || player.player.playWhenReady), direction = 1)
             },
             onPause = { player.toggle() },
             onFavoriteSelected = { index ->

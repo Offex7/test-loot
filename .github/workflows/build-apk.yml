@@ -116,6 +116,7 @@ jobs:
               "app_shortcuts": "android.app.shortcuts" in manifest and "open_radio" in shortcuts and "open_tv" in shortcuts and "widget_section" in shortcuts,
               "TV_timers_3s_10s": "WEAK_NETWORK_NOTICE_MS = 3_000L" in player and "BUFFER_TIMEOUT_MS = 10_000L" in player and "Буферизация не завершилась за 10 секунд" in player,
               "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = if (fastSwitch) 1_200L else 10_000L" in tv,
+              "TV_fast_switch_state": "fullscreen && (player.isPlaying.value || player.player.playWhenReady)" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Не удалось воспроизвести канал, переключаю на следующий" in tv and "autoRecoveryTargets" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
               "TV_neighbor_precheck_types": "val pending = neighbors.filter { health[it.url] == null }" in tv,
