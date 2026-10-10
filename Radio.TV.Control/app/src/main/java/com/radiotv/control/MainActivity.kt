@@ -553,7 +553,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                 }
                                                 "Останавливаем голосовой ввод…"
                                             } else if (!wifiConnected) {
-                                                "Для голосового ввода сначала подключитесь к Android TV по Wi-Fi."
+                                                "Сначала подключитесь к телевизору по Wi-Fi, чтобы передавать голос через Android TV Remote."
                                             } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                                 scope.launch {
                                                     runCatching { voiceInput.start() }
@@ -570,7 +570,17 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             showKeyboard = !showKeyboard
                                             if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый ТВ." else "Клавиатура скрыта."
                                         }
-                                        RemoteFeatureAction.AIR_MOUSE -> airMouse.toggle()
+                                        RemoteFeatureAction.AIR_MOUSE -> {
+                                            when {
+                                                airMouseStatus is AirMouseStatus.Active -> airMouse.toggle()
+                                                !airMouse.hasGyroscope -> airMouse.toggle()
+                                                !hidConnected -> {
+                                                    beginBluetoothSession()
+                                                    "Сначала подключите телефон к телевизору в настройках Bluetooth. После соединения нажмите «Аэромышь» ещё раз."
+                                                }
+                                                else -> airMouse.toggle()
+                                            }
+                                        }
                                         RemoteFeatureAction.TOUCHPAD -> {
                                             showTouchpad = !showTouchpad
                                             if (showTouchpad) "Тачпад включён. Для управления курсором подключите Bluetooth HID."
@@ -586,7 +596,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                 touchpadActive = showTouchpad,
                                 airMouseActive = airMouseStatus is AirMouseStatus.Active,
                                 voiceActive = voiceStatus is VoiceInputStatus.Recording,
-                                keyboardActive = showKeyboard
+                                keyboardActive = showKeyboard,
+                                featureMessage = statusMessage
                             )
                         }
                         if (showKeyboard) {

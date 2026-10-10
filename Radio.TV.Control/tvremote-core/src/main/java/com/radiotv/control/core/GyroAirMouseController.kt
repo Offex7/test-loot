@@ -32,6 +32,8 @@ class GyroAirMouseController(
     private val appContext = context.applicationContext
     private val sensorManager = appContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private val gyroscope: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+    /** True when Android exposes a physical gyroscope for air-mouse pointer tracking. */
+    val hasGyroscope: Boolean get() = gyroscope != null && sensorManager != null
     private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val statusMutable = MutableStateFlow<AirMouseStatus>(AirMouseStatus.Off)
     val status: StateFlow<AirMouseStatus> = statusMutable.asStateFlow()
