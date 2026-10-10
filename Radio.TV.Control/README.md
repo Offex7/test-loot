@@ -25,13 +25,21 @@ gradle --no-daemon :app:assembleDebug :tvremote-core:test
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-R8 minification and resource shrinking are enabled for both debug and release builds. The CI APK is debug-signed, for testing rather than Play Store distribution.
+R8 minification and resource shrinking are enabled for both debug and release builds.
+
+### Versioning and signing
+
+- The package ID remains **`com.radiotv.control`**. Do not add a debug application-ID suffix.
+- GitHub Actions assigns **`versionCode = GITHUB_RUN_NUMBER`** and `versionName = 0.1.<run-number>`, so every successful CI run receives a higher version code. Local builds fall back to version code `1`; set `GITHUB_RUN_NUMBER` when building locally if you need an upgrade-compatible APK.
+- Debug and release variants are explicitly signed with the same repository keystore at `../app/signing/radio-tv-v5-debug.keystore` (alias `AndroidDebugKey`). Keep that file and its credentials unchanged for later builds.
+- Android permits in-place updates only when **application ID and signing certificate match** and the new `versionCode` is higher. The previous run №27 APK's signing certificate has not been compared here with this pinned key. If Android reports a signature mismatch when installing this new line of builds, uninstall the older copy once, then install an APK signed with the pinned key; later APKs using this same key and a higher version code should update in place. Removing the old app also removes its app-local data.
+- This repository key is for development/testing builds, not Play Store publishing.
 
 ## UI, insets, and large screens
 
 The root content in `app/src/main/java/com/radiotv/control/MainActivity.kt` is wrapped in `WindowInsets.safeDrawing`. Compose's safe drawing insets reserve space for the display cutout and system bars, including the bottom navigation area. The bottom app navigation is placed inside this inset-aware column.
 
-The root uses `BoxWithConstraints` to detect landscape dimensions and centers a width-capped black panel: up to 520 dp in portrait and 460 dp in landscape. The reusable remote's height and button sizes also shrink when the available height is short. This is a programmatic content letterbox; the app does not depend solely on `android:screenOrientation="portrait"`, which a large-screen Android version may disregard. The result should still be visually checked on the actual target tablet/foldable and its system-bar configuration.
+The root uses `BoxWithConstraints` to detect `maxWidth > maxHeight` and centers a width-capped black panel: up to 520 dp in portrait and 460 dp in landscape. This is a **programmatic content letterbox**: on a wide/landscape screen, the vertical UI stays centered and the unused areas remain black; it does not rely only on `android:screenOrientation="portrait"`. The remote's dimensions also compact as available height shrinks. The CI screenshot script tests a landscape viewport with a computed smallest width above 600 dp; this confirms the composed layout can render under that configuration, but it does **not** prove Android 17/API 37's policy on every physical tablet or foldable.
 
 Palette colors used in `tvremote-ui/.../TvRemotePad.kt`:
 
@@ -55,7 +63,7 @@ The Material 3 color scheme explicitly assigns primary, secondary, tertiary, bac
 - **Microphone / Android TV voice:** tapping the voice action checks the Wi-Fi Android TV Remote v2 connection, requests `RECORD_AUDIO` when needed, starts a PCM 16-bit mono / 8 kHz `AudioRecord` stream and opens a Remote v2 voice session. The red active state indicates recording. Voice streaming is specific to Android TV Remote v2; a successful compile does not prove compatibility with every TV firmware.
 - **Air mouse:** the action checks that the phone exposes a gyroscope and Bluetooth HID is connected. When HID is not connected, the app starts the Bluetooth discovery/advertising flow and explains that the TV must select the phone from its Bluetooth settings. Active mode is shown red; missing sensor/connection errors are reported in the control tab. The HID Device role depends on phone vendor firmware.
 - **Touchpad:** swipes, tap, and long press are forwarded as relative Bluetooth HID mouse reports when the TV is connected as an HID host.
-- **Media casting:** the system document picker can select photos/videos, audio or any file. The cast module reads the selected `content://` URI with Android's `ContentResolver`, serves it through an on-demand LAN HTTP endpoint (including byte-range requests), and sends that absolute URL to a selected DLNA/UPnP AVTransport renderer using `SetAVTransportURI` / `Play`. The phone and TV must be on the same LAN and the router must allow clients to communicate. Play/Pause/Stop and best-effort relative seek commands are exposed; renderer support varies. DRM-protected streams and HLS/DASH playlists are not supported by this local-file path. This is **DLNA casting**, not Android's system screen mirroring; MediaProjection/Cast receiver integration is not included.
+- **Media casting:** the system document picker can select photos/videos (`ACTION_OPEN_DOCUMENT`), audio (`ACTION_GET_CONTENT`) or any file (`ACTION_OPEN_DOCUMENT`). The cast module reads the selected `content://` URI with Android's `ContentResolver`, serves it through an on-demand LAN HTTP endpoint (including byte-range requests), and sends that absolute URL to a selected DLNA/UPnP AVTransport renderer using `SetAVTransportURI` / `Play`. The phone and TV must be on the same LAN and the router must allow clients to communicate. Play/Pause/Stop and best-effort relative seek commands are exposed; renderer support varies. HLS/DASH playlist files are rejected with a user-facing explanation. DRM is not supported by this local-file path. This is **DLNA casting**, not Android's system screen mirroring; MediaProjection/Cast receiver integration is not included.
 
 ## TV discovery and protocols
 
@@ -72,7 +80,7 @@ Do not assume any protocol has been physically validated solely because its clas
 
 ## Public Compose API
 
-The reusable public Composable is `TvRemotePad` in package `com.radiotv.control.ui`:
+The reusable public Composable is `TvRemotePad` in package `com.radiotv.control.ui`. Its required integration surface is `TvRemotePad(enabled, onKey, modifier, onFeatureAction)`; the additional state/display parameters have defaults and can be added when the host wants active-state highlighting or feature status inline. This four-argument API is enough to embed the pad as a Radio.TV tab provided the host dispatches key/action callbacks and supplies real connection state:
 
 ```kotlin
 @Composable
@@ -124,10 +132,16 @@ The UI module emits `RemoteKey` and `RemoteFeatureAction` callbacks; it does not
 
 ## Safe-area and device-validation checklist
 
-- [ ] Test a phone with a camera cutout and gestures navigation.
-- [ ] Test a phone with three-button navigation.
-- [ ] Test a tablet / foldable in portrait and landscape at smallest-width >= 600 dp.
-- [ ] Test permission-denial/retry flows for microphone and Bluetooth.
-- [ ] Test local media cast against a real DLNA renderer and check seeking support.
+Implemented in source:
+- `MainActivity.kt` calls `enableEdgeToEdge()` and wraps the centered content column in `WindowInsets.safeDrawing`; this reserves safe content space for status/navigation bars and display cutouts and keeps the bottom app tabs inside those insets.
+- The same file detects landscape using `BoxWithConstraints`, caps the content width at 460 dp in landscape / 520 dp in portrait, centers the panel, and paints the remaining background black.
+- The CI screenshot script captures the main remote, device-search screen, bottom-navigation screen and landscape viewport using `adb exec-out screencap -p`. The API 37 emulator step is allowed to fail without failing APK build, so check that the screenshot artifact is actually present for each run.
 
-The code uses safe drawing insets and width/height constraints for these cases, but the checks above require the actual form factor or an appropriately configured emulator before calling device-specific behavior verified.
+Still requires device-level confirmation:
+- [ ] A physical phone with a camera cutout and gesture navigation.
+- [ ] A phone using three-button navigation.
+- [ ] A physical tablet/foldable at smallest-width >= 600 dp with Android 17/API 37 orientation behaviour.
+- [ ] Microphone permission denial/retry and Bluetooth pairing on hardware.
+- [ ] Casting and seek controls against a real DLNA renderer.
+
+Code and emulator screenshots are implementation evidence, not proof of behaviour on every physical device or TV firmware.
