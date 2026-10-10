@@ -152,6 +152,8 @@ import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -1295,6 +1297,13 @@ private fun Radio(
     val connected by player.connected.collectAsState()
     val network by rememberNetworkState()
     val list = rememberLazyListState()
+    val activeStationFocusRequester = remember { FocusRequester() }
+    var radioResumeEpoch by remember { mutableIntStateOf(0) }
+    var isRestoringActiveScroll by remember { mutableStateOf(false) }
+    val radioActivity = context as? ComponentActivity
+    val radioIsTelevision =
+        (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     var favorites by remember { mutableStateOf(emptySet<String>()) }
     var favoriteTimes by remember { mutableStateOf(emptyMap<String, Long>()) }
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
@@ -1469,6 +1478,36 @@ private fun Radio(
 
     val filteredStations = fuzzyFilter(orderedStations, query)
 
+    DisposableEffect(radioActivity, player) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                player.refreshPlaybackState()
+                radioResumeEpoch += 1
+            }
+        }
+        radioActivity?.lifecycle?.addObserver(observer)
+        onDispose { radioActivity?.lifecycle?.removeObserver(observer) }
+    }
+
+    LaunchedEffect(radioResumeEpoch, index) {
+        if (radioResumeEpoch <= 0 || index !in RADIO_STATIONS.indices) return@LaunchedEffect
+        val activeStation = RADIO_STATIONS[index]
+        val targetIndex = filteredStations.indexOfFirst { it.key == activeStation.key }
+        if (targetIndex !in filteredStations.indices) return@LaunchedEffect
+        val alreadyVisible = list.layoutInfo.visibleItemsInfo.any { it.key == activeStation.key }
+        if (!alreadyVisible) {
+            isRestoringActiveScroll = true
+            try {
+                list.animateScrollToItem(targetIndex)
+            } finally {
+                isRestoringActiveScroll = false
+            }
+        }
+        if (radioIsTelevision) {
+            runCatching { activeStationFocusRequester.requestFocus() }
+        }
+    }
+
     val displayedTimerMs = (
         timerElapsedMs +
             if (playing && timerStartedAtMs > 0L) {
@@ -1642,6 +1681,7 @@ private fun Radio(
                             radioTimer = if (active) formatShortTimer(displayedTimerMs / 1000L) else null,
                             radioBump = if (active && playing) radioBumpNonce else 0,
                             radioPlaying = active && playing,
+                            activeFocusRequester = if (active) activeStationFocusRequester else null,
                             onToggle = if (active) {
                                 {
                                     val activeIndex = RADIO_STATIONS.indexOf(station)
@@ -1671,7 +1711,8 @@ private fun Radio(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
-                        .padding(12.dp)
+                        .padding(12.dp),
+                    ignoreProgrammaticScroll = isRestoringActiveScroll
                 )
             }
 
@@ -3516,6 +3557,7 @@ private fun ChannelRow(
     preferRemoteLogo: Boolean = false,
     radioBump: Int = 0,
     radioPlaying: Boolean = activeRadio,
+    activeFocusRequester: FocusRequester? = null,
     hapticsEnabled: Boolean = true,
     soundEnabled: Boolean = true
 ) {
@@ -3527,7 +3569,9 @@ private fun ChannelRow(
     val feedbackContext=LocalContext.current
     Card(
         onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onPlay() },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            activeFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+        ),
         colors = CardDefaults.cardColors(containerColor = if (favorite) Red.copy(alpha = .08f) else Panel),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -3744,7 +3788,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.1")
+                            .header("User-Agent", "Radio.TV/4.2")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

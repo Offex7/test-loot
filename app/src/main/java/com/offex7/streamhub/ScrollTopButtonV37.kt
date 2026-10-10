@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -40,13 +41,15 @@ fun ScrollTopButtonV37(
     listState: androidx.compose.foundation.lazy.LazyListState,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    ignoreProgrammaticScroll: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(false) }
     var scrollSession by remember { mutableLongStateOf(0L) }
     var lastScrollActivityAt by remember { mutableLongStateOf(0L) }
+    val ignoreProgrammaticScrollState by rememberUpdatedState(ignoreProgrammaticScroll)
 
     LaunchedEffect(listState) {
         var wasScrolling = false
@@ -57,6 +60,13 @@ fun ScrollTopButtonV37(
                 listState.isScrollInProgress
             )
         }.collect { (index, offset, scrolling) ->
+            if (ignoreProgrammaticScrollState) {
+                visible = false
+                scrollSession = 0L
+                lastScrollActivityAt = 0L
+                wasScrolling = scrolling
+                return@collect
+            }
             val awayFromTop = index > 0 || offset > 0
             if (!awayFromTop) {
                 visible = false
@@ -77,7 +87,7 @@ fun ScrollTopButtonV37(
     LaunchedEffect(scrollSession) {
         if (scrollSession <= 0L) return@LaunchedEffect
         val session = scrollSession
-        delay(2000L)
+        delay(3000L)
         val awayFromTop =
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
         if (session == scrollSession && awayFromTop) {

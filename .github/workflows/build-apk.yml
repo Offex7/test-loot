@@ -42,20 +42,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Apply v4.1 source migration and commit final sources
+      - name: Verify committed v4.2 source version
         run: |
           set -e
-          if [ -f tools/upgrade_v41.py ]; then
-            python3 tools/upgrade_v41.py
-            rm tools/upgrade_v41.py
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "feat(v4.1): apply Radio.TV v4.1 changes"
-            git push origin HEAD:main
-          else
-            echo "v4.1 source migration already committed."
-          fi
+          grep -q 'versionCode = 15' app/build.gradle.kts
+          grep -q 'versionName = "4.2"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -65,11 +56,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.1): install verified local Unistar logo"
+            git commit -m "fix(v4.2): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.1 sources
+      - name: Validate Radio.TV v4.2 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -81,6 +72,7 @@ jobs:
           media = (root / "src/main/java/com/offex7/streamhub/RadioPlaybackService.kt").read_text(encoding="utf-8")
           player = (root / "src/main/java/com/offex7/streamhub/PlayerController.kt").read_text(encoding="utf-8")
           tv = (root / "src/main/java/com/offex7/streamhub/TvV8Screen.kt").read_text(encoding="utf-8")
+          radio_controller = (root / "src/main/java/com/offex7/streamhub/RadioMediaController.kt").read_text(encoding="utf-8")
           shortcuts = (root / "src/main/res/xml/shortcuts.xml").read_text(encoding="utf-8")
           logo_assets = (root / "src/main/java/com/offex7/streamhub/RadioLogoAssetsV38.kt").read_text(encoding="utf-8")
           arrows = (root / "src/main/java/com/offex7/streamhub/ScrollTopButtonV37.kt").read_text(encoding="utf-8")
@@ -90,7 +82,7 @@ jobs:
           manifest = (root / "src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           storage = (root / "src/main/java/com/offex7/streamhub/Storage.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 14" in gradle and 'versionName = "4.1"' in gradle,
+              "version": "versionCode = 15" in gradle and 'versionName = "4.2"' in gradle,
               "version_label": 'append("v$APP_VERSION")' in main,
               "application_id": 'applicationId = "com.offex7.streamhub"' in gradle,
               "R8": "isMinifyEnabled = true" in gradle and "isShrinkResources = true" in gradle,
@@ -115,8 +107,9 @@ jobs:
               "widget_receivers": ".RadioWidgetProvider" in manifest and ".TvWidgetProvider" in manifest,
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
-              "UA_v4": '"Radio.TV/4.1"' in main and '"Radio.TV/3.9"' not in main,
+              "UA_v4_2": '"Radio.TV/4.2"' in main and '"Radio.TV/4.1"' not in main,
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
+              "scroll_arrow_timing_and_programmatic_guard": "delay(3000L)" in arrows and "delay(5000L)" in arrows and "ignoreProgrammaticScroll" in arrows,
               "updater_endpoint_preserved": "https://api.github.com/repos/RadioTV-apk/R/releases/latest" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
               "energy_warning_92h": "92L * 60L * 60L * 1000L" in storage and "markEnergyWarningShown()" in main,
               "stats_timestamp_session": "data class UsageSession" in storage and "usageSessionFlow(Section.TV)" in main and "activeChannelId.value" in main and "addPlaybackUsage(section" in main,
@@ -127,11 +120,15 @@ jobs:
               "reset_confirmation": "ВОССТАНОВИТЬ ПО УМОЛЧАНИЮ" in main and "Восстановить настройки по умолчанию?" in main and 'Text("Да", color = Red)' in main and 'Text("Нет")' in main,
               "update_banner_bottom": main.rindex("ОБНОВИТЬ ПРИЛОЖЕНИЕ") > main.rindex("ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ"),
               "app_shortcuts": "android.app.shortcuts" in manifest and "open_radio" in shortcuts and "open_tv" in shortcuts and "widget_section" in shortcuts,
-              "TV_timers_3s_10s": "WEAK_NETWORK_NOTICE_MS = 3_000L" in player and "BUFFER_TIMEOUT_MS = 10_000L" in player and "Буферизация не завершилась за 10 секунд" in player,
-              "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = if (fastSwitch) 1_200L else 10_000L" in tv,
+              "TV_timers_2s_25s": "WEAK_NETWORK_NOTICE_MS = 2_000L" in player and "BUFFER_TIMEOUT_MS = 25_000L" in player and "Буферизация не завершилась за 25 секунд" in player,
+              "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = 25_000L" in tv,
+              "TV_banner_after_settle": "LaunchedEffect(channel.key, switching, silentSwitching)" in tv and "channelNotice = silentSwitching" in tv and "delay(3000L)" in tv,
+              "TV_candidate_stays_until_timeout": "selectedIndex = cursor" in tv and "attemptTimeoutMs = 25_000L" in tv and "suppressChannelNotice" not in tv,
               "TV_fast_switch_state": "fullscreen && (player.isPlaying.value || player.player.playWhenReady)" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Не удалось воспроизвести канал, переключаю на следующий" in tv and "autoRecoveryTargets" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
+              "radio_active_restore": "fun refreshPlaybackState()" in radio_controller and "Lifecycle.Event.ON_RESUME" in main and "animateScrollToItem(targetIndex)" in main and "activeStationFocusRequester.requestFocus()" in main,
+              "radio_controller_release_safe": "handler.post" in radio_controller and "pendingFuture?.cancel(false)" in radio_controller and "if (released) return" in radio_controller,
               "TV_neighbor_precheck_types": "val pending = neighbors.filter { health[it.url] == null }" in tv,
               "autostart_and_keep_screen_on": "autoStartKey" in storage and "FLAG_KEEP_SCREEN_ON" in main,
           }
@@ -139,8 +136,8 @@ jobs:
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.1 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.1 source checks passed.")
+              raise SystemExit("v4.2 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.2 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -162,7 +159,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.1-debug-build-log
+          name: Radio-TV-v4.2-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -174,33 +171,33 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.1.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.1.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.1.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.2.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.2.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.2.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.1.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.2.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='14'"
-          echo "$BADGING" | grep -q "versionName='4.1'"
-          sha256sum Radio-TV-v4.1.apk
-          ls -lh Radio-TV-v4.1.apk
+          echo "$BADGING" | grep -q "versionCode='15'"
+          echo "$BADGING" | grep -q "versionName='4.2'"
+          sha256sum Radio-TV-v4.2.apk
+          ls -lh Radio-TV-v4.2.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.1-APK
-          path: Radio-TV-v4.1.apk
+          name: Radio-TV-v4.2-APK
+          path: Radio-TV-v4.2.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.1-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.2-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.1-Source
-          path: Radio-TV-v4.1-source.zip
+          name: Radio-TV-v4.2-Source
+          path: Radio-TV-v4.2-source.zip
           if-no-files-found: error

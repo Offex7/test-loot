@@ -204,7 +204,6 @@ fun TvV8Screen(
             configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var isSwitching by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var silentSwitching by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var suppressChannelNotice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var playbackRequestToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var autoRecoveryTargets by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
 
@@ -458,7 +457,6 @@ fun TvV8Screen(
         notice = null
         isSwitching = true
         silentSwitching = fastSwitch
-        suppressChannelNotice = fastSwitch
         playbackJob = scope.launch {
             var cursor = start
             var attempts = 0
@@ -475,10 +473,11 @@ fun TvV8Screen(
                     }
 
                     val candidate = channels[cursor]
+                    selectedIndex = cursor
                     player.setActiveChannelId(candidate.name)
                     val result = player.playWithFallback(
                         listOf(candidate.url),
-                        attemptTimeoutMs = if (fastSwitch) 1_200L else 10_000L,
+                        attemptTimeoutMs = 25_000L,
                         suppressRecovery = fastSwitch
                     )
                     if (result >= 0) {
@@ -551,7 +550,6 @@ fun TvV8Screen(
         playbackRequestToken += 1L
         isSwitching = false
         silentSwitching = false
-        suppressChannelNotice = false
         player.stop()
         notice = null
         fullscreen = false
@@ -625,7 +623,6 @@ fun TvV8Screen(
             onWeakNetworkNotice = { message -> notify(message, 5000L) },
             switching = isSwitching,
             silentSwitching = silentSwitching,
-            suppressChannelNotice = suppressChannelNotice,
             hapticsEnabled = hapticsEnabled,
             soundEnabled = soundEnabled,
             radioPlaying = radioPlaying
@@ -1328,7 +1325,6 @@ private fun TvV9Player(
     onWeakNetworkNotice: (String) -> Unit,
     switching: Boolean,
     silentSwitching: Boolean,
-    suppressChannelNotice: Boolean,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     radioPlaying: Boolean
@@ -1459,10 +1455,14 @@ private fun TvV9Player(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(channel.key, switching, suppressChannelNotice) {
-        channelNotice = false
-        if (switching || suppressChannelNotice) return@LaunchedEffect
+    androidx.compose.runtime.LaunchedEffect(channel.key, switching, silentSwitching) {
+        if (switching) {
+            // Keep the current candidate title visible throughout a silent quick-zap.
+            channelNotice = silentSwitching
+            return@LaunchedEffect
+        }
         player.resetWeakNetworkSession()
+        // Restart a 3-second hold for the channel that actually won the switch.
         channelNotice = true
         delay(3000L)
         channelNotice = false

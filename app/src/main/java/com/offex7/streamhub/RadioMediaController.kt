@@ -18,8 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
 
 class RadioMediaController(context: Context) {
+    private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
+    @Volatile private var released = false
     private var controller: MediaController? = null
     private var future: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
     @Volatile private var pendingPlayIndex: Int? = null
@@ -46,13 +48,15 @@ class RadioMediaController(context: Context) {
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
+            if (isPlaying) controller?.let(::syncPlaybackState)
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            _currentIndex.value = controller?.currentMediaItemIndex ?: -1
+            controller?.let(::syncPlaybackState)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState != Player.STATE_IDLE) controller?.let(::syncPlaybackState)
             when (playbackState) {
                 Player.STATE_BUFFERING -> {
                     bufferingGeneration++
@@ -85,31 +89,56 @@ class RadioMediaController(context: Context) {
     }
 
     init {
-        val token = SessionToken(context, ComponentName(context, RadioPlaybackService::class.java))
-        future = MediaController.Builder(context, token).buildAsync()
-        future?.addListener({
-            runCatching {
-                controller = future?.get()
-                controller?.addListener(listener)
-                _connected.value = controller != null
-                _isPlaying.value = controller?.isPlaying == true
-                _currentIndex.value = if (controller?.isPlaying == true) {
-                    controller?.currentMediaItemIndex ?: -1
-                } else {
-                    -1
+        val token = SessionToken(appContext, ComponentName(appContext, RadioPlaybackService::class.java))
+        val controllerFuture = MediaController.Builder(appContext, token).buildAsync()
+        future = controllerFuture
+        controllerFuture.addListener({
+            handler.post {
+                if (released) return@post
+                runCatching {
+                    val connectedController = controllerFuture.get()
+                    if (released) {
+                        connectedController.release()
+                        return@runCatching
+                    }
+                    controller = connectedController
+                    connectedController.addListener(listener)
+                    _connected.value = true
+                    syncPlaybackState(connectedController)
+                    pendingPlayIndex?.let { index ->
+                        pendingPlayIndex = null
+                        executePlay(index)
+                    }
+                }.onFailure {
+                    if (!released) {
+                        _connected.value = false
+                        _error.value = "Не удалось подключиться к плееру"
+                    }
                 }
-                pendingPlayIndex?.let { index ->
-                    pendingPlayIndex = null
-                    executePlay(index)
-                }
-            }.onFailure {
-                _connected.value = false
-                _error.value = "Не удалось подключиться к плееру"
             }
         }, executor)
     }
 
+    private fun syncPlaybackState(target: MediaController) {
+        _isPlaying.value = target.isPlaying
+        val selectedIndex = target.currentMediaItemIndex
+        if (
+            selectedIndex in RADIO_STATIONS.indices &&
+            (target.isPlaying || target.playWhenReady || target.playbackState != Player.STATE_IDLE)
+        ) {
+            _currentIndex.value = selectedIndex
+        }
+    }
+
+    fun refreshPlaybackState() {
+        handler.post {
+            if (released) return@post
+            controller?.let(::syncPlaybackState)
+        }
+    }
+
     private fun executePlay(index: Int) {
+        if (released) return
         val target = controller ?: return
         val safeIndex = index.coerceIn(0, RADIO_STATIONS.lastIndex)
         _error.value = null
@@ -121,6 +150,7 @@ class RadioMediaController(context: Context) {
     }
 
     fun play(index: Int) {
+        if (released) return
         val safeIndex = index.coerceIn(0, RADIO_STATIONS.lastIndex)
         if (controller == null) {
             pendingPlayIndex = safeIndex
@@ -199,11 +229,15 @@ class RadioMediaController(context: Context) {
     }
 
     fun release() {
+        if (released) return
+        released = true
         pendingPlayIndex = null
+        val pendingFuture = future
+        future = null
+        pendingFuture?.cancel(false)
         controller?.removeListener(listener)
         controller?.release()
         controller = null
-        future = null
         _connected.value = false
         bufferingGeneration++
         _buffering.value = false

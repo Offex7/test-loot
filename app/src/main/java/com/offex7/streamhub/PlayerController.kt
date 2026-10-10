@@ -24,8 +24,8 @@ class PlayerController(context: Context) {
     private companion object {
         const val BUFFER_TARGET_MS = 6_000L
         const val BUFFER_MAX_MS = 30_000
-        const val BUFFER_TIMEOUT_MS = 10_000L
-        const val WEAK_NETWORK_NOTICE_MS = 3_000L
+        const val BUFFER_TIMEOUT_MS = 25_000L
+        const val WEAK_NETWORK_NOTICE_MS = 2_000L
     }
 
     private val appContext = context.applicationContext
@@ -277,9 +277,9 @@ class PlayerController(context: Context) {
                 System.currentTimeMillis() - bufferingStartedAt >= BUFFER_TIMEOUT_MS
             ) {
                 resumeAfterInterruption = false
-                _error.value = "Буферизация не завершилась за 10 секунд. Переключите канал."
+                _error.value = "Буферизация не завершилась за 25 секунд. Переключите канал."
                 runCatching { setPlayWhenReadySystem(player, false) }
-                LogExporter.log("TV buffering timeout after 10s")
+                LogExporter.log("TV buffering timeout after 25s")
             }
         }, BUFFER_TIMEOUT_MS)
         updateBufferProgress(player, generation)
