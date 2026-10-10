@@ -61,6 +61,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.radiotv.control.cast.CastMedia
+import com.radiotv.control.cast.DlnaCastController
+import com.radiotv.control.cast.DlnaDevice
 import com.radiotv.control.cast.LocalNetworkDeviceDiscovery
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
 import com.radiotv.control.core.AndroidTvVoiceInputController
@@ -87,11 +90,12 @@ class MainActivity : ComponentActivity() {
     private val airMouse: GyroAirMouseController by inject()
     private val voiceInput: AndroidTvVoiceInputController by inject()
     private val otherTvRemote: OtherTvRemoteController by inject()
+    private val dlnaCast: DlnaCastController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote) }
+        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast) }
     }
 
     override fun onDestroy() {
@@ -107,7 +111,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
@@ -126,6 +130,12 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
     var showKeyboard by rememberSaveable { mutableStateOf(false) }
     var keyboardText by rememberSaveable { mutableStateOf("") }
+    var showCast by rememberSaveable { mutableStateOf(false) }
+    var castMediaUrl by rememberSaveable { mutableStateOf("") }
+    var castMessage by rememberSaveable { mutableStateOf("Нажмите «Обновить», чтобы найти DLNA-приёмники.") }
+    var castScanning by remember { mutableStateOf(false) }
+    var castDevices by remember { mutableStateOf<List<DlnaDevice>>(emptyList()) }
+    var selectedCastRenderer by remember { mutableStateOf<DlnaDevice?>(null) }
     val codeRequested = status is RemoteStatus.AwaitingCode
     val wifiConnected = status is RemoteStatus.Connected
     val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
@@ -157,6 +167,25 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 }
                 .onFailure { statusMessage = it.message ?: "Ошибка поиска устройств." }
             scanning = false
+        }
+    }
+
+    val refreshCastDevices: () -> Unit = {
+        scope.launch {
+            castScanning = true
+            castMessage = "Ищем DLNA / UPnP renderers…"
+            runCatching { dlnaCast.discoverRenderers() }
+                .onSuccess { result ->
+                    castDevices = result
+                    if (selectedCastRenderer?.location !in result.map { it.location }) selectedCastRenderer = null
+                    castMessage = if (result.isEmpty()) {
+                        "DLNA-приёмники с AVTransport не найдены. ТВ должен поддерживать UPnP MediaRenderer."
+                    } else {
+                        "Найдено DLNA-приёмников: " + result.size
+                    }
+                }
+                .onFailure { castMessage = it.message ?: "Ошибка DLNA-поиска." }
+            castScanning = false
         }
     }
 
@@ -504,7 +533,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             if (showTouchpad) "Тачпад включён. Для управления курсором подключите Bluetooth HID."
                                             else "Тачпад скрыт."
                                         }
-                                        RemoteFeatureAction.CAST -> "Трансляция DLNA пока поддерживает обнаружение, но не запуск воспроизведения."
+                                        RemoteFeatureAction.CAST -> {
+                                            showCast = !showCast
+                                            if (showCast) refreshCastDevices()
+                                            if (showCast) "Открыта панель DLNA-трансляции." else "Панель трансляции скрыта."
+                                        }
                                     }
                                 },
                                 touchpadActive = showTouchpad,
@@ -572,6 +605,94 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         }
                                     }
                                 )
+                            }
+                        }
+
+                        if (showCast) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("DLNA / UPnP", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
+                                    OutlinedTextField(
+                                        value = castMediaUrl,
+                                        onValueChange = { castMediaUrl = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("HTTP(S)-ссылка на медиафайл") },
+                                        placeholder = { Text("https://server/media.mp4") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        OutlinedButton(onClick = refreshCastDevices, enabled = !castScanning) {
+                                            Text(if (castScanning) "ПОИСК…" else "ОБНОВИТЬ")
+                                        }
+                                        Button(
+                                            onClick = {
+                                                val renderer = selectedCastRenderer
+                                                scope.launch {
+                                                    runCatching {
+                                                        check(renderer != null) { "Сначала выберите DLNA-приёмник." }
+                                                        check(castMediaUrl.startsWith("http://", true) || castMediaUrl.startsWith("https://", true)) {
+                                                            "Введите абсолютный HTTP(S)-URL файла, доступный телевизору."
+                                                        }
+                                                        val mime = when {
+                                                            castMediaUrl.substringBefore('?').endsWith(".mp3", true) -> "audio/mpeg"
+                                                            castMediaUrl.substringBefore('?').endsWith(".m3u8", true) -> "application/vnd.apple.mpegurl"
+                                                            castMediaUrl.substringBefore('?').endsWith(".m3u", true) -> "audio/x-mpegurl"
+                                                            castMediaUrl.substringBefore('?').endsWith(".jpg", true) || castMediaUrl.substringBefore('?').endsWith(".jpeg", true) -> "image/jpeg"
+                                                            castMediaUrl.substringBefore('?').endsWith(".png", true) -> "image/png"
+                                                            else -> "video/mp4"
+                                                        }
+                                                        dlnaCast.play(renderer!!, CastMedia("Radio.TV.Control media", castMediaUrl, mime))
+                                                    }.onSuccess {
+                                                        castMessage = "Команда Play отправлена выбранному DLNA-приёмнику."
+                                                    }.onFailure {
+                                                        castMessage = it.message ?: "Не удалось начать DLNA-воспроизведение."
+                                                    }
+                                                }
+                                            },
+                                            enabled = selectedCastRenderer != null && castMediaUrl.startsWith("http", true)
+                                        ) { Text("▶ PLAY") }
+                                        OutlinedButton(
+                                            onClick = {
+                                                val renderer = selectedCastRenderer
+                                                scope.launch {
+                                                    runCatching {
+                                                        check(renderer != null) { "Сначала выберите DLNA-приёмник." }
+                                                        dlnaCast.stop(renderer!!)
+                                                    }.onSuccess { castMessage = "Команда Stop отправлена." }
+                                                        .onFailure { castMessage = it.message ?: "Не удалось остановить воспроизведение." }
+                                                }
+                                            },
+                                            enabled = selectedCastRenderer != null
+                                        ) { Text("■") }
+                                    }
+                                    Text(
+                                        selectedCastRenderer?.let { "Выбрано: " + (it.friendlyName ?: it.server ?: it.location) }
+                                            ?: "Выберите приёмник ниже.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(castMessage, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            items(castDevices, key = { it.location }) { renderer ->
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Surface)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(renderer.friendlyName ?: renderer.server ?: "DLNA renderer", fontWeight = FontWeight.SemiBold)
+                                            Text(renderer.location, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                        }
+                                        OutlinedButton(onClick = { selectedCastRenderer = renderer }) {
+                                            Text(if (selectedCastRenderer?.location == renderer.location) "ВЫБРАНО" else "ВЫБРАТЬ")
+                                        }
+                                    }
+                                }
                             }
                         }
                         item {

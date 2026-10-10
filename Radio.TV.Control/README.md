@@ -48,7 +48,7 @@ R8 minification and resource shrinking are enabled for debug and release builds.
 - Touchpad panel and gyroscope air mouse are implemented for a connected Bluetooth HID host. Their gesture/sensor delivery still needs testing on a physical phone and TV.
 - Voice/IME implementation needs validation with a physical TV and its Remote Service version. Voice requires runtime microphone permission.
 - Working Samsung Tizen, LG webOS, Roku ECP control adapters and external IR hardware are not implemented.
-- DLNA AVTransport `SetAVTransportURI` / `Play` / `Stop` playback is not implemented; current code discovers possible renderers only.
+- DLNA renderer discovery resolves device descriptions and AVTransport control URLs; the UI can send SOAP `SetAVTransportURI`, `Play` and `Stop`. TV must be able to reach the supplied absolute HTTP(S) media URL. This still needs testing on real renderers.
 - Real TV pairing and command delivery have not been physically tested. CI verifies compilation, unit tests, APK signing/manifest, selected DEX class presence, SHA-256 and byte size only.
 
 ## Integration in Radio.TV (stage 2)
