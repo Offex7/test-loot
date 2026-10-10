@@ -155,8 +155,8 @@ fun TvRemotePad(
             compact -> 48.dp
             else -> 54.dp
         }
-        val armStart = (maxWidth - okSize) / 2 - armHeight
-        val armTop = (padHeight - okSize) / 2 - armHeight
+        val armStart = ((maxWidth - okSize) / 2 - armHeight).coerceAtLeast(0.dp)
+        val armTop = ((padHeight - okSize) / 2 - armHeight).coerceAtLeast(0.dp)
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceEvenly,
