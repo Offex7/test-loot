@@ -1,1 +1,6 @@
-Radio.TV.Control includes protocol message definitions authored in this project from the publicly documented Android TV Remote v2 / Google TV pairing protocol field definitions. No implementation source code from GT-TAHAKOM or Atharok/BtRemote is copied into this project. Those projects are references only.
+Third-party protocol material in Radio.TV.Control:
+
+- tvremote-core/src/main/proto/polo.proto follows the Google TV pairing protocol field definitions distributed by tronikos/androidtvremote2 under Apache-2.0.
+- tvremote-core/src/main/proto/remotemessage.proto is a small subset of Android TV Remote v2 message field definitions, originally published by louis49/androidtv-remote under MIT and also distributed by tronikos/androidtvremote2 under Apache-2.0.
+- License texts are retained in licenses/APACHE-2.0.txt and licenses/ANDROIDTV-REMOTE-MIT.txt.
+- No implementation source from GT-TAHAKOM or Atharok/BtRemote is copied into this project; those projects are architecture references only.

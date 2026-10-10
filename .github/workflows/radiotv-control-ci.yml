@@ -37,11 +37,11 @@ jobs:
           packages: "platform-tools"
           accept-android-sdk-licenses: true
       - name: Install required SDK packages
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - name: Set up Gradle 8.13
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - name: Set up Gradle 9.5.0
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.13"
+          gradle-version: "9.5.0"
       - name: Assemble debug APK and run core tests
         run: gradle --no-daemon --stacktrace :app:assembleDebug :tvremote-core:test
       - name: Verify APK, manifest, DEX modules, hash and size
@@ -55,11 +55,12 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
           grep -F "package: name='com.radiotv.control'" badging.txt
           grep -F "sdkVersion:'31'" badging.txt
-          grep -F "targetSdkVersion:'36'" badging.txt
+          grep -F "targetSdkVersion:'37'" badging.txt
           grep -F "application-label:'Radio.TV.Control'" badging.txt
           "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$APK" > manifest.xml
           grep -F 'android:screenOrientation="portrait"' manifest.xml
           grep -F 'android:usesCleartextTraffic="true"' manifest.xml
+          grep -F 'android.permission.ACCESS_LOCAL_NETWORK' manifest.xml
           mkdir -p artifact-out
           cp "$APK" artifact-out/Radio.TV.Control-debug.apk
           unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$' | while read -r dex; do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt

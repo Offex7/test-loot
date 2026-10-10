@@ -1,15 +1,20 @@
 package com.radiotv.control
 
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,6 +53,8 @@ import com.radiotv.control.core.RemoteStatus
 import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+
+private const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
 
 class MainActivity : ComponentActivity() {
     private val remote: AndroidTvRemoteV2Transport by inject()
@@ -65,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
+    val context = LocalContext.current
     val status by remote.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var host by rememberSaveable { mutableStateOf("") }
@@ -73,11 +82,27 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
     val codeRequested = status is RemoteStatus.AwaitingCode
     val connected = status is RemoteStatus.Connected
 
+    val startPairing: () -> Unit = {
+        scope.launch {
+            statusMessage = "Подключаемся к сервису сопряжения…"
+            runCatching { remote.beginPairing(host) }
+                .onSuccess { statusMessage = "Код появится на телевизоре. Введите его ниже." }
+                .onFailure { statusMessage = it.message ?: "Не удалось начать сопряжение." }
+        }
+    }
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startPairing()
+        else statusMessage = "Для связи с телевизором разрешите доступ к локальной сети в настройках приложения."
+    }
+
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
-                    modifier = Modifier.fillMaxSize().widthIn(max = 520.dp).background(MaterialTheme.colorScheme.background)
+                    modifier = Modifier.fillMaxHeight().widthIn(max = 520.dp).fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 18.dp),
@@ -109,12 +134,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                                     )
                                     Button(
                                         onClick = {
-                                            scope.launch {
-                                                statusMessage = "Подключаемся к сервису сопряжения…"
-                                                runCatching { remote.beginPairing(host) }
-                                                    .onSuccess { statusMessage = "Код появится на телевизоре. Введите его ниже." }
-                                                    .onFailure { statusMessage = it.message ?: "Не удалось начать сопряжение." }
-                                            }
+                                            val needsLocalPermission = Build.VERSION.SDK_INT >= 37 &&
+                                                context.checkSelfPermission(ACCESS_LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED
+                                            if (needsLocalPermission) localNetworkPermissionLauncher.launch(ACCESS_LOCAL_NETWORK)
+                                            else startPairing()
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) { Text("НАЧАТЬ СОПРЯЖЕНИЕ") }

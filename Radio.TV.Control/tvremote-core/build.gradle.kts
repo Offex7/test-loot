@@ -1,17 +1,20 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("com.google.protobuf")
 }
 android {
     namespace = "com.radiotv.control.core"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig { minSdk = 31 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 protobuf {
     protoc { artifact = "com.google.protobuf:protoc:4.31.1" }
