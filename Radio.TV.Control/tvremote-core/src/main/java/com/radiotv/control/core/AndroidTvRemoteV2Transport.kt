@@ -73,7 +73,7 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
 
             sendPolo(output, PoloProto.OuterMessage.newBuilder().setPairingRequest(
                 PoloProto.PairingRequest.newBuilder().setServiceName("atvremote").setClientName("Radio.TV.Control")
-            ).build())
+            ))
             check(readPolo(input).hasPairingRequestAck()) { "Телевизор не подтвердил запрос на сопряжение." }
 
             val encoding = PoloProto.Options.Encoding.newBuilder()
@@ -82,13 +82,13 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
             sendPolo(output, PoloProto.OuterMessage.newBuilder().setOptions(
                 PoloProto.Options.newBuilder().addInputEncodings(encoding)
                     .setPreferredRole(PoloProto.Options.RoleType.ROLE_TYPE_INPUT)
-            ).build())
+            ))
             readPolo(input)
 
             sendPolo(output, PoloProto.OuterMessage.newBuilder().setConfiguration(
                 PoloProto.Configuration.newBuilder().setEncoding(encoding)
                     .setClientRole(PoloProto.Options.RoleType.ROLE_TYPE_INPUT)
-            ).build())
+            ))
             check(readPolo(input).hasConfigurationAck()) { "Телевизор не принял параметры сопряжения." }
             pendingPairing = PendingPairing(target, socket, input, output, identity.certificate, serverCertificate)
             statusMutable.value = RemoteStatus.AwaitingCode(target)
@@ -119,7 +119,7 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
             }
             sendPolo(pending.output, PoloProto.OuterMessage.newBuilder().setSecret(
                 PoloProto.Secret.newBuilder().setSecret(com.google.protobuf.ByteString.copyFrom(secret))
-            ).build())
+            ))
             check(readPolo(pending.input).hasSecretAck()) { "Телевизор отклонил код сопряжения." }
 
             val fingerprint = sha256Hex(pending.serverCertificate.encoded)
@@ -255,9 +255,8 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         val keyStore = KeyStore.getInstance("PKCS12")
         if (file.exists()) {
             FileInputStream(file).use { keyStore.load(it, KEYSTORE_PASSWORD) }
-            val privateKey = keyStore.getKey(CLIENT_ALIAS, KEYSTORE_PASSWORD) as java.security.PrivateKey
             val certificate = keyStore.getCertificate(CLIENT_ALIAS) as X509Certificate
-            return ClientIdentity(keyStore, privateKey, certificate)
+            return ClientIdentity(keyStore, certificate)
         }
         val generator = KeyPairGenerator.getInstance("RSA")
         generator.initialize(2048, SecureRandom())
@@ -275,7 +274,7 @@ class AndroidTvRemoteV2Transport(context: Context) : RemoteTransport, Closeable 
         keyStore.load(null, KEYSTORE_PASSWORD)
         keyStore.setKeyEntry(CLIENT_ALIAS, pair.private, KEYSTORE_PASSWORD, arrayOf(certificate))
         FileOutputStream(file).use { keyStore.store(it, KEYSTORE_PASSWORD) }
-        return ClientIdentity(keyStore, pair.private, certificate)
+        return ClientIdentity(keyStore, certificate)
     }
 
     private fun closePendingPairing() {
