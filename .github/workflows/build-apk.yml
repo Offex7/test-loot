@@ -106,7 +106,7 @@ jobs:
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
               "updater_endpoint_preserved": "https://api.github.com/repos/RadioTV-apk/R/releases/latest" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
               "energy_warning_92h": "92L * 60L * 60L * 1000L" in storage and "markEnergyWarningShown()" in main,
-              "stats_timestamp_session": "data class UsageSession" in storage and "usageSession(section)" in main and "activeChannelId.value" in main and "addPlaybackUsage(section" in main,
+              "stats_timestamp_session": "data class UsageSession" in storage and "usageSessionFlow(Section.TV)" in main and "activeChannelId.value" in main and "addPlaybackUsage(section" in main,
               "stats_top3_sorted_and_minute_threshold": ".filter { it.value >= 60L }" in main and "compareByDescending<Map.Entry<String, Long>>" in main,
               "landscape_equalizer": "dialogMaxHeight" in main and "verticalScroll(rememberScrollState())" in main and "FlowRow" in main,
               "unistar_local_logo": (root / "src/main/res/drawable-nodpi/unistar_logo.jpg").is_file() and "R.drawable.unistar_logo" in main,

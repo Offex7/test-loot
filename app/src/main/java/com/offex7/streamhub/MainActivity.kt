@@ -2154,31 +2154,31 @@ private fun Settings(
     val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
     val hiddenChannels by store.hiddenChannelsFlow().collectAsState(emptySet())
     var statsNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var tvSession by remember { mutableStateOf<UsageSession?>(null) }
-    var radioSession by remember { mutableStateOf<UsageSession?>(null) }
+    val tvSession by store.usageSessionFlow(Section.TV).collectAsState(initial = null)
+    val radioSession by store.usageSessionFlow(Section.RADIO).collectAsState(initial = null)
     LaunchedEffect(Unit) {
         while (true) {
             statsNow = System.currentTimeMillis()
-            tvSession = runCatching { store.usageSession(Section.TV) }.getOrNull()
-            radioSession = runCatching { store.usageSession(Section.RADIO) }.getOrNull()
             delay(10_000L)
         }
     }
-    val tvProjectedUsage = tvUsage + ((statsNow - (tvSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
-    val radioProjectedUsage = radioUsage + ((statsNow - (radioSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
+    val tvElapsed = ((statsNow - (tvSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
+    val radioElapsed = ((statsNow - (radioSession?.startedAtMs ?: statsNow)).coerceAtLeast(0L) / 1000L)
+    val tvProjectedUsage = maxOf(tvUsage, (tvSession?.baseTotalSeconds ?: tvUsage) + tvElapsed)
+    val radioProjectedUsage = maxOf(radioUsage, (radioSession?.baseTotalSeconds ?: radioUsage) + radioElapsed)
     val tvChannelsLive = remember(tvChannels, tvSession, statsNow) {
         tvChannels.toMutableMap().apply {
             tvSession?.let { session ->
-                val elapsed = ((statsNow - session.startedAtMs).coerceAtLeast(0L) / 1000L)
-                if (elapsed > 0L) this[session.channelId] = (this[session.channelId] ?: 0L) + elapsed
+                val projected = session.baseChannelSeconds + tvElapsed
+                this[session.channelId] = maxOf(this[session.channelId] ?: 0L, projected)
             }
         }
     }
     val radioStationsLive = remember(radioStations, radioSession, statsNow) {
         radioStations.toMutableMap().apply {
             radioSession?.let { session ->
-                val elapsed = ((statsNow - session.startedAtMs).coerceAtLeast(0L) / 1000L)
-                if (elapsed > 0L) this[session.channelId] = (this[session.channelId] ?: 0L) + elapsed
+                val projected = session.baseChannelSeconds + radioElapsed
+                this[session.channelId] = maxOf(this[session.channelId] ?: 0L, projected)
             }
         }
     }

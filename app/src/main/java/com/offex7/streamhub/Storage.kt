@@ -375,6 +375,23 @@ class SettingsStore(private val context: Context) {
         )
     }
 
+    fun usageSessionFlow(section: Section): Flow<UsageSession?> =
+        context.dataStore.data.map { prefs ->
+            val channelKey = if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey
+            val startedKey = if (section == Section.TV) tvUsageSessionStartedKey else radioUsageSessionStartedKey
+            val baseTotalKey = if (section == Section.TV) tvUsageSessionBaseTotalKey else radioUsageSessionBaseTotalKey
+            val baseChannelKey = if (section == Section.TV) tvUsageSessionBaseChannelKey else radioUsageSessionBaseChannelKey
+            val channelId = prefs[channelKey]?.takeIf { it.isNotBlank() }
+            val startedAt = prefs[startedKey]?.takeIf { it > 0L }
+            if (channelId == null || startedAt == null) null
+            else UsageSession(
+                channelId = channelId,
+                startedAtMs = startedAt,
+                baseTotalSeconds = prefs[baseTotalKey] ?: 0L,
+                baseChannelSeconds = prefs[baseChannelKey] ?: 0L
+            )
+        }
+
     suspend fun saveUsageSession(section: Section, session: UsageSession) {
         context.dataStore.edit { prefs ->
             prefs[if (section == Section.TV) tvUsageSessionChannelKey else radioUsageSessionChannelKey] = session.channelId
