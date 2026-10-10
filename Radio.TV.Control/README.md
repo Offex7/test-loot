@@ -36,6 +36,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Subnet probing is deliberately bounded to the current /24 to avoid flooding larger networks. NetBIOS and ARP-table inspection are not used.
 - Best-effort type estimates for Android TV, Google Cast, Samsung, LG, Roku, DLNA, AirPlay and unknown devices. A detected type does not prove its remote-control protocol works.
 - Android TV Remote v2 TLS/pairing/control-channel foundation and basic key injection.
+- Red/black Material 3 palette, compact side-mounted volume/channel controls, centered D-pad, 48 dp minimum control targets, digit pad and tactile feedback.
+- R8/ProGuard minification and resource shrinking enabled for debug and release APKs.
 - Public Compose API `TvRemotePad(enabled, onKey, modifier)`.
 
 ## Not implemented / not verified on hardware
@@ -44,7 +46,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Voice PCM capture/streaming and complete TV IME injection.
 - Working Samsung Tizen, LG webOS, Roku ECP adapters and IR hardware.
 - DLNA AVTransport `SetAVTransportURI` / `Play` / `Stop`.
-- Touchpad gestures and gyroscope air mouse.
+- Touchpad gestures and gyroscope air mouse (UI entry points are present; operation remains unimplemented).
 - Physical TV pairing and real command delivery have not been tested; CI checks compilation, unit tests, APK signature/manifest and class presence.
 
 ## Integration in Radio.TV (stage 2)

@@ -3,6 +3,7 @@ package com.radiotv.control
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -34,7 +35,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import com.radiotv.control.ui.RadioTvPalette
+import com.radiotv.control.ui.RemoteFeatureAction
+import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
     val context = LocalContext.current
+    val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
@@ -151,19 +156,19 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    MaterialTheme(colorScheme = radioTvColorScheme()) {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     modifier = Modifier.fillMaxHeight().widthIn(max = 520.dp).fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(MaterialTheme.colorScheme.surface)
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                             .windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(top = 18.dp, bottom = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = 12.dp),
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         item {
                             Text("Radio.TV.Control", fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -172,7 +177,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Поиск устройств", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                OutlinedButton(onClick = refreshDevices, enabled = !scanning) { Text("Обновить") }
+                                OutlinedButton(onClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    refreshDevices()
+                                }, enabled = !scanning) { Text("Обновить") }
                             }
                             if (scanning) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -186,7 +194,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                         items(devices, key = { it.ip }) { device ->
                             Card(
                                 shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                                colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Surface)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -208,18 +216,27 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                     }
-                                    OutlinedButton(onClick = { chooseDevice(device) }) { Text("↗") }
+                                    OutlinedButton(onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        chooseDevice(device)
+                                    }) { Text("↗") }
                                 }
                             }
                         }
                         item {
                             if (devices.isEmpty()) {
-                                Button(onClick = { manualEntry = true }, modifier = Modifier.fillMaxWidth()) {
+                                Button(onClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    manualEntry = true
+                                }, modifier = Modifier.fillMaxWidth()) {
                                     Text("ВВЕСТИ IP ВРУЧНУЮ")
                                 }
                             }
                             OutlinedButton(
-                                onClick = { manualEntry = !manualEntry },
+                                onClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    manualEntry = !manualEntry
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text(if (manualEntry) "СКРЫТЬ РУЧНОЙ ВВОД" else "ВВЕСТИ IP ВРУЧНУЮ") }
                             if (manualEntry) {
@@ -233,7 +250,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
                                 )
                                 Button(
-                                    onClick = { startPairing(host) },
+                                    onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        startPairing(host)
+                                    },
                                     modifier = Modifier.fillMaxWidth(),
                                     enabled = host.isNotBlank()
                                 ) { Text("НАЧАТЬ СОПРЯЖЕНИЕ ПО IP") }
@@ -279,12 +299,24 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport) {
                         }
                         item {
                             Text("ПУЛЬТ", fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                            TvRemotePad(enabled = connected, onKey = { key ->
-                                scope.launch {
-                                    runCatching { remote.sendKey(key) }
-                                        .onFailure { statusMessage = it.message ?: "Команда не отправлена." }
+                            TvRemotePad(
+                                enabled = connected,
+                                onKey = { key ->
+                                    scope.launch {
+                                        runCatching { remote.sendKey(key) }
+                                            .onFailure { statusMessage = it.message ?: "Команда не отправлена." }
+                                    }
+                                },
+                                onFeatureAction = { action ->
+                                    statusMessage = when (action) {
+                                        RemoteFeatureAction.VOICE_INPUT -> "Голосовой PCM-ввод ещё не подключён."
+                                        RemoteFeatureAction.KEYBOARD -> "Ввод текста на телевизор ещё не подключён."
+                                        RemoteFeatureAction.AIR_MOUSE -> "Аэромышь будет активирована после реализации гироскопического управления."
+                                        RemoteFeatureAction.TOUCHPAD -> "Сенсорный тачпад будет подключён отдельным этапом."
+                                        RemoteFeatureAction.CAST -> "Трансляция DLNA пока поддерживает обнаружение, но не запуск воспроизведения."
+                                    }
                                 }
-                            })
+                            )
                         }
                         item {
                             Text(

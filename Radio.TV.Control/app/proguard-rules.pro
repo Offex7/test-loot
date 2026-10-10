@@ -1,0 +1,11 @@
+# Keep runtime entry points and classes verified by CI.
+-keep class com.radiotv.control.core.AndroidTvRemoteV2Transport { *; }
+-keep class com.radiotv.control.core.RemoteKey { *; }
+-keep class com.radiotv.control.core.RemoteStatus { *; }
+-keep class com.radiotv.control.core.proto.** { *; }
+-keep class com.google.polo.wire.protobuf.** { *; }
+-keep class com.radiotv.control.ui.TvRemotePadKt { *; }
+-keep class com.radiotv.control.cast.LocalNetworkDeviceDiscovery { *; }
+-keep class com.radiotv.control.cast.DlnaCastController { *; }
+-keepattributes Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
+-dontwarn org.bouncycastle.**
