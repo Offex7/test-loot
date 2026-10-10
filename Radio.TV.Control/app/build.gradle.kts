@@ -2,6 +2,11 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+// Reuse the repository's existing stable project key across both variants and CI runs.
+val sharedRadioTvKeystore = rootProject.projectDir.parentFile.resolve("app/signing/radio-tv-v5-debug.keystore")
+
 android {
     namespace = "com.radiotv.control"
     compileSdk = 37
@@ -9,8 +14,16 @@ android {
         applicationId = "com.radiotv.control"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciRunNumber
+        versionName = "0.1.$ciRunNumber"
+    }
+    signingConfigs {
+        create("sharedRadioTv") {
+            storeFile = sharedRadioTvKeystore
+            storePassword = "android"
+            keyAlias = "AndroidDebugKey"
+            keyPassword = "android"
+        }
     }
     buildTypes {
         debug {
@@ -18,11 +31,13 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("sharedRadioTv")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("sharedRadioTv")
         }
     }
     compileOptions {
