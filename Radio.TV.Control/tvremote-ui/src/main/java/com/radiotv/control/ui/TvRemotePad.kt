@@ -28,9 +28,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -123,126 +130,140 @@ fun TvRemotePad(
     showFeatureActions: Boolean = true
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val tight = maxHeight < 500.dp
-        val compact = maxHeight < 660.dp
-        val topHeight = when {
-            tight -> (maxHeight * 0.09f).coerceAtLeast(22.dp)
-            compact -> 46.dp
-            else -> 54.dp
-        }
-        val padHeight = when {
-            tight -> (maxHeight * 0.43f).coerceAtLeast(90.dp)
-            compact -> 298.dp
-            else -> 350.dp
-        }
-        val sideHeight = when {
-            tight -> (maxHeight * 0.27f).coerceAtLeast(60.dp)
-            compact -> 170.dp
-            else -> 218.dp
-        }
-        val okSize = when {
-            tight -> 48.dp
-            compact -> 82.dp
-            else -> 90.dp
-        }
-        val armWidth = when {
-            tight -> 44.dp
-            compact -> 60.dp
-            else -> 68.dp
-        }
-        val armHeight = when {
-            tight -> 38.dp
-            compact -> 48.dp
-            else -> 54.dp
-        }
-        val armStart = ((maxWidth - okSize) / 2 - armHeight).coerceAtLeast(0.dp)
-        val armTop = ((padHeight - okSize) / 2 - armHeight).coerceAtLeast(0.dp)
+        val height = maxHeight
+        val width = maxWidth
+        val tight = height < 520.dp
+        val compact = height < 650.dp
+        val topSize = when { tight -> 38.dp; compact -> 44.dp; else -> 52.dp }
+        val dpadHeight = (height * 0.43f).coerceIn(170.dp, 315.dp)
+        val controlHeight = (height * 0.22f).coerceIn(100.dp, 155.dp)
+        val smallButton = when { tight -> 38.dp; compact -> 46.dp; else -> 54.dp }
         Column(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceEvenly,
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly
         ) {
+            // Row 1: Power, Menu, YouTube and Netflix — order matches the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TopRemoteButton("Power", "Питание", RemoteKey.POWER, enabled, onKey, Modifier.width(112.dp).height(topHeight), powerIcon = true)
-                TopRemoteButton("⌂", "Домой", RemoteKey.HOME, enabled, onKey, Modifier.width(112.dp).height(topHeight))
-            }
-            Box(
-                modifier = Modifier.fillMaxWidth().height(padHeight).drawBehind {
-                    val w = size.width
-                    val h = size.height
-                    val path = Path().apply {
-                        moveTo(w * 0.34f, h * 0.13f)
-                        cubicTo(w * 0.34f, h * 0.04f, w * 0.39f, h * 0.02f, w * 0.45f, h * 0.02f)
-                        lineTo(w * 0.55f, h * 0.02f)
-                        cubicTo(w * 0.61f, h * 0.02f, w * 0.66f, h * 0.04f, w * 0.66f, h * 0.13f)
-                        cubicTo(w * 0.66f, h * 0.27f, w * 0.72f, h * 0.31f, w * 0.84f, h * 0.34f)
-                        cubicTo(w * 0.94f, h * 0.36f, w * 0.97f, h * 0.41f, w * 0.97f, h * 0.49f)
-                        lineTo(w * 0.97f, h * 0.59f)
-                        cubicTo(w * 0.97f, h * 0.67f, w * 0.93f, h * 0.71f, w * 0.84f, h * 0.72f)
-                        cubicTo(w * 0.70f, h * 0.73f, w * 0.66f, h * 0.78f, w * 0.66f, h * 0.87f)
-                        cubicTo(w * 0.66f, h * 0.95f, w * 0.61f, h * 0.98f, w * 0.55f, h * 0.98f)
-                        lineTo(w * 0.45f, h * 0.98f)
-                        cubicTo(w * 0.39f, h * 0.98f, w * 0.34f, h * 0.95f, w * 0.34f, h * 0.87f)
-                        cubicTo(w * 0.34f, h * 0.78f, w * 0.30f, h * 0.73f, w * 0.16f, h * 0.72f)
-                        cubicTo(w * 0.07f, h * 0.71f, w * 0.03f, h * 0.67f, w * 0.03f, h * 0.59f)
-                        lineTo(w * 0.03f, h * 0.49f)
-                        cubicTo(w * 0.03f, h * 0.41f, w * 0.06f, h * 0.36f, w * 0.16f, h * 0.34f)
-                        cubicTo(w * 0.28f, h * 0.31f, w * 0.34f, h * 0.27f, w * 0.34f, h * 0.13f)
-                    }
-                    drawPath(
-                        path = path,
-                        brush = Brush.linearGradient(
-                            colors = listOf(RadioTvPalette.Red, RadioTvPalette.DeepRed, RadioTvPalette.Red),
-                            start = Offset(0f, 0f),
-                            end = Offset(w, h)
-                        ),
-                        style = Stroke(width = 2.dp.toPx())
-                    )
-                }
-            ) {
-                val sideSize = when { tight -> 40.dp; compact -> 68.dp; else -> 76.dp }
-                SoftCircleButton("TOOLS", "Инструменты", enabled, { onKey(RemoteKey.MENU) },
-                    Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp).size(sideSize), fontSize = 13)
-                SoftCircleButton("INFO", "Информация", enabled, { onKey(RemoteKey.MENU) },
-                    Modifier.align(Alignment.TopEnd).padding(end = 3.dp, top = 2.dp).size(sideSize), fontSize = 13)
-                DirectionPadButton("▲", "Вверх", enabled, { onKey(RemoteKey.UP) },
-                    Modifier.align(Alignment.TopCenter).padding(top = armTop).width(armWidth).height(armHeight), fontSize = if (tight) 20 else 25)
-                DirectionPadButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
-                    Modifier.align(Alignment.CenterStart).padding(start = armStart).width(armHeight).height(armWidth), fontSize = if (tight) 20 else 25)
-                SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
-                    Modifier.align(Alignment.Center).size(okSize), fontSize = if (tight) 21 else 28, active = true)
-                DirectionPadButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
-                    Modifier.align(Alignment.CenterEnd).padding(end = armStart).width(armHeight).height(armWidth), fontSize = if (tight) 20 else 25)
-                SoftCircleButton("↶", "Назад", enabled, { onKey(RemoteKey.BACK) },
-                    Modifier.align(Alignment.BottomStart).padding(start = 3.dp, bottom = 2.dp).size(sideSize), fontSize = 31)
-                SoftCircleButton("EXIT", "Выход", enabled, { onKey(RemoteKey.BACK) },
-                    Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).size(sideSize), fontSize = 13)
-                DirectionPadButton("▼", "Вниз", enabled, { onKey(RemoteKey.DOWN) },
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = armTop).width(armWidth).height(armHeight), fontSize = if (tight) 20 else 25)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                VolumePill("VOL", RemoteKey.VOLUME_UP, RemoteKey.VOLUME_DOWN, enabled, onKey,
-                    Modifier.weight(0.88f).height(sideHeight))
-                Column(
-                    modifier = Modifier.weight(1.05f).height(sideHeight),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    SoftCircleButton("MENU", "Меню", enabled, { onKey(RemoteKey.MENU) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 9 else 14)
-                    SoftCircleButton("◖×", "Без звука", enabled, { onKey(RemoteKey.MUTE) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 17 else 23)
-                    SoftCircleButton("▣→", "Источник", enabled, { onKey(RemoteKey.SOURCE) }, Modifier.size(when { tight -> 38.dp; compact -> 62.dp; else -> 72.dp }), fontSize = if (tight) 15 else 22)
-                }
-                VolumePill("CH", RemoteKey.CHANNEL_UP, RemoteKey.CHANNEL_DOWN, enabled, onKey,
-                    Modifier.weight(0.88f).height(sideHeight))
+                TopRemoteButton("Power", "Питание", RemoteKey.POWER, enabled, onKey,
+                    Modifier.weight(1f).size(topSize), powerIcon = true)
+                TopRemoteButton("MENU", "Меню", RemoteKey.MENU, enabled, onKey,
+                    Modifier.weight(1f).size(topSize))
+                TopRemoteButton("▶", "YouTube", RemoteKey.MENU, enabled, onKey,
+                    Modifier.weight(1f).size(topSize))
+                TopRemoteButton("NETFLIX", "Netflix", RemoteKey.MENU, enabled, onKey,
+                    Modifier.weight(1f).size(topSize))
             }
+
+            // Row 2: vertical volume/channel pills with separate round media keys.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).height(controlHeight),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                VolumePill("VOL", RemoteKey.VOLUME_UP, RemoteKey.VOLUME_DOWN, enabled, onKey,
+                    Modifier.weight(0.78f).fillMaxHeight())
+                SoftCircleButton("▶", "Воспроизведение", enabled, { onKey(RemoteKey.PLAY_PAUSE) },
+                    Modifier.weight(1f).size(smallButton + 8.dp), fontSize = 24)
+                SoftCircleButton("Ⅱ", "Пауза", enabled, { onKey(RemoteKey.PLAY_PAUSE) },
+                    Modifier.weight(1f).size(smallButton + 8.dp), fontSize = 24)
+                VolumePill("CH", RemoteKey.CHANNEL_UP, RemoteKey.CHANNEL_DOWN, enabled, onKey,
+                    Modifier.weight(0.78f).fillMaxHeight())
+            }
+
+            // Row 3: mute and keyboard centered above the directional pad.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 52.dp),
+                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SoftCircleButton("◖×", "Без звука", enabled, { onKey(RemoteKey.MUTE) },
+                    Modifier.size(smallButton), fontSize = 20)
+                SoftCircleButton("▦", "Клавиатура", enabled, { onFeatureAction(RemoteFeatureAction.KEYBOARD) },
+                    Modifier.size(smallButton), fontSize = 21, active = keyboardActive)
+            }
+
+            // The large four-way cross has the reference's multicolour stroke and decorative rings.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(dpadHeight)
+                    .padding(horizontal = 16.dp)
+                    .drawBehind {
+                        val w = size.width
+                        val h = size.height
+                        for (ring in 0..13) {
+                            val inset = ring * 2.25.dp.toPx()
+                            drawOval(
+                                brush = Brush.horizontalGradient(
+                                    listOf(
+                                        RadioTvPalette.Red.copy(alpha = 0.04f),
+                                        Color(0xFFF06292).copy(alpha = 0.09f),
+                                        Color(0xFF2196F3).copy(alpha = 0.05f)
+                                    )
+                                ),
+                                topLeft = Offset(w * 0.10f + inset, h * 0.12f + inset),
+                                size = Size(w * 0.80f - inset * 2, h * 0.76f - inset * 2),
+                                style = Stroke(width = 0.8.dp.toPx())
+                            )
+                        }
+                        val path = Path().apply {
+                            moveTo(w * .38f, h * .08f)
+                            cubicTo(w * .38f, h * .02f, w * .42f, h * .01f, w * .46f, h * .01f)
+                            lineTo(w * .54f, h * .01f)
+                            cubicTo(w * .59f, h * .01f, w * .62f, h * .03f, w * .62f, h * .08f)
+                            cubicTo(w * .62f, h * .23f, w * .68f, h * .29f, w * .82f, h * .30f)
+                            cubicTo(w * .93f, h * .31f, w * .97f, h * .36f, w * .97f, h * .45f)
+                            lineTo(w * .97f, h * .55f)
+                            cubicTo(w * .97f, h * .64f, w * .93f, h * .69f, w * .82f, h * .70f)
+                            cubicTo(w * .68f, h * .71f, w * .62f, h * .77f, w * .62f, h * .92f)
+                            cubicTo(w * .62f, h * .97f, w * .59f, h * .99f, w * .54f, h * .99f)
+                            lineTo(w * .46f, h * .99f)
+                            cubicTo(w * .42f, h * .99f, w * .38f, h * .97f, w * .38f, h * .92f)
+                            cubicTo(w * .38f, h * .77f, w * .32f, h * .71f, w * .18f, h * .70f)
+                            cubicTo(w * .07f, h * .69f, w * .03f, h * .64f, w * .03f, h * .55f)
+                            lineTo(w * .03f, h * .45f)
+                            cubicTo(w * .03f, h * .36f, w * .07f, h * .31f, w * .18f, h * .30f)
+                            cubicTo(w * .32f, h * .29f, w * .38f, h * .23f, w * .38f, h * .08f)
+                        }
+                        drawPath(path, Brush.linearGradient(
+                            colors = listOf(RadioTvPalette.Red, Color(0xFFF06292), Color(0xFF2196F3)),
+                            start = Offset(0f, 0f), end = Offset(w, h)
+                        ), style = Stroke(width = 2.dp.toPx()))
+                    }
+            ) {
+                val arrowSize = when { tight -> 42.dp; compact -> 50.dp; else -> 58.dp }
+                SoftCircleButton("▲", "Вверх", enabled, { onKey(RemoteKey.UP) },
+                    Modifier.align(Alignment.TopCenter).size(arrowSize), fontSize = 25)
+                SoftCircleButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
+                    Modifier.align(Alignment.CenterStart).size(arrowSize), fontSize = 25)
+                SoftCircleButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
+                    Modifier.align(Alignment.CenterEnd).size(arrowSize), fontSize = 25)
+                SoftCircleButton("▼", "Вниз", enabled, { onKey(RemoteKey.DOWN) },
+                    Modifier.align(Alignment.BottomCenter).size(arrowSize), fontSize = 25)
+                SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
+                    Modifier.align(Alignment.Center).size(if (tight) 66.dp else 78.dp),
+                    fontSize = 25, active = true)
+            }
+
+            // Row 4: Back, Exit, touchpad and Home.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SoftCircleButton("↶", "Назад", enabled, { onKey(RemoteKey.BACK) },
+                    Modifier.weight(1f).size(smallButton), fontSize = 27)
+                SoftCircleButton("EXIT", "Выход", enabled, { onKey(RemoteKey.BACK) },
+                    Modifier.weight(1f).size(smallButton), fontSize = 12)
+                SoftCircleButton("☝", "Тачпад", enabled, { onFeatureAction(RemoteFeatureAction.TOUCHPAD) },
+                    Modifier.weight(1f).size(smallButton), fontSize = 22, active = touchpadActive)
+                SoftCircleButton("⌂", "Домой", enabled, { onKey(RemoteKey.HOME) },
+                    Modifier.weight(1f).size(smallButton), fontSize = 28)
+            }
+
             if (showFeatureActions) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
                     FeatureButton("◉", "Микрофон", onClick = { onFeatureAction(RemoteFeatureAction.VOICE_INPUT) }, modifier = Modifier.weight(1f), active = voiceActive)
@@ -271,13 +292,16 @@ private fun TopRemoteButton(
     powerIcon: Boolean = false
 ) {
     val view = LocalView.current
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "remote-button-scale")
     Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.78f else 1f }
+            .clip(CircleShape)
             .background(RadioTvPalette.Black)
             .border(BorderStroke(1.dp, RadioTvPalette.Border), RoundedCornerShape(22.dp))
             .semantics { contentDescription = description }
-            .clickable(enabled = enabled, onClickLabel = description) {
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 onKey(key)
             },
@@ -305,7 +329,7 @@ private fun TopRemoteButton(
                 )
             }
         } else {
-            Text(label, color = RadioTvPalette.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
+            Text(label, color = RadioTvPalette.White, fontSize = if (label == "NETFLIX") 9.sp else if (label == "MENU") 12.sp else 27.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -320,14 +344,17 @@ private fun DirectionPadButton(
     fontSize: Int = 25
 ) {
     val view = LocalView.current
-    val shape = RoundedCornerShape(14.dp)
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "direction-scale")
+    val shape = CircleShape
     Box(
-        modifier = modifier
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.78f else 1f }
             .clip(shape)
             .background(RadioTvPalette.Raised)
             .border(BorderStroke(1.dp, RadioTvPalette.Border), shape)
             .semantics { contentDescription = description }
-            .clickable(enabled = enabled, onClickLabel = description) {
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 onClick()
             },
@@ -354,13 +381,16 @@ private fun SoftCircleButton(
     active: Boolean = false
 ) {
     val view = LocalView.current
-    val base = if (active) Brush.linearGradient(listOf(RadioTvPalette.Red, RadioTvPalette.DeepRed)) else Brush.linearGradient(listOf(RadioTvPalette.Raised, RadioTvPalette.Raised))
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "circle-scale")
+    val base = when { label == "OK" -> Brush.sweepGradient(listOf(Color(0xFFFFD54F), RadioTvPalette.Red, Color(0xFFCE45AE), Color(0xFF6A3FC7), Color(0xFFFFD54F))); active -> Brush.linearGradient(listOf(RadioTvPalette.Red, RadioTvPalette.DeepRed)); else -> Brush.linearGradient(listOf(Color(0xFF333538), Color(0xFF333538))) }
     Box(
-        modifier = modifier
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.78f else 1f }
             .clip(CircleShape)
             .background(base)
             .semantics { contentDescription = description }
-            .clickable(enabled = enabled, onClickLabel = description) {
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 onClick()
             },
