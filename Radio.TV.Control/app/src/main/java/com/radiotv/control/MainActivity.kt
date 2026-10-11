@@ -18,6 +18,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.activity.enableEdgeToEdge
@@ -424,7 +428,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
-                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV · " + target }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV · " + target; showOnboarding = false; selectedTab = RadioTvTab.REMOTE; digitalPanel = false }
                 .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
         }
     }
@@ -493,7 +497,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         showOnboarding = false
         selectedTab = RadioTvTab.CONTROL
         manualEntry = infraredPath
-        statusMessage = if (infraredPath) "Ищем сетевые ИК-мосты. Если устройство не найдено, введите IP вручную." else "Ищем телевизоры и медиаприёмники в локальной сети."
+        statusMessage = if (infraredPath) "Поиск в локальной сети запущен. Если ваш ИК-мост не найден, введите его IP вручную." else "Ищем телевизоры и медиаприёмники в локальной сети."
         refreshDevices()
     }
 
@@ -694,6 +698,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(4.dp))
                                                 Text("Ищем устройства в локальной сети…", color = RadioTvPalette.Muted)
                                             }
+                                            repeat(3) { DiscoverySkeletonCard() }
                                         } else if (devices.isEmpty()) {
                                             Text("Устройства не найдены", color = RadioTvPalette.Muted)
                                         }
@@ -774,6 +779,9 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                             .onSuccess {
                                                                 pairedHost = remote.pairedHost().orEmpty()
                                                                 statusMessage = "Телевизор подключён."
+                                                                showOnboarding = false
+                                                                selectedTab = RadioTvTab.REMOTE
+                                                                digitalPanel = false
                                                             }
                                                             .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
                                                     }
@@ -1020,6 +1028,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                             }
                         }
                     }
+                    if (!(selectedTab == RadioTvTab.REMOTE && digitalPanel)) {
                     RadioTvBottomBar(
                         selected = selectedTab,
                         onSelect = { tab ->
@@ -1033,6 +1042,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         },
                         modifier = Modifier.fillMaxWidth().height(72.dp)
                     )
+                    }
                     }
                 }
                 androidx.compose.material3.SnackbarHost(
@@ -1052,6 +1062,40 @@ private enum class RadioTvTab(val title: String, val icon: String) {
     CONTROL("Контроль", "▦"),
     DUPLICATION("Дублирование", "▱"),
     SETTINGS("Настройки", "⚙")
+}
+
+@Composable
+private fun DiscoverySkeletonCard() {
+    val transition = rememberInfiniteTransition(label = "device-skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.18f,
+        targetValue = 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "device-skeleton-alpha"
+    )
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(Modifier.size(36.dp).background(RadioTvPalette.Muted.copy(alpha = alpha), RoundedCornerShape(18.dp)))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Box(Modifier.fillMaxWidth(0.64f).height(12.dp).background(RadioTvPalette.Muted.copy(alpha = alpha), RoundedCornerShape(4.dp)))
+                Box(Modifier.fillMaxWidth(0.88f).height(9.dp).background(RadioTvPalette.Muted.copy(alpha = alpha * 0.8f), RoundedCornerShape(4.dp)))
+            }
+            Box(Modifier.size(32.dp).background(RadioTvPalette.Muted.copy(alpha = alpha * 0.7f), RoundedCornerShape(16.dp)))
+        }
+    }
 }
 
 @Composable
