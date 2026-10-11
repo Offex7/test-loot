@@ -196,9 +196,9 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var selectedCastRenderer by remember { mutableStateOf<DlnaDevice?>(null) }
     var selectedTab by rememberSaveable {
         mutableStateOf(when (initialUiScreen) {
-            "pairing" -> RadioTvTab.CONTROL
+            "pairing" -> RadioTvTab.SETTINGS
             "settings" -> RadioTvTab.SETTINGS
-            "cast" -> RadioTvTab.DUPLICATION
+            "digital", "cast" -> RadioTvTab.CONTROL
             else -> RadioTvTab.REMOTE
         })
     }
@@ -454,14 +454,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
-                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV · " + target; showOnboarding = false; selectedTab = RadioTvTab.REMOTE; digitalPanel = false }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; showOnboarding = false; selectedTab = RadioTvTab.REMOTE; digitalPanel = false }
                 .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
         }
     }
 
 
     fun chooseDevice(device: DiscoveredRemoteDevice) {
-        selectedDeviceName = device.name
+        selectedDeviceName = friendlyDeviceName(device)
         showOnboarding = false
         when (device.type) {
             RemoteDeviceType.ANDROID_TV -> {
@@ -521,7 +521,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
 
     val startFromOnboarding: (Boolean) -> Unit = { infraredPath ->
         showOnboarding = false
-        selectedTab = RadioTvTab.CONTROL
+        selectedTab = RadioTvTab.SETTINGS
         manualEntry = infraredPath
         statusMessage = if (infraredPath) "Поиск в локальной сети запущен. Если ваш ИК-мост не найден, введите его IP вручную." else "Ищем телевизоры и медиаприёмники в локальной сети."
         refreshDevices()
