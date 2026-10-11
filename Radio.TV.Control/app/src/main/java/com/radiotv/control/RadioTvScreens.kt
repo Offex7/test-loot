@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.RemoteKey
 import com.radiotv.control.ui.RadioTvPalette
 import com.radiotv.control.ui.RemoteFeatureAction
@@ -202,6 +205,8 @@ private fun OnboardingChoice(
 internal fun DigitalRemotePanel(
     modifier: Modifier = Modifier,
     deviceName: String,
+    installedApps: List<InstalledTvApp>,
+    onLaunchApp: (InstalledTvApp) -> Unit,
     enabled: Boolean,
     micRecording: Boolean,
     airMouseActive: Boolean,
@@ -244,7 +249,17 @@ internal fun DigitalRemotePanel(
                 ) { Icon(Icons.Filled.PowerSettingsNew, contentDescription = "Питание", tint = Color(0xFF58C45F), modifier = Modifier.size(25.dp)) }
             }
         }
-        // App shortcuts are intentionally omitted unless the connected TV provides a verified app list.
+        if (installedApps.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                installedApps.take(12).forEach { app ->
+                    TvInstalledAppShortcut(app = app, onClick = { onLaunchApp(app) })
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF383838)))
         AnimatedVisibility(visible = true, enter = fadeIn(tween(250, delayMillis = 100)) + slideInVertically(tween(250, delayMillis = 100)) { it / 8 }) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -328,6 +343,44 @@ internal fun DigitalRemotePanel(
     }
 }
 
+@Composable
+private fun TvInstalledAppShortcut(app: InstalledTvApp, onClick: () -> Unit) {
+    val name = app.name.trim()
+    val normalized = name.lowercase()
+    val tileColor = when {
+        normalized.contains("youtube") -> Color(0xFFE62117)
+        normalized.contains("netflix") -> Color(0xFF8B1018)
+        normalized.contains("rutube") -> Color(0xFF2D255D)
+        normalized.contains("ivi") -> Color(0xFFDF153B)
+        normalized.contains("кинопоиск") -> Color(0xFFF57C00)
+        else -> Color(0xFF343434)
+    }
+    val tileMark = when {
+        normalized.contains("youtube") -> "▶"
+        normalized.contains("netflix") -> "N"
+        normalized.contains("rutube") -> "R"
+        normalized.contains("ivi") -> "ivi"
+        normalized.contains("кинопоиск") -> "К"
+        else -> name.take(1).uppercase().ifBlank { "•" }
+    }
+    Column(
+        modifier = Modifier.width(76.dp).clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick).padding(3.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier.size(50.dp).clip(RoundedCornerShape(11.dp)).background(tileColor),
+            contentAlignment = Alignment.Center
+        ) {
+            if (app.iconUrl.isNullOrBlank()) {
+                Text(tileMark, color = Color.White, fontSize = if (tileMark.length > 1) 15.sp else 23.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Icon(Icons.Filled.Apps, contentDescription = null, tint = Color.White, modifier = Modifier.size(27.dp))
+            }
+        }
+        Text(name, color = Color(0xFFB0B0B0), fontSize = 10.sp, textAlign = TextAlign.Center, maxLines = 2, minLines = 2)
+    }
+}
 @Composable
 private fun NumberButton(
     title: String,
