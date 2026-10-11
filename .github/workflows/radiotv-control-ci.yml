@@ -92,21 +92,21 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Capture UI screenshots in stable API 36 emulator
+      - name: Capture UI screenshots in stable API 35 emulator
         if: github.event_name != 'pull_request'
-        timeout-minutes: 8
+        timeout-minutes: 16
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "36"
-          system-image-api-level: "36"
-          target: google_apis
+          api-level: "35"
+          system-image-api-level: "35"
+          target: default
           arch: x86_64
           profile: pixel_2
-          # Build stays on compileSdk/targetSdk 37; stable API 36 is used only for UI screenshots.
+          # Build stays on compileSdk/targetSdk 37; stable API 35 is used only for UI screenshots.
           channel: stable
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader_indirect
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
       - name: Upload UI screenshots
@@ -119,7 +119,7 @@ jobs:
             Radio.TV.Control/ui-screenshots/remote.png
             Radio.TV.Control/ui-screenshots/digital-panel.png
             Radio.TV.Control/ui-screenshots/settings.png
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload verification report
