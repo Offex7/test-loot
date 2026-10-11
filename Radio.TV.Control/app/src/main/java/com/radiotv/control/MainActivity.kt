@@ -529,6 +529,12 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                     "Запрашиваем разрешение на микрофон…"
                 }
             }
+            RemoteFeatureAction.APP_YOUTUBE -> {
+                "Запуск YouTube напрямую пока не поддерживается выбранным протоколом. Откройте приложение на телевизоре."
+            }
+            RemoteFeatureAction.APP_NETFLIX -> {
+                "Запуск Netflix напрямую пока не поддерживается выбранным протоколом. Откройте приложение на телевизоре."
+            }
             RemoteFeatureAction.KEYBOARD -> {
                 if (selectedTab == RadioTvTab.REMOTE && !digitalPanel) {
                     digitalPanel = true
