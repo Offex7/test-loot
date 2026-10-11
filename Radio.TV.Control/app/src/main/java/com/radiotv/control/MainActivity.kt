@@ -191,6 +191,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var showCast by rememberSaveable { mutableStateOf(false) }
     var castMediaUrl by rememberSaveable { mutableStateOf("") }
     var castMessage by rememberSaveable { mutableStateOf("Нажмите «Обновить», чтобы найти DLNA-приёмники.") }
+    var duplicationExpanded by rememberSaveable { mutableStateOf(initialUiScreen == "cast") }
     var castScanning by remember { mutableStateOf(false) }
     var castDevices by remember { mutableStateOf<List<DlnaDevice>>(emptyList()) }
     var selectedCastRenderer by remember { mutableStateOf<DlnaDevice?>(null) }
