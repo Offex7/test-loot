@@ -53,6 +53,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -714,7 +719,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             OutlinedButton(onClick = { sendUiFeedback("Поиск устройств"); refreshDevices() }, enabled = !scanning) { Text(if (scanning) "ПОИСК…" else "ОБНОВИТЬ") }
                                         }
                                         if (pairedHost.isNotBlank()) {
-                                            OutlinedButton(onClick = { connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedButton(onClick = { sendUiFeedback("Подключить сохранённый телевизор"); connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) {
                                                 Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ · $pairedHost")
                                             }
                                         }
@@ -1048,7 +1053,12 @@ private fun RadioTvBottomBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(tab.icon, modifier = Modifier.offset(y = iconLift), color = iconColor, fontSize = 22.sp)
+                val tabIcon = when (tab) {
+                    RadioTvTab.REMOTE -> Icons.Filled.Tv
+                    RadioTvTab.CONTROL -> Icons.Filled.Dialpad
+                    RadioTvTab.SETTINGS -> Icons.Filled.Settings
+                }
+                Icon(tabIcon, contentDescription = tab.title, modifier = Modifier.offset(y = iconLift).size(22.dp), tint = iconColor)
                 Text(
                     tab.title,
                     color = titleColor,
