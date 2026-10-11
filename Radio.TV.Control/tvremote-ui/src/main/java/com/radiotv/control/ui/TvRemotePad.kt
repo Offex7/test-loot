@@ -63,11 +63,13 @@ enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAS
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
     val DeepRed = Color(0xFFD32F2F)
-    val Black = Color(0xFF000000)
-    val Surface = Color(0xFF0A0A0A)
-    val Raised = Color(0xFF252525)
+    val Blue = Color(0xFF2196F3)
+    val Green = Color(0xFF43A047)
+    val Black = Color(0xFF1A1A1A)
+    val Surface = Color(0xFF202020)
+    val Raised = Color(0xFF333333)
     val Muted = Color(0xFFB0B0B0)
-    val Border = Color(0xFF383838)
+    val Border = Color(0xFF404040)
     val DarkRed = Color(0xFF651B1B)
     val ErrorRed = Color(0xFFFF5252)
     val White = Color(0xFFFFFFFF)
@@ -298,8 +300,8 @@ private fun TopRemoteButton(
     Box(
         modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.78f else 1f }
             .clip(CircleShape)
-            .background(RadioTvPalette.Black)
-            .border(BorderStroke(1.dp, RadioTvPalette.Border), RoundedCornerShape(22.dp))
+            .background(if (powerIcon) RadioTvPalette.Red else RadioTvPalette.Raised)
+            .border(BorderStroke(1.dp, RadioTvPalette.Border), CircleShape)
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
