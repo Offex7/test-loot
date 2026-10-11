@@ -30,8 +30,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -58,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.radiotv.control.core.RemoteKey
+import kotlinx.coroutines.delay
 
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST }
 
@@ -133,6 +141,20 @@ fun TvRemotePad(
     showFeatureActions: Boolean = true
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        var activeDirection by remember { mutableStateOf<RemoteKey?>(null) }
+        LaunchedEffect(activeDirection) {
+            if (activeDirection != null) {
+                delay(170)
+                activeDirection = null
+            }
+        }
+        val pulseTransition = rememberInfiniteTransition(label = "ok-pulse")
+        val okPulse by pulseTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.035f,
+            animationSpec = infiniteRepeatable(tween(900), repeatMode = RepeatMode.Reverse),
+            label = "ok-pulse-scale"
+        )
         val height = maxHeight
         val width = maxWidth
         val tight = height < 520.dp
@@ -238,17 +260,17 @@ fun TvRemotePad(
                     }
             ) {
                 val arrowSize = when { tight -> 42.dp; compact -> 50.dp; else -> 58.dp }
-                SoftCircleButton("▲", "Вверх", enabled, { onKey(RemoteKey.UP) },
-                    Modifier.align(Alignment.TopCenter).size(arrowSize), fontSize = 25)
-                SoftCircleButton("◀", "Влево", enabled, { onKey(RemoteKey.LEFT) },
-                    Modifier.align(Alignment.CenterStart).size(arrowSize), fontSize = 25)
-                SoftCircleButton("▶", "Вправо", enabled, { onKey(RemoteKey.RIGHT) },
-                    Modifier.align(Alignment.CenterEnd).size(arrowSize), fontSize = 25)
-                SoftCircleButton("▼", "Вниз", enabled, { onKey(RemoteKey.DOWN) },
-                    Modifier.align(Alignment.BottomCenter).size(arrowSize), fontSize = 25)
+                SoftCircleButton("▲", "Вверх", enabled, { activeDirection = RemoteKey.UP; onKey(RemoteKey.UP) },
+                    Modifier.align(Alignment.TopCenter).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.UP)
+                SoftCircleButton("◀", "Влево", enabled, { activeDirection = RemoteKey.LEFT; onKey(RemoteKey.LEFT) },
+                    Modifier.align(Alignment.CenterStart).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.LEFT)
+                SoftCircleButton("▶", "Вправо", enabled, { activeDirection = RemoteKey.RIGHT; onKey(RemoteKey.RIGHT) },
+                    Modifier.align(Alignment.CenterEnd).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.RIGHT)
+                SoftCircleButton("▼", "Вниз", enabled, { activeDirection = RemoteKey.DOWN; onKey(RemoteKey.DOWN) },
+                    Modifier.align(Alignment.BottomCenter).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.DOWN)
                 SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
                     Modifier.align(Alignment.Center).size(if (tight) 66.dp else 78.dp),
-                    fontSize = 25, active = true)
+                    fontSize = 25, active = true, pulseScale = okPulse)
             }
 
             // Row 4: Back, Exit, touchpad and Home.
@@ -381,7 +403,8 @@ private fun SoftCircleButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     fontSize: Int = 22,
-    active: Boolean = false
+    active: Boolean = false,
+    pulseScale: Float = 1f
 ) {
     val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
@@ -389,7 +412,7 @@ private fun SoftCircleButton(
     val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "circle-scale")
     val base = when { label == "OK" -> Brush.sweepGradient(listOf(Color(0xFFFFD54F), RadioTvPalette.Red, Color(0xFFCE45AE), Color(0xFF6A3FC7), Color(0xFFFFD54F))); active -> Brush.linearGradient(listOf(RadioTvPalette.Red, RadioTvPalette.DeepRed)); else -> Brush.linearGradient(listOf(Color(0xFF333538), Color(0xFF333538))) }
     Box(
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.78f else 1f }
+        modifier = modifier.graphicsLayer { scaleX = scale * pulseScale; scaleY = scale * pulseScale; alpha = if (pressed) 0.78f else 1f }
             .clip(CircleShape)
             .background(base)
             .semantics { contentDescription = description }
