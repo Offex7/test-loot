@@ -92,26 +92,25 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Capture UI screenshots in stable API 35 emulator
+      - name: Capture UI screenshots in API 34 Google ATD emulator
         if: github.event_name != 'pull_request'
-        timeout-minutes: 16
-        continue-on-error: true
+        timeout-minutes: 10
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "35"
-          system-image-api-level: "35"
-          target: default
+          api-level: "34"
+          system-image-api-level: "34"
+          target: google_atd
+          emulator-boot-timeout: 360
           arch: x86_64
           profile: pixel_2
-          # Build stays on compileSdk/targetSdk 37; stable API 35 is used only for UI screenshots.
+          # Build stays on compileSdk/targetSdk 37; API 34 Google ATD is used only for UI screenshots.
           channel: stable
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader_indirect
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
       - name: Upload UI screenshots
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
@@ -136,6 +135,7 @@ jobs:
           retention-days: 30
 
       - name: Upload debug APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-debug-run-${{ github.run_number }}
