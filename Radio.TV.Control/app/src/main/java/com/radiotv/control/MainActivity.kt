@@ -615,6 +615,20 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         }
     }
 
+    val dispatchRemoteKey: (RemoteKey) -> Unit = { key ->
+        sendUiFeedback(remoteKeyFeedbackLabel(key))
+        scope.launch {
+            runCatching {
+                when {
+                    wifiConnected -> remote.sendKey(key)
+                    otherConnected -> otherTvRemote.sendKey(key)
+                    hidConnected -> bluetoothHid.sendRemoteKey(key)
+                    else -> error("Сначала подключитесь к телевизору через вкладку «Настройки».")
+                }
+            }.onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
+        }
+    }
+
     MaterialTheme(colorScheme = radioTvColorScheme()) {
         Surface(modifier = Modifier.fillMaxSize(), color = RadioTvPalette.Black) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize().background(RadioTvPalette.Black)) {
@@ -1098,6 +1112,49 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     }
 }
 
+private fun friendlyDeviceName(device: DiscoveredRemoteDevice): String {
+    val name = device.name.trim()
+    return when {
+        name.isBlank() || name == device.ip -> "Телевизор"
+        name.contains("miniupnpd", ignoreCase = true) || name.contains("upnp", ignoreCase = true) || name.contains("dlna", ignoreCase = true) -> "DLNA-устройство"
+        name.contains("roku", ignoreCase = true) -> "Roku TV"
+        name.contains("webos", ignoreCase = true) -> "LG webOS TV"
+        name.contains("samsung", ignoreCase = true) || name.contains("tizen", ignoreCase = true) -> "Samsung TV"
+        else -> name
+    }
+}
+
+private fun remoteKeyFeedbackLabel(key: RemoteKey): String = when (key) {
+    RemoteKey.POWER -> "Питание"
+    RemoteKey.MENU -> "Меню"
+    RemoteKey.OK -> "ОК"
+    RemoteKey.UP -> "Вверх"
+    RemoteKey.DOWN -> "Вниз"
+    RemoteKey.LEFT -> "Влево"
+    RemoteKey.RIGHT -> "Вправо"
+    RemoteKey.BACK -> "Назад"
+    RemoteKey.HOME -> "Домой"
+    RemoteKey.MUTE -> "Без звука"
+    RemoteKey.VOLUME_UP -> "Громкость плюс"
+    RemoteKey.VOLUME_DOWN -> "Громкость минус"
+    RemoteKey.CHANNEL_UP -> "Канал плюс"
+    RemoteKey.CHANNEL_DOWN -> "Канал минус"
+    RemoteKey.PLAY_PAUSE -> "Воспроизведение или пауза"
+    RemoteKey.REWIND -> "Перемотка назад"
+    RemoteKey.FAST_FORWARD -> "Перемотка вперёд"
+    RemoteKey.SOURCE -> "Источник"
+    RemoteKey.NUMBER_0 -> "Ноль"
+    RemoteKey.NUMBER_1 -> "Один"
+    RemoteKey.NUMBER_2 -> "Два"
+    RemoteKey.NUMBER_3 -> "Три"
+    RemoteKey.NUMBER_4 -> "Четыре"
+    RemoteKey.NUMBER_5 -> "Пять"
+    RemoteKey.NUMBER_6 -> "Шесть"
+    RemoteKey.NUMBER_7 -> "Семь"
+    RemoteKey.NUMBER_8 -> "Восемь"
+    RemoteKey.NUMBER_9 -> "Девять"
+    else -> "Кнопка пульта"
+}
 private enum class RadioTvTab(val title: String, val icon: String) {
     REMOTE("Пульт", "▣"),
     CONTROL("Контроль", "▦"),
