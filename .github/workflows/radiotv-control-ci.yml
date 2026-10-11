@@ -94,6 +94,7 @@ jobs:
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Capture UI screenshots in stable API 36 emulator
         if: github.event_name != 'pull_request'
+        timeout-minutes: 8
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
