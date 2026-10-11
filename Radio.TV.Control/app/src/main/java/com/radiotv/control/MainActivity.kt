@@ -65,7 +65,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.radiotv.control.ui.RadioTvPalette
-import com.radiotv.control.ui.RadioTvUiFeedback
 import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
@@ -156,7 +155,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     LaunchedEffect(speechEngine, speechReady.value) {
         if (speechReady.value) speechEngine.language = Locale("ru")
     }
-    RadioTvUiFeedback.hapticEnabled = feedbackSettings.vibrationEnabled
     val sendUiFeedback: (String) -> Unit = { label ->
         if (feedbackSettings.vibrationEnabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (feedbackSettings.clickSoundEnabled) {
@@ -798,6 +796,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             )
                                             Button(
                                                 onClick = {
+                                                    sendUiFeedback("Подтвердить код")
                                                     scope.launch {
                                                         statusMessage = "Проверяем код и сохраняем сопряжение…"
                                                         runCatching { remote.completePairing(pairingCode) }
@@ -806,7 +805,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                                 statusMessage = "Телевизор подключён."
                                                                 showOnboarding = false
                                                                 selectedTab = RadioTvTab.REMOTE
-                                                                digitalPanel = false
                                                             }
                                                             .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
                                                     }
@@ -848,6 +846,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             )
                                             Button(
                                                 onClick = {
+                                                    sendUiFeedback("Отправить текст")
                                                     scope.launch {
                                                         runCatching {
                                                             when {
