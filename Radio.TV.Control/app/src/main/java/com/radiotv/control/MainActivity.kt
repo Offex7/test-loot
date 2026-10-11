@@ -733,6 +733,54 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         Text("Телефон и телевизор должны быть в одной Wi‑Fi сети.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
                                     item {
+                                        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+                                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Column(Modifier.weight(1f)) { Text("Вибрация при нажатии", fontWeight = FontWeight.SemiBold); Text("Короткий тактильный отклик", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
+                                                    Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled -> sendUiFeedback("Вибрация"); scope.launch { context.setVibrationEnabled(enabled) } })
+                                                }
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Column(Modifier.weight(1f)) { Text("Звук при нажатии", fontWeight = FontWeight.SemiBold); Text("Выключен по умолчанию", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
+                                                    Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled -> sendUiFeedback("Звук"); scope.launch { context.setClickSoundEnabled(enabled) } })
+                                                }
+                                                if (feedbackSettings.clickSoundEnabled) {
+                                                    Text("Тип звука", fontWeight = FontWeight.SemiBold)
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        listOf(SOUND_TYPE_CLICK to "Клик", SOUND_TYPE_VOICE to "Голос").forEach { choice ->
+                                                            Box(Modifier.weight(1f).background(if (feedbackSettings.soundType == choice.first) RadioTvPalette.Red else RadioTvPalette.Black, RoundedCornerShape(10.dp)).clickable { sendUiFeedback(choice.second); scope.launch { context.setClickSoundType(choice.first) } }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(choice.second, color = Color.White, fontWeight = FontWeight.SemiBold) }
+                                                        }
+                                                    }
+                                                    if (feedbackSettings.soundType == SOUND_TYPE_VOICE) Text("Озвучивание действия на русском языке (если установлен TTS).", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    item {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Bluetooth HID", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            OutlinedButton(onClick = { sendUiFeedback("Подключить Bluetooth HID"); beginBluetoothSession() }) { Text("ПОДКЛЮЧИТЬ") }
+                                        }
+                                        Text(bluetoothStatus.asUserLabel(), color = if (hidConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text(airMouseStatus.asUserLabel(), color = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text(voiceStatus.asUserLabel(), color = if (voiceStatus is VoiceInputStatus.Recording) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    item {
+                                        Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                            ControlActionButton("◉\nМикрофон", voiceStatus is VoiceInputStatus.Recording, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.VOICE_INPUT) }
+                                            ControlActionButton("✥\nАэромышь", airMouseStatus is AirMouseStatus.Active, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.AIR_MOUSE) }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                            ControlActionButton("⌨\nКлавиатура", showKeyboard, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.KEYBOARD) }
+                                            ControlActionButton("▧\nТачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
+                                            ControlActionButton("▣\nТрансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
+                                        }
+                                        Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                    }
+
+                                    item {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Поиск устройств", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                             OutlinedButton(onClick = { sendUiFeedback("Поиск устройств"); refreshDevices() }, enabled = !scanning) { Text(if (scanning) "ПОИСК…" else "ОБНОВИТЬ") }
@@ -838,29 +886,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             ) { Text("ПОДТВЕРДИТЬ КОД") }
                                         }
                                     }
-                                    item {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Bluetooth HID", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                            OutlinedButton(onClick = { sendUiFeedback("Подключить Bluetooth HID"); beginBluetoothSession() }) { Text("ПОДКЛЮЧИТЬ") }
-                                        }
-                                        Text(bluetoothStatus.asUserLabel(), color = if (hidConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text(airMouseStatus.asUserLabel(), color = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text(voiceStatus.asUserLabel(), color = if (voiceStatus is VoiceInputStatus.Recording) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    item {
-                                        Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("◉\nМикрофон", voiceStatus is VoiceInputStatus.Recording, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.VOICE_INPUT) }
-                                            ControlActionButton("✥\nАэромышь", airMouseStatus is AirMouseStatus.Active, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.AIR_MOUSE) }
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("⌨\nКлавиатура", showKeyboard, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.KEYBOARD) }
-                                            ControlActionButton("▧\nТачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
-                                            ControlActionButton("▣\nТрансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
-                                        }
-                                        Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
                                     if (showKeyboard) {
                                         item {
                                             OutlinedTextField(
@@ -898,30 +923,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             )
                                         }
                                     }
-                                    item {
-                                        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
-                                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Column(Modifier.weight(1f)) { Text("Вибрация при нажатии", fontWeight = FontWeight.SemiBold); Text("Короткий тактильный отклик", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
-                                                    Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled -> sendUiFeedback("Вибрация"); scope.launch { context.setVibrationEnabled(enabled) } })
-                                                }
-                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Column(Modifier.weight(1f)) { Text("Звук при нажатии", fontWeight = FontWeight.SemiBold); Text("Выключен по умолчанию", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
-                                                    Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled -> sendUiFeedback("Звук"); scope.launch { context.setClickSoundEnabled(enabled) } })
-                                                }
-                                                if (feedbackSettings.clickSoundEnabled) {
-                                                    Text("Тип звука", fontWeight = FontWeight.SemiBold)
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                                        listOf(SOUND_TYPE_CLICK to "Клик", SOUND_TYPE_VOICE to "Голос").forEach { choice ->
-                                                            Box(Modifier.weight(1f).background(if (feedbackSettings.soundType == choice.first) RadioTvPalette.Red else RadioTvPalette.Black, RoundedCornerShape(10.dp)).clickable { sendUiFeedback(choice.second); scope.launch { context.setClickSoundType(choice.first) } }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(choice.second, color = Color.White, fontWeight = FontWeight.SemiBold) }
-                                                        }
-                                                    }
-                                                    if (feedbackSettings.soundType == SOUND_TYPE_VOICE) Text("Озвучивание действия на русском языке (если установлен TTS).", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                }
-                                            }
-                                        }
-                                    }
+
                                 }
                             }
                         }
