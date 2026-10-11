@@ -37,6 +37,12 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
@@ -203,7 +209,6 @@ internal fun DigitalRemotePanel(
     onKey: (RemoteKey) -> Unit,
     onFeatureAction: (RemoteFeatureAction) -> Unit,
     onSettings: () -> Unit,
-    onQuickApp: (String) -> Unit,
     onReturnRemote: () -> Unit,
     duplicationExpanded: Boolean,
     onToggleDuplication: () -> Unit,
@@ -324,26 +329,6 @@ internal fun DigitalRemotePanel(
 }
 
 @Composable
-private fun QuickApp(icon: String, title: String, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(150), label = "quick-app-scale")
-    Column(
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
-            .clip(RoundedCornerShape(11.dp)).clickable(interactionSource = interactions, indication = null, onClick = onClick).padding(vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(10.dp)).background(color),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(icon, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        }
-        Text(title, color = Color(0xFFB0B0B0), fontSize = 11.sp, maxLines = 1)
-    }
-}
-
-@Composable
 private fun NumberButton(
     title: String,
     modifier: Modifier = Modifier,
@@ -382,10 +367,11 @@ private fun DigitalVolumePill(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(top, color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable(enabled = enabled, onClick = onTop).padding(horizontal = 7.dp))
+        val topIcon = when (title) { "VOL" -> Icons.Filled.VolumeUp; "CH" -> Icons.Filled.KeyboardArrowUp; else -> Icons.Filled.Add }
+        val bottomIcon = when (title) { "VOL" -> Icons.Filled.VolumeDown; "CH" -> Icons.Filled.KeyboardArrowDown; else -> Icons.Filled.Remove }
+        Icon(topIcon, contentDescription = "$title up", tint = Color.White, modifier = Modifier.size(26.dp).clickable(enabled = enabled, onClick = onTop).padding(2.dp))
         Text(title, color = Color(0xFFB0B0B0), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(if (title == "VOL") "◖" else "", color = Color(0xFFB0B0B0), fontSize = 9.sp)
-        Text(bottom, color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable(enabled = enabled, onClick = onBottom).padding(horizontal = 7.dp))
+        Icon(bottomIcon, contentDescription = "$title down", tint = Color.White, modifier = Modifier.size(26.dp).clickable(enabled = enabled, onClick = onBottom).padding(2.dp))
     }
 }
 
