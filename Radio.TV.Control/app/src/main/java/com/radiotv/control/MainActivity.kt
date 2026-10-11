@@ -1158,7 +1158,6 @@ private fun remoteKeyFeedbackLabel(key: RemoteKey): String = when (key) {
 private enum class RadioTvTab(val title: String, val icon: String) {
     REMOTE("Пульт", "▣"),
     CONTROL("Контроль", "▦"),
-    DUPLICATION("Дублирование", "▱"),
     SETTINGS("Настройки", "⚙")
 }
 
@@ -1199,10 +1198,10 @@ private fun DiscoverySkeletonCard() {
 @Composable
 private fun RadioTvBottomBar(
     selected: RadioTvTab,
+    onFeedback: (String) -> Unit,
     onSelect: (RadioTvTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val view = LocalView.current
     Row(
         modifier = modifier.background(RadioTvPalette.Black).padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1228,7 +1227,7 @@ private fun RadioTvBottomBar(
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight()
                     .clickable {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onFeedback(tab.title)
                         onSelect(tab)
                     }
                     .padding(horizontal = 1.dp, vertical = 4.dp),
@@ -1239,7 +1238,7 @@ private fun RadioTvBottomBar(
                 Text(
                     tab.title,
                     color = titleColor,
-                    fontSize = if (tab == RadioTvTab.DUPLICATION) 10.sp else 11.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1
                 )
