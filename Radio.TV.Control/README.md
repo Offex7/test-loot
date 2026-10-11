@@ -39,20 +39,20 @@ R8 minification and resource shrinking are enabled for both debug and release bu
 
 The root content in `app/src/main/java/com/radiotv/control/MainActivity.kt` is wrapped in `WindowInsets.safeDrawing`. Compose's safe drawing insets reserve space for the display cutout and system bars, including the bottom navigation area. The bottom app navigation is placed inside this inset-aware column.
 
-The root uses `BoxWithConstraints` to detect `maxWidth > maxHeight` and centers a width-capped black panel: up to 520 dp in portrait and 460 dp in landscape. This is a **programmatic content letterbox**: on a wide/landscape screen, the vertical UI stays centered and the unused areas remain black; it does not rely only on `android:screenOrientation="portrait"`. The remote's dimensions also compact as available height shrinks. The CI screenshot script tests a landscape viewport with a computed smallest width above 600 dp; this confirms the composed layout can render under that configuration, but it does **not** prove Android 17/API 37's policy on every physical tablet or foldable.
+The root uses `BoxWithConstraints` to detect `maxWidth > maxHeight`. In portrait it fills the available safe width; in landscape it centers a panel capped at 460 dp and leaves unused space black. This is a **programmatic content letterbox** and does not rely only on `android:screenOrientation="portrait"`. Remote controls compact as available height shrinks. The CI screenshot script exercises a 1280×800 viewport at 160 dpi, but emulator rendering does **not** prove Android 17/API 37 orientation behaviour on every physical tablet or foldable.
 
 Palette colors used in `tvremote-ui/.../TvRemotePad.kt`:
 
 | Hex | Use |
 | --- | --- |
-| `#000000` | Root / letterbox background |
-| `#0A0A0A` | Surface |
-| `#252525` | Raised controls / button background |
+| `#1A1A1A` | Root / remote-panel background |
+| `#202020` | Onboarding background / surface |
+| `#333333` | Raised controls / button background |
 | `#E53935` | Active red / primary accent / D-pad outline |
 | `#D32F2F` | Deep red for active containers |
 | `#FFFFFF` | Main text and icons |
 | `#B0B0B0` | Secondary text and icons |
-| `#383838` | Neutral button borders |
+| `#404040` | Neutral button borders |
 | `#651B1B` | Dark red outline variant |
 | `#FF5252` | Error state |
 
@@ -74,7 +74,9 @@ Discovery uses Android NSD/mDNS, SSDP/M-SEARCH and bounded TCP probing. The subn
 - Samsung Tizen / LG webOS / Roku ECP: adapter implementations are present in `:tvremote-core`; they still need real-device validation across models and firmware revisions.
 - DLNA / UPnP: renderer discovery and AVTransport play/pause/stop/seek commands.
 - Google Cast and AirPlay: service discovery exists, but full control/cast adapters are not implemented by this prototype.
-- External IR hardware is not implemented.
+- External IR transmitter/bridge protocols and IR code databases are not implemented. The onboarding IR option currently opens network discovery and manual IP entry, not an actual infrared transmitter.
+- Direct app launching (YouTube, Netflix, Rutube, ИВИ, Кинопоиск) is not implemented for the supported protocols yet; these buttons provide feedback rather than sending an unrelated MENU key.
+- Peer-to-peer `Radio.TV.Control` receiver/advertisement over mDNS is not implemented. Current file transfer is phone-to-DLNA-renderer via a local HTTP server; two app installations do not yet advertise one another as remote/cast endpoints.
 
 Do not assume any protocol has been physically validated solely because its classes are present in the APK. The CI workflow builds, runs core unit tests and verifies the package, manifest, selected DEX classes, signature, hash and size. The optional emulator screenshots show the UI only and do not test pairing with a physical TV.
 
@@ -140,8 +142,8 @@ The UI module emits `RemoteKey` and `RemoteFeatureAction` callbacks; it does not
 
 Implemented in source:
 - `MainActivity.kt` calls `enableEdgeToEdge()` and wraps the centered content column in `WindowInsets.safeDrawing`; this reserves safe content space for status/navigation bars and display cutouts and keeps the bottom app tabs inside those insets.
-- The same file detects landscape using `BoxWithConstraints`, caps the content width at 460 dp in landscape / 520 dp in portrait, centers the panel, and paints the remaining background black.
-- The CI screenshot script captures the main remote, device-search screen, bottom-navigation screen and landscape viewport using `adb exec-out screencap -p`. The API 37 emulator step is allowed to fail without failing APK build, so check that the screenshot artifact is actually present for each run.
+- The same file detects landscape using `BoxWithConstraints`: portrait fills safe width, landscape is capped at 460 dp and centered over black letterbox areas.
+- The CI screenshot script captures onboarding, main remote, digital keypad, device-pairing, settings and a 1280×800 large-screen viewport via `adb exec-out screencap -p`. The screenshot step is best-effort and does not fail APK compilation; verify the artifact exists for the final run.
 
 Still requires device-level confirmation:
 - [ ] A physical phone with a camera cutout and gesture navigation.
