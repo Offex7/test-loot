@@ -12,6 +12,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,11 +36,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.graphicsLayer
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -157,15 +160,17 @@ private fun OnboardingChoice(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scale by animateFloatAsState(1f, tween(160), label = "onboarding-choice")
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(150), label = "onboarding-choice")
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(74.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .clip(RoundedCornerShape(11.dp))
             .background(background)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -298,8 +303,12 @@ internal fun DigitalRemotePanel(
 
 @Composable
 private fun QuickApp(icon: String, title: String, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(150), label = "quick-app-scale")
     Column(
-        modifier = modifier.clip(RoundedCornerShape(11.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
+            .clip(RoundedCornerShape(11.dp)).clickable(interactionSource = interactions, indication = null, onClick = onClick).padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -319,13 +328,17 @@ private fun NumberButton(
     outlined: Boolean = false,
     onClick: () -> Unit
 ) {
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(150), label = "number-key-scale")
     val bg = if (outlined) Color(0xFF1A1A1A) else Color(0xFF343434)
     Box(
         modifier = modifier.height(57.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
             .then(if (outlined) Modifier.border(1.dp, Color(0xFF383838), RoundedCornerShape(12.dp)) else Modifier)
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(title, color = Color.White, fontSize = if (title == "Menu") 15.sp else 23.sp, fontWeight = FontWeight.Medium, maxLines = 1)
@@ -370,13 +383,15 @@ private fun DigitalAction(
         animationSpec = infiniteRepeatable(tween(650), repeatMode = RepeatMode.Reverse),
         label = "recording-pulse-scale"
     )
-    val scale by animateFloatAsState(if (recording) pulse else 1f, tween(150), label = "digital-action-scale")
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else if (recording) pulse else 1f, tween(150), label = "digital-action-scale")
     Column(
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .height(66.dp)
             .clip(CircleShape)
             .background(if (active) Color(0xFFE53935) else Color(0xFF333538))
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick)
             .padding(horizontal = 2.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
