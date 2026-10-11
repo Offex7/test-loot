@@ -193,7 +193,10 @@ internal fun DigitalRemotePanel(
     onFeatureAction: (RemoteFeatureAction) -> Unit,
     onSettings: () -> Unit,
     onQuickApp: (String) -> Unit,
-    onReturnRemote: () -> Unit
+    onReturnRemote: () -> Unit,
+    duplicationExpanded: Boolean,
+    onToggleDuplication: () -> Unit,
+    duplicationContent: @Composable () -> Unit
 ) {
     Column(
         modifier = modifier
@@ -225,18 +228,7 @@ internal fun DigitalRemotePanel(
                 ) { Text("⏻", color = Color(0xFF58C45F), fontSize = 25.sp) }
             }
         }
-        AnimatedVisibility(visible = true, enter = fadeIn(tween(250, delayMillis = 50)) + slideInVertically(tween(250, delayMillis = 50)) { it / 6 }) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                QuickApp("▶", "YouTube", Color(0xFFE62117), onClick = { onQuickApp("YouTube") }, modifier = Modifier.weight(1f))
-                QuickApp("R", "Rutube", Color(0xFF17123F), onClick = { onQuickApp("Rutube") }, modifier = Modifier.weight(1f))
-                QuickApp("и", "ИВИ", Color(0xFFE91D42), onClick = { onQuickApp("ИВИ") }, modifier = Modifier.weight(1f))
-                QuickApp("К", "Кинопоиск", Color(0xFFF57C00), onClick = { onQuickApp("Кинопоиск") }, modifier = Modifier.weight(1f))
-            }
-        }
+        // App shortcuts are intentionally omitted unless the connected TV provides a verified app list.
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF383838)))
         AnimatedVisibility(visible = true, enter = fadeIn(tween(250, delayMillis = 100)) + slideInVertically(tween(250, delayMillis = 100)) { it / 8 }) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -297,6 +289,25 @@ internal fun DigitalRemotePanel(
                 onTop = { onKey(RemoteKey.CHANNEL_UP) },
                 onBottom = { onKey(RemoteKey.CHANNEL_DOWN) }
             )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF202020))
+                .clickable(onClick = onToggleDuplication)
+                .padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Дублирование", modifier = Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(if (duplicationExpanded) "⌃" else "⌄", color = Color(0xFFB0B0B0), fontSize = 18.sp)
+        }
+        AnimatedVisibility(
+            visible = duplicationExpanded,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 8 }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                duplicationContent()
+            }
         }
     }
 }
