@@ -114,7 +114,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast) }
+        val initialUiScreen = intent.getStringExtra("ui-screen") ?: "onboarding"
+        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
     }
 
     override fun onDestroy() {
@@ -130,7 +131,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController) {
+private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
     val context = LocalContext.current
     val view = LocalView.current
     val status by remote.status.collectAsStateWithLifecycle()
@@ -147,8 +148,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
-    var showOnboarding by rememberSaveable { mutableStateOf(true) }
-    var digitalPanel by rememberSaveable { mutableStateOf(false) }
+    var showOnboarding by rememberSaveable { mutableStateOf(initialUiScreen !in setOf("remote", "digital", "pairing", "settings", "cast")) }
+    var digitalPanel by rememberSaveable { mutableStateOf(initialUiScreen == "digital") }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
@@ -160,7 +161,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var castScanning by remember { mutableStateOf(false) }
     var castDevices by remember { mutableStateOf<List<DlnaDevice>>(emptyList()) }
     var selectedCastRenderer by remember { mutableStateOf<DlnaDevice?>(null) }
-    var selectedTab by rememberSaveable { mutableStateOf(RadioTvTab.REMOTE) }
+    var selectedTab by rememberSaveable {
+        mutableStateOf(when (initialUiScreen) {
+            "pairing" -> RadioTvTab.CONTROL
+            "settings" -> RadioTvTab.SETTINGS
+            "cast" -> RadioTvTab.DUPLICATION
+            else -> RadioTvTab.REMOTE
+        })
+    }
     var castMedia by remember { mutableStateOf<CastMedia?>(null) }
     var castPlaybackStatus by rememberSaveable { mutableStateOf("Остановлено") }
     var pendingLocalNetworkAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -471,7 +479,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     }
 
     LaunchedEffect(pairedHost) {
-        if (pairedHost.isNotBlank()) connectPairedHost(pairedHost)
+        if (pairedHost.isNotBlank() && !connected) connectPairedHost(pairedHost)
     }
 
     val startFromOnboarding: (Boolean) -> Unit = { infraredPath ->
@@ -564,6 +572,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                     modifier = Modifier
                         .align(Alignment.Center)
                         .widthIn(max = panelWidth)
+                        .fillMaxWidth()
                         .fillMaxHeight()
                         .background(RadioTvPalette.Black)
                         .windowInsetsPadding(WindowInsets.safeDrawing),
@@ -675,7 +684,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         if (scanning) {
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(4.dp))
-                                                Text("Сканируем mDNS, SSDP и TCP-порты…", color = RadioTvPalette.Muted)
+                                                Text("Ищем устройства в локальной сети…", color = RadioTvPalette.Muted)
                                             }
                                         } else if (devices.isEmpty()) {
                                             Text("Устройства не найдены", color = RadioTvPalette.Muted)
@@ -696,7 +705,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                     Text(device.name, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                                     Text(listOfNotNull(device.brand, device.model, device.type.label).distinct().joinToString(" · "),
                                                         color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                                                    Text(device.ip + if (device.ports.isEmpty()) "" else " · " + device.ports.sorted().joinToString(","),
+                                                    Text(device.ip,
                                                         color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 OutlinedButton(onClick = { chooseDevice(device) }) { Text("↗") }
@@ -729,7 +738,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                                 is RemoteStatus.Connecting -> "Подключение: ${current.host}"
                                                 is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения"
                                                 is RemoteStatus.Connected -> "Android TV: подключено · ${current.host}"
-                                                is RemoteStatus.Error -> "Ошибка: ${current.message}"
+                                                is RemoteStatus.Error -> "Не удалось подключиться. Попробуйте ещё раз."
                                             },
                                             color = if (wifiConnected) RadioTvPalette.Red else RadioTvPalette.Muted
                                         )
