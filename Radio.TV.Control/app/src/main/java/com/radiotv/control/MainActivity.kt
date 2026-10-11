@@ -1090,7 +1090,19 @@ private fun ControlActionButton(
         shape = RoundedCornerShape(14.dp),
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
     ) {
-        Text(label, fontSize = 12.sp, lineHeight = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        val title = label.substringAfter("\\n", label).trim()
+        val actionIcon = when (title) {
+            "Микрофон" -> Icons.Filled.Mic
+            "Аэромышь" -> Icons.Filled.Mouse
+            "Клавиатура" -> Icons.Filled.Dialpad
+            "Тачпад" -> Icons.Filled.TouchApp
+            "Трансляция" -> Icons.Filled.Tv
+            else -> null
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            if (actionIcon != null) Icon(actionIcon, contentDescription = title, modifier = Modifier.size(21.dp), tint = if (active) Color.White else RadioTvPalette.Red)
+            Text(title, fontSize = 10.sp, lineHeight = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+        }
     }
 }
 
