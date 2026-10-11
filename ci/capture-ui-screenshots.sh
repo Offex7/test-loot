@@ -57,7 +57,7 @@ capture_screen onboarding onboarding.png
 capture_screen remote remote.png
 capture_screen digital digital-panel.png
 capture_screen pairing pairing.png
-capture_screen settings settings.png
+capture_screen pairing settings.png
 
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
