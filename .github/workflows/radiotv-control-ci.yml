@@ -94,6 +94,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          # API 37 is currently distributed via the Android SDK preview channel.
+          channel: 3
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
