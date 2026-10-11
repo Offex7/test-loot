@@ -182,14 +182,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
     var showOnboarding by rememberSaveable { mutableStateOf(initialUiScreen !in setOf("remote", "digital", "pairing", "settings", "cast")) }
-    var digitalPanel by rememberSaveable { mutableStateOf(initialUiScreen == "digital") }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
     var showKeyboard by rememberSaveable { mutableStateOf(false) }
     var keyboardText by rememberSaveable { mutableStateOf("") }
-    var showCast by rememberSaveable { mutableStateOf(false) }
-    var castMediaUrl by rememberSaveable { mutableStateOf("") }
     var castMessage by rememberSaveable { mutableStateOf("Нажмите «Обновить», чтобы найти DLNA-приёмники.") }
     var duplicationExpanded by rememberSaveable { mutableStateOf(initialUiScreen == "cast") }
     var castScanning by remember { mutableStateOf(false) }
@@ -254,7 +251,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                             castMessage = it.message ?: "Не удалось начать DLNA-воспроизведение."
                         }
                 }
-                showCast = true
             }.onFailure {
                 castPlaybackStatus = "Ошибка"
                 castMessage = it.message ?: "Не удалось подготовить выбранный файл."
@@ -455,7 +451,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
-                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; showOnboarding = false; selectedTab = RadioTvTab.REMOTE; digitalPanel = false }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; showOnboarding = false; selectedTab = RadioTvTab.REMOTE }
                 .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
         }
     }
@@ -880,26 +876,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         }
                                     }
                                     item {
-                                        Text("ДОПОЛНИТЕЛЬНЫЕ КЛАВИШИ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
-                                        (1..9).toList().chunked(3).forEach { digits ->
-                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                                digits.forEach { digit ->
-                                                    OutlinedButton(
-                                                        onClick = { sendRemoteKey(digitKey(digit), remote, otherTvRemote, bluetoothHid, wifiConnected, otherConnected, hidConnected, scope) },
-                                                        modifier = Modifier.weight(1f),
-                                                        contentPadding = PaddingValues(0.dp)
-                                                    ) { Text(digit.toString()) }
-                                                }
-                                            }
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            OutlinedButton(onClick = { sendRemoteKey(RemoteKey.NUMBER_0, remote, otherTvRemote, bluetoothHid, wifiConnected, otherConnected, hidConnected, scope) }, modifier = Modifier.weight(1f)) { Text("0") }
-                                            OutlinedButton(onClick = { sendRemoteKey(RemoteKey.REWIND, remote, otherTvRemote, bluetoothHid, wifiConnected, otherConnected, hidConnected, scope) }, modifier = Modifier.weight(1f)) { Text("⏪") }
-                                            OutlinedButton(onClick = { sendRemoteKey(RemoteKey.PLAY_PAUSE, remote, otherTvRemote, bluetoothHid, wifiConnected, otherConnected, hidConnected, scope) }, modifier = Modifier.weight(1f)) { Text("▶/Ⅱ") }
-                                            OutlinedButton(onClick = { sendRemoteKey(RemoteKey.FAST_FORWARD, remote, otherTvRemote, bluetoothHid, wifiConnected, otherConnected, hidConnected, scope) }, modifier = Modifier.weight(1f)) { Text("⏩") }
-                                        }
-                                    }
-                                    item {
                                         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
@@ -927,7 +903,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                             }
                         }
                     }
-                    if (true) {
                     RadioTvBottomBar(
                         selected = selectedTab,
                         onFeedback = sendUiFeedback,
@@ -938,7 +913,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         },
                         modifier = Modifier.fillMaxWidth().height(72.dp)
                     )
-                    }
                     }
                 }
                 androidx.compose.material3.SnackbarHost(
