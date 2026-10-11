@@ -112,6 +112,7 @@ import com.radiotv.control.core.DiscoveredRemoteDevice
 import com.radiotv.control.core.RemoteDeviceType
 import com.radiotv.control.core.RemoteStatus
 import com.radiotv.control.core.RemoteKey
+import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.OtherTvRemoteController
 import com.radiotv.control.core.OtherTvRemoteStatus
 import com.radiotv.control.ui.TouchpadSurface
@@ -178,6 +179,13 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
     val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
     val otherRemoteStatus by otherTvRemote.status.collectAsStateWithLifecycle()
+    LaunchedEffect(otherRemoteStatus) {
+        if (otherRemoteStatus is OtherTvRemoteStatus.Connected) {
+            installedApps = runCatching { otherTvRemote.listInstalledApps() }.getOrDefault(emptyList())
+        } else {
+            installedApps = emptyList()
+        }
+    }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
@@ -187,6 +195,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
+    var installedApps by remember { mutableStateOf<List<InstalledTvApp>>(emptyList()) }
     var showOnboarding by rememberSaveable { mutableStateOf(initialUiScreen !in setOf("remote", "digital", "pairing", "settings", "cast")) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
@@ -668,6 +677,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                             }
                             RadioTvTab.CONTROL -> {
                                 DigitalRemotePanel(modifier = Modifier.fillMaxSize(), deviceName = selectedDeviceName.ifBlank { "Телевизор не подключён" },
+                                    installedApps = installedApps,
+                                    onLaunchApp = { app ->
+                                        sendUiFeedback(app.name)
+                                        scope.launch {
+                                            runCatching { otherTvRemote.launchInstalledApp(app) }
+                                                .onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
+                                        }
+                                    },
                                     enabled = connected || hidConnected, micRecording = voiceStatus is VoiceInputStatus.Recording,
                                     airMouseActive = airMouseStatus is AirMouseStatus.Active, keyboardActive = showKeyboard,
                                     onKey = dispatchRemoteKey, onFeatureAction = handleFeatureAction,
