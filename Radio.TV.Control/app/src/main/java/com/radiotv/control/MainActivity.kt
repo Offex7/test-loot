@@ -574,7 +574,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         Surface(modifier = Modifier.fillMaxSize(), color = RadioTvPalette.Black) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize().background(RadioTvPalette.Black)) {
                 val isLandscape = maxWidth > maxHeight
-                val panelWidth = if (isLandscape) 460.dp else 520.dp
+                // Landscape/tablet letterbox uses a centered fixed-width column; portrait phones fill safe width.
+                val panelWidth = if (isLandscape) 460.dp else maxWidth
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
