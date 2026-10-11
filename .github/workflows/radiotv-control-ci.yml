@@ -90,13 +90,13 @@ jobs:
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "37.0"
-          system-image-api-level: "37.0"
+          api-level: "36"
+          system-image-api-level: "36"
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          # API 37 is currently distributed via the Android SDK preview channel.
-          channel: canary
+          # Build stays on compileSdk/targetSdk 37; stable API 36 is used only for UI screenshots.
+          channel: stable
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
