@@ -669,7 +669,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                     airMouseActive = airMouseStatus is AirMouseStatus.Active, keyboardActive = showKeyboard,
                                     onKey = dispatchRemoteKey, onFeatureAction = handleFeatureAction,
                                     onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS },
-                                    onQuickApp = { app -> sendUiFeedback(app) },
                                     onReturnRemote = { sendUiFeedback("Пульт"); selectedTab = RadioTvTab.REMOTE },
                                     duplicationExpanded = duplicationExpanded,
                                     onToggleDuplication = { sendUiFeedback("Дублирование"); duplicationExpanded = !duplicationExpanded; if (duplicationExpanded) refreshCastDevices() },
