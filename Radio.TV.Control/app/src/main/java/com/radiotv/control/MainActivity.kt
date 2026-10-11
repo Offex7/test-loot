@@ -11,6 +11,13 @@ import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +58,7 @@ import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -138,6 +146,9 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var pairingCode by rememberSaveable { mutableStateOf("") }
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
+    var selectedDeviceName by rememberSaveable { mutableStateOf("") }
+    var showOnboarding by rememberSaveable { mutableStateOf(true) }
+    var digitalPanel by rememberSaveable { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
@@ -409,6 +420,8 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
 
 
     fun chooseDevice(device: DiscoveredRemoteDevice) {
+        selectedDeviceName = device.name
+        showOnboarding = false
         when (device.type) {
             RemoteDeviceType.ANDROID_TV -> {
                 host = device.ip
@@ -457,6 +470,18 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         }
     }
 
+    LaunchedEffect(pairedHost) {
+        if (pairedHost.isNotBlank()) connectPairedHost(pairedHost)
+    }
+
+    val startFromOnboarding: (Boolean) -> Unit = { infraredPath ->
+        showOnboarding = false
+        selectedTab = RadioTvTab.CONTROL
+        manualEntry = infraredPath
+        statusMessage = if (infraredPath) "Ищем сетевые ИК-мосты. Если устройство не найдено, введите IP вручную." else "Ищем телевизоры и медиаприёмники в локальной сети."
+        refreshDevices()
+    }
+
     val handleFeatureAction: (RemoteFeatureAction) -> Unit = { action ->
         val feedbackMessage = when (action) {
             RemoteFeatureAction.VOICE_INPUT -> {
@@ -486,8 +511,14 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 }
             }
             RemoteFeatureAction.KEYBOARD -> {
-                showKeyboard = !showKeyboard
-                if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
+                if (selectedTab == RadioTvTab.REMOTE && !digitalPanel) {
+                    digitalPanel = true
+                    "Открыта цифровая панель."
+                } else {
+                    selectedTab = RadioTvTab.CONTROL
+                    showKeyboard = !showKeyboard
+                    if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
+                }
             }
             RemoteFeatureAction.AIR_MOUSE -> {
                 when {
