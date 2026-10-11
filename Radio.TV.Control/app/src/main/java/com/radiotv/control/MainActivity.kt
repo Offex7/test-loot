@@ -478,6 +478,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         }
     }
 
+    LaunchedEffect(initialUiScreen) {
+        if (initialUiScreen == "pairing") refreshDevices()
+    }
+
     LaunchedEffect(pairedHost) {
         if (pairedHost.isNotBlank() && !connected) connectPairedHost(pairedHost)
     }
