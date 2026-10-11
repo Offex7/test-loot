@@ -3,6 +3,7 @@ package com.radiotv.control.core
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import android.util.Xml
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.io.StringReader
+import java.util.concurrent.ConcurrentHashMap
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -24,6 +27,12 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import java.security.cert.X509Certificate
+
+data class InstalledTvApp(
+    val id: String,
+    val name: String,
+    val iconUrl: String? = null
+)
 
 sealed interface OtherTvRemoteStatus {
     data object Disconnected : OtherTvRemoteStatus
@@ -45,6 +54,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
     @Volatile private var currentHost: String? = null
     @Volatile private var lgClientKey: String? = null
     private var nextMessageId = 1
+    private val pendingLgResponses = ConcurrentHashMap<String, CompletableDeferred<JSONObject>>()
 
     private val plainClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -112,6 +122,140 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
         }
     }
 
+    /**
+     * Returns only apps reported by the currently connected local-TV protocol.
+     * Unsupported protocols deliberately return an empty list.
+     */
+    suspend fun listInstalledApps(): List<InstalledTvApp> = withContext(Dispatchers.IO) {
+        val host = currentHost ?: return@withContext emptyList()
+        when (protocol) {
+            RemoteDeviceType.SAMSUNG -> listSamsungApps(host)
+            RemoteDeviceType.LG -> listLgApps()
+            RemoteDeviceType.ROKU -> listRokuApps(host)
+            else -> emptyList()
+        }
+    }
+
+    /** Launch by exact ID returned by listInstalledApps; never guess an app ID. */
+    suspend fun launchInstalledApp(app: InstalledTvApp) = withContext(Dispatchers.IO) {
+        val host = checkNotNull(currentHost) { "Сначала подключитесь к телевизору." }
+        when (protocol) {
+            RemoteDeviceType.SAMSUNG -> {
+                val socket = checkNotNull(webSocket) { "WebSocket Samsung не подключён." }
+                val message = JSONObject()
+                    .put("method", "ms.channel.emit")
+                    .put("params", JSONObject()
+                        .put("event", "ed.apps.launch")
+                        .put("to", "host")
+                        .put("data", JSONObject().put("appId", app.id).put("action_type", "NATIVE_LAUNCH")))
+                check(socket.send(message.toString())) { "Не удалось отправить команду запуска Samsung." }
+            }
+            RemoteDeviceType.LG -> {
+                requireLgReady()
+                sendLgRequest("ssap://system.launcher/launch", JSONObject().put("id", app.id))
+            }
+            RemoteDeviceType.ROKU -> {
+                val (code, _) = rokuRequest(host, "POST", "/launch/${Uri.encode(app.id)}")
+                check(code in 200..299) { "Roku не принял запуск приложения (HTTP $code)." }
+            }
+            else -> error("Запуск приложений не поддерживается текущим протоколом.")
+        }
+    }
+
+    private fun listSamsungApps(host: String): List<InstalledTvApp> {
+        val endpoints = listOf(
+            "http://$host:8001/api/v2/applications",
+            "https://$host:8002/api/v2/applications"
+        )
+        for (endpoint in endpoints) {
+            try {
+                val client = (if (endpoint.startsWith("https://")) localTlsClient else plainClient)
+                    .newBuilder()
+                    .connectTimeout(4, TimeUnit.SECONDS)
+                    .readTimeout(4, TimeUnit.SECONDS)
+                    .callTimeout(6, TimeUnit.SECONDS)
+                    .build()
+                client.newCall(Request.Builder().url(endpoint).get().build()).execute().use { response ->
+                    if (!response.isSuccessful) return@use
+                    val root = JSONObject(response.body?.string().orEmpty())
+                    val items = root.optJSONArray("applications") ?: root.optJSONArray("apps") ?: JSONArray()
+                    val apps = buildList {
+                        for (i in 0 until items.length()) {
+                            val item = items.optJSONObject(i) ?: continue
+                            val id = item.optString("appId").takeIf { it.isNotBlank() && it != "null" }
+                                ?: item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                            val name = item.optString("name").takeIf { it.isNotBlank() && it != "null" }
+                                ?: item.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                            val icon = item.optString("icon").takeIf { it.isNotBlank() && it != "null" }
+                            add(InstalledTvApp(id, name, icon))
+                        }
+                    }.distinctBy { it.id }
+                    if (apps.isNotEmpty()) return apps
+                }
+            } catch (_: Exception) {
+                // Try the alternate Samsung local endpoint; expose no guessed apps.
+            }
+        }
+        return emptyList()
+    }
+
+    private suspend fun listLgApps(): List<InstalledTvApp> {
+        val payload = sendLgRequestAwait("ssap://com.webos.applicationManager/listLaunchPoints")
+        val items = payload.optJSONArray("launchPoints")
+            ?: payload.optJSONArray("launchpoints")
+            ?: payload.optJSONArray("apps")
+            ?: payload.optJSONObject("results")?.optJSONArray("launchPoints")
+            ?: JSONArray()
+        return buildList {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" }
+                    ?: item.optString("appId").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                val name = item.optString("title").takeIf { it.isNotBlank() && it != "null" }
+                    ?: item.optString("name").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                val icon = item.optString("icon").takeIf { it.isNotBlank() && it != "null" }
+                add(InstalledTvApp(id, name, icon))
+            }
+        }.distinctBy { it.id }
+    }
+
+    private fun listRokuApps(host: String): List<InstalledTvApp> {
+        val (code, xml) = rokuRequest(host, "GET", "/query/apps")
+        if (code !in 200..299 || xml.isBlank()) return emptyList()
+        return try {
+            val parser = Xml.newPullParser()
+            parser.setInput(StringReader(xml))
+            val apps = mutableListOf<InstalledTvApp>()
+            var event = parser.eventType
+            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.equals("app", ignoreCase = true)) {
+                    val id = parser.getAttributeValue(null, "id")
+                    val name = parser.nextText().trim()
+                    if (!id.isNullOrBlank() && name.isNotBlank()) apps += InstalledTvApp(id, name)
+                }
+                event = parser.next()
+            }
+            apps.distinctBy { it.id }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private suspend fun sendLgRequestAwait(uri: String, payload: JSONObject = JSONObject()): JSONObject {
+        requireLgReady()
+        val socket = checkNotNull(webSocket) { "WebSocket LG не подключён." }
+        val id = "rtv-${nextMessageId++}"
+        val pending = CompletableDeferred<JSONObject>()
+        pendingLgResponses[id] = pending
+        val request = JSONObject().put("type", "request").put("id", id).put("uri", uri)
+        if (payload.length() > 0) request.put("payload", payload)
+        try {
+            check(socket.send(request.toString())) { "Не удалось отправить запрос приложения LG." }
+            return withTimeout(7_000L) { pending.await() }
+        } finally {
+            pendingLgResponses.remove(id)
+        }
+    }
     suspend fun disconnect() = withContext(Dispatchers.IO) { disconnectCurrent() }
 
     private suspend fun connectSamsung(host: String) {
@@ -206,6 +350,11 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
                 }
             }
             RemoteDeviceType.LG -> when (message.optString("type")) {
+                "response" -> {
+                    val id = message.optString("id")
+                    val payload = message.optJSONObject("payload") ?: JSONObject()
+                    pendingLgResponses.remove(id)?.complete(payload)
+                }
                 "registered" -> {
                     val key = message.optJSONObject("payload")?.optString("client-key")
                         ?.takeIf { it.isNotBlank() && it != "null" }
@@ -325,6 +474,8 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
         webSocket?.close(1000, "Radio.TV.Control disconnect")
         webSocket?.cancel()
         webSocket = null
+        pendingLgResponses.values.forEach { it.cancel() }
+        pendingLgResponses.clear()
         protocol = null
         currentHost = null
         lgClientKey = null
