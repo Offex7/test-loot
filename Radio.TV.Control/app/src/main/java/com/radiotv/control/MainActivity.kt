@@ -178,6 +178,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
     val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
+    var installedApps by remember { mutableStateOf<List<InstalledTvApp>>(emptyList()) }
     val otherRemoteStatus by otherTvRemote.status.collectAsStateWithLifecycle()
     LaunchedEffect(otherRemoteStatus) {
         if (otherRemoteStatus is OtherTvRemoteStatus.Connected) {
@@ -195,7 +196,6 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
-    var installedApps by remember { mutableStateOf<List<InstalledTvApp>>(emptyList()) }
     var showOnboarding by rememberSaveable { mutableStateOf(initialUiScreen !in setOf("remote", "digital", "pairing", "settings", "cast")) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
