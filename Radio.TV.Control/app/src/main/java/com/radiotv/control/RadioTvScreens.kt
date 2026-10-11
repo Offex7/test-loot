@@ -32,6 +32,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
@@ -212,7 +223,7 @@ internal fun DigitalRemotePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("⚙", color = Color(0xFFB0B0B0), fontSize = 25.sp, modifier = Modifier.clickable(onClick = onSettings).padding(horizontal = 4.dp))
+                Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color(0xFFB0B0B0), modifier = Modifier.size(25.dp).clickable(onClick = onSettings).padding(1.dp))
                 Text(
                     deviceName.ifBlank { "Телевизор не подключён" },
                     modifier = Modifier.weight(1f),
@@ -225,7 +236,7 @@ internal fun DigitalRemotePanel(
                     modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF24562A))
                         .clickable(enabled = enabled, onClick = { onKey(RemoteKey.POWER) }),
                     contentAlignment = Alignment.Center
-                ) { Text("⏻", color = Color(0xFF58C45F), fontSize = 25.sp) }
+                ) { Icon(Icons.Filled.PowerSettingsNew, contentDescription = "Питание", tint = Color(0xFF58C45F), modifier = Modifier.size(25.dp)) }
             }
         }
         // App shortcuts are intentionally omitted unless the connected TV provides a verified app list.
@@ -407,7 +418,15 @@ private fun DigitalAction(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(icon, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Medium)
+        when (label) {
+            "Клавиатура" -> Icon(Icons.Filled.Keyboard, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            "Домой" -> Icon(Icons.Filled.Home, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            "Аэромышь" -> Icon(Icons.Filled.Mouse, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            "Без звука" -> Icon(Icons.Filled.VolumeOff, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            "Микрофон" -> Icon(Icons.Filled.Mic, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            "Назад" -> Icon(Icons.Filled.ArrowBack, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+            else -> Text(icon, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Medium)
+        }
         Text(label, color = Color(0xFFB0B0B0), fontSize = 8.sp, maxLines = 1)
     }
 }
