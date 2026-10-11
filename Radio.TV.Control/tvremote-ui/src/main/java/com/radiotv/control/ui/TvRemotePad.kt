@@ -25,6 +25,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
@@ -357,6 +366,8 @@ private fun TopRemoteButton(
                     cap = StrokeCap.Round
                 )
             }
+        } else if (description == "YouTube") {
+            Icon(Icons.Filled.PlayArrow, contentDescription = description, tint = RadioTvPalette.White, modifier = Modifier.size(25.dp))
         } else {
             Text(label, color = RadioTvPalette.White, fontSize = if (label == "NETFLIX") 9.sp else if (label == "MENU") 12.sp else 27.sp, fontWeight = FontWeight.Medium)
         }
@@ -424,11 +435,26 @@ private fun SoftCircleButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        when (description) {
-            "Назад" -> Icon(Icons.Filled.ArrowBack, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 5).dp))
-            "Тачпад" -> Icon(Icons.Filled.TouchApp, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 6).dp))
-            "Домой" -> Icon(Icons.Filled.Home, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 5).dp))
-            else -> Text(label, color = if (active) RadioTvPalette.White else RadioTvPalette.Muted, fontSize = fontSize.sp,
+        val iconTint = if (active) RadioTvPalette.White else RadioTvPalette.Muted
+        val icon = when (description) {
+            "Назад" -> Icons.Filled.ArrowBack
+            "Тачпад" -> Icons.Filled.TouchApp
+            "Домой" -> Icons.Filled.Home
+            "Вверх" -> Icons.Filled.KeyboardArrowUp
+            "Вниз" -> Icons.Filled.KeyboardArrowDown
+            "Влево" -> Icons.Filled.KeyboardArrowLeft
+            "Вправо" -> Icons.Filled.KeyboardArrowRight
+            "Воспроизведение" -> Icons.Filled.PlayArrow
+            "Пауза" -> Icons.Filled.Pause
+            "Без звука" -> Icons.Filled.VolumeOff
+            "Клавиатура" -> Icons.Filled.Keyboard
+            "Микрофон" -> Icons.Filled.Mic
+            else -> null
+        }
+        if (icon != null) {
+            Icon(icon, contentDescription = description, tint = iconTint, modifier = Modifier.size((fontSize + 5).dp))
+        } else {
+            Text(label, color = iconTint, fontSize = fontSize.sp,
                 fontWeight = if (active || label.length <= 2) FontWeight.Medium else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1)
         }
     }
