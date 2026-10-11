@@ -13,7 +13,7 @@ test -s "$APK" || { echo "Debug APK not found: $APK" >&2; exit 1; }
 mkdir -p "$OUT"
 adb shell wm size 540x1200
 adb shell wm density 220
-adb install -r "$APK"
+timeout 90s adb install -r "$APK"
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_LOCAL_NETWORK >/dev/null 2>&1 || true
 
 wait_for_foreground() {
@@ -39,11 +39,11 @@ capture_screen() {
   screen="$1"
   filename="$2"
   echo "Capturing $screen -> $filename"
-  adb shell am force-stop "$PACKAGE"
-  adb shell am start -W -n "$ACTIVITY" --es ui-screen "$screen"
+  timeout 15s adb shell am force-stop "$PACKAGE"
+  timeout 25s adb shell am start -W -n "$ACTIVITY" --es ui-screen "$screen"
   wait_for_foreground
   sleep 2
-  adb exec-out screencap -p > "$OUT/$filename"
+  timeout 15s adb exec-out screencap -p > "$OUT/$filename"
   test -s "$OUT/$filename" || { echo "Missing screenshot: $OUT/$filename" >&2; exit 1; }
 }
 
