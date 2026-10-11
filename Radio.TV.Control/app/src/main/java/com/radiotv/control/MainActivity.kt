@@ -1090,7 +1090,7 @@ private fun ControlActionButton(
         shape = RoundedCornerShape(14.dp),
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
     ) {
-        val title = label.substringAfter("\\n", label).trim()
+        val title = label.substringAfter('\n', label).trim()
         val actionIcon = when (title) {
             "Микрофон" -> Icons.Filled.Mic
             "Аэромышь" -> Icons.Filled.Mouse
