@@ -18,6 +18,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,6 +68,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -1063,6 +1066,22 @@ private fun RadioTvBottomBar(
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         RadioTvTab.entries.forEach { tab ->
+            val active = tab == selected
+            val iconColor by animateColorAsState(
+                if (active) RadioTvPalette.Blue else RadioTvPalette.Muted,
+                animationSpec = tween(180),
+                label = "tab-icon-color"
+            )
+            val titleColor by animateColorAsState(
+                if (active) RadioTvPalette.Blue else RadioTvPalette.Muted,
+                animationSpec = tween(180),
+                label = "tab-title-color"
+            )
+            val iconLift by animateDpAsState(
+                if (active) (-3).dp else 0.dp,
+                animationSpec = tween(180),
+                label = "tab-icon-lift"
+            )
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight()
                     .clickable {
@@ -1073,12 +1092,12 @@ private fun RadioTvBottomBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(tab.icon, color = if (tab == selected) RadioTvPalette.Red else RadioTvPalette.Muted, fontSize = 22.sp)
+                Text(tab.icon, modifier = Modifier.offset(y = iconLift), color = iconColor, fontSize = 22.sp)
                 Text(
                     tab.title,
-                    color = if (tab == selected) RadioTvPalette.Blue else RadioTvPalette.Muted,
+                    color = titleColor,
                     fontSize = if (tab == RadioTvTab.DUPLICATION) 10.sp else 11.sp,
-                    fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Medium,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1
                 )
             }
