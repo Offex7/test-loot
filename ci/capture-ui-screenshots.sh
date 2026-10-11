@@ -42,7 +42,7 @@ capture_screen() {
   adb shell am force-stop "$PACKAGE"
   adb logcat -c
   adb shell am start -W -n "$ACTIVITY" --es ui-screen "$screen" > "$OUT/$filename-start.txt" 2>&1 || true
-  wait_for_main_activity || true
+  wait_for_main_activity
   sleep 2
   adb exec-out screencap -p > "$OUT/$filename"
   adb shell uiautomator dump /sdcard/current-ui.xml > "$OUT/$filename-uiautomator.txt" 2>&1 || true
