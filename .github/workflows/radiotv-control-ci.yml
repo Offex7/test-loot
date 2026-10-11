@@ -25,6 +25,7 @@ jobs:
   build-and-verify:
     name: Build, test and inspect APK
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: Radio.TV.Control
@@ -49,8 +50,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.5.0"
-      - name: Assemble debug APK and run core tests
-        run: gradle --no-daemon --stacktrace :app:assembleDebug :tvremote-core:test
+      - name: Assemble debug APK
+        run: gradle --no-daemon --console=plain --stacktrace :app:assembleDebug
+      - name: Run core tests
+        run: gradle --no-daemon --console=plain --stacktrace :tvremote-core:test
       - name: Verify APK, manifest, DEX modules, hash and size
         shell: bash
         run: |
