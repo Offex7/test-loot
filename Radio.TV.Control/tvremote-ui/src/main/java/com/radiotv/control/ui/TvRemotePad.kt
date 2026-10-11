@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -68,6 +73,10 @@ import com.radiotv.control.core.RemoteKey
 import kotlinx.coroutines.delay
 
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST, APP_YOUTUBE, APP_NETFLIX }
+
+object RadioTvUiFeedback {
+    @Volatile var hapticEnabled: Boolean = true
+}
 
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
@@ -166,12 +175,12 @@ fun TvRemotePad(
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
+            verticalArrangement = Arrangement.spacedBy(if (tight) 3.dp else 6.dp, Alignment.CenterVertically)
         ) {
             // Row 1: Power, Menu, YouTube and Netflix — order matches the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TopRemoteButton("Power", "Питание", RemoteKey.POWER, enabled, onKey,
@@ -202,8 +211,8 @@ fun TvRemotePad(
 
             // Row 3: mute and keyboard centered above the directional pad.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 52.dp),
-                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 36.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SoftCircleButton("◖×", "Без звука", enabled, { onKey(RemoteKey.MUTE) },
@@ -224,9 +233,9 @@ fun TvRemotePad(
                             drawOval(
                                 brush = Brush.horizontalGradient(
                                     listOf(
-                                        RadioTvPalette.Red.copy(alpha = 0.04f),
-                                        Color(0xFFF06292).copy(alpha = 0.09f),
-                                        Color(0xFF2196F3).copy(alpha = 0.05f)
+                                        RadioTvPalette.Red.copy(alpha = 0.11f),
+                                        Color(0xFFF06292).copy(alpha = 0.18f),
+                                        Color(0xFF2196F3).copy(alpha = 0.12f)
                                     )
                                 ),
                                 topLeft = Offset(w * 0.10f + inset, h * 0.12f + inset),
@@ -259,18 +268,18 @@ fun TvRemotePad(
                         ), style = Stroke(width = 2.dp.toPx()))
                     }
             ) {
-                val arrowSize = when { tight -> 42.dp; compact -> 50.dp; else -> 58.dp }
+                val arrowSize = when { tight -> 38.dp; compact -> 44.dp; else -> 50.dp }
                 SoftCircleButton("▲", "Вверх", enabled, { activeDirection = RemoteKey.UP; onKey(RemoteKey.UP) },
-                    Modifier.align(Alignment.TopCenter).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.UP)
+                    Modifier.align(Alignment.TopCenter).padding(top = 12.dp).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.UP)
                 SoftCircleButton("◀", "Влево", enabled, { activeDirection = RemoteKey.LEFT; onKey(RemoteKey.LEFT) },
-                    Modifier.align(Alignment.CenterStart).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.LEFT)
+                    Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.LEFT)
                 SoftCircleButton("▶", "Вправо", enabled, { activeDirection = RemoteKey.RIGHT; onKey(RemoteKey.RIGHT) },
-                    Modifier.align(Alignment.CenterEnd).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.RIGHT)
+                    Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.RIGHT)
                 SoftCircleButton("▼", "Вниз", enabled, { activeDirection = RemoteKey.DOWN; onKey(RemoteKey.DOWN) },
-                    Modifier.align(Alignment.BottomCenter).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.DOWN)
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).size(arrowSize), fontSize = 25, active = activeDirection == RemoteKey.DOWN)
                 SoftCircleButton("OK", "ОК", enabled, { onKey(RemoteKey.OK) },
-                    Modifier.align(Alignment.Center).size(if (tight) 66.dp else 78.dp),
-                    fontSize = 25, active = true, pulseScale = okPulse)
+                    Modifier.align(Alignment.Center).size(if (tight) 78.dp else if (compact) 92.dp else 104.dp),
+                    fontSize = if (tight) 23 else 26, active = true, pulseScale = okPulse)
             }
 
             // Row 4: Back, Exit, touchpad and Home.
@@ -328,7 +337,7 @@ private fun TopRemoteButton(
             .border(BorderStroke(1.dp, RadioTvPalette.Border), CircleShape)
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (RadioTvUiFeedback.hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 if (onClick != null) onClick() else onKey(key)
             },
         contentAlignment = Alignment.Center
@@ -423,8 +432,13 @@ private fun SoftCircleButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = if (active) RadioTvPalette.White else RadioTvPalette.Muted, fontSize = fontSize.sp,
-            fontWeight = if (active || label.length <= 2) FontWeight.Medium else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1)
+        when (description) {
+            "Назад" -> Icon(Icons.Filled.ArrowBack, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 5).dp))
+            "Тачпад" -> Icon(Icons.Filled.TouchApp, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 6).dp))
+            "Домой" -> Icon(Icons.Filled.Home, contentDescription = description, tint = if (active) RadioTvPalette.White else RadioTvPalette.Muted, modifier = Modifier.size((fontSize + 5).dp))
+            else -> Text(label, color = if (active) RadioTvPalette.White else RadioTvPalette.Muted, fontSize = fontSize.sp,
+                fontWeight = if (active || label.length <= 2) FontWeight.Medium else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1)
+        }
     }
 }
 
