@@ -287,7 +287,7 @@ fun TvRemotePad(
                     Modifier.weight(1f).size(smallButton), fontSize = 27)
                 SoftCircleButton("EXIT", "Выход", enabled, { onKey(RemoteKey.BACK) },
                     Modifier.weight(1f).size(smallButton), fontSize = 12)
-                SoftCircleButton("☝", "Тачпад", enabled, { onFeatureAction(RemoteFeatureAction.TOUCHPAD) },
+                SoftCircleButton("TP", "Тачпад", enabled, { onFeatureAction(RemoteFeatureAction.TOUCHPAD) },
                     Modifier.weight(1f).size(smallButton), fontSize = 22, active = touchpadActive)
                 SoftCircleButton("⌂", "Домой", enabled, { onKey(RemoteKey.HOME) },
                     Modifier.weight(1f).size(smallButton), fontSize = 28)
