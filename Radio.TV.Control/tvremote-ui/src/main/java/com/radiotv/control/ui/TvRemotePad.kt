@@ -1,6 +1,5 @@
 package com.radiotv.control.ui
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -60,7 +59,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -74,9 +72,6 @@ import kotlinx.coroutines.delay
 
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST, APP_YOUTUBE, APP_NETFLIX }
 
-object RadioTvUiFeedback {
-    @Volatile var hapticEnabled: Boolean = true
-}
 
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
@@ -326,7 +321,6 @@ private fun TopRemoteButton(
     powerIcon: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
-    val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "remote-button-scale")
@@ -337,7 +331,7 @@ private fun TopRemoteButton(
             .border(BorderStroke(1.dp, RadioTvPalette.Border), CircleShape)
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
-                if (RadioTvUiFeedback.hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                
                 if (onClick != null) onClick() else onKey(key)
             },
         contentAlignment = Alignment.Center
@@ -378,7 +372,6 @@ private fun DirectionPadButton(
     modifier: Modifier = Modifier,
     fontSize: Int = 25
 ) {
-    val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "direction-scale")
@@ -390,7 +383,7 @@ private fun DirectionPadButton(
             .border(BorderStroke(1.dp, RadioTvPalette.Border), shape)
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                
                 onClick()
             },
         contentAlignment = Alignment.Center
@@ -416,7 +409,6 @@ private fun SoftCircleButton(
     active: Boolean = false,
     pulseScale: Float = 1f
 ) {
-    val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.93f else 1f, tween(150), label = "circle-scale")
@@ -427,7 +419,7 @@ private fun SoftCircleButton(
             .background(base)
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                
                 onClick()
             },
         contentAlignment = Alignment.Center
@@ -451,18 +443,17 @@ private fun VolumePill(
     onKey: (RemoteKey) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val view = LocalView.current
     Column(
         modifier = modifier.clip(RoundedCornerShape(42.dp)).background(RadioTvPalette.Raised).padding(vertical = 8.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text("+", modifier = Modifier.clickable(enabled = enabled) {
-            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); onKey(upKey)
+            onKey(upKey)
         }.padding(horizontal = 10.dp, vertical = 2.dp), color = RadioTvPalette.White, fontSize = 26.sp)
         Text(title, color = RadioTvPalette.White, fontSize = if (title == "VOL") 21.sp else 23.sp, fontWeight = FontWeight.Medium)
         Text("−", modifier = Modifier.clickable(enabled = enabled) {
-            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); onKey(downKey)
+            onKey(downKey)
         }.padding(horizontal = 10.dp, vertical = 2.dp), color = RadioTvPalette.White, fontSize = 26.sp)
     }
 }
@@ -475,10 +466,9 @@ private fun FeatureButton(
     modifier: Modifier = Modifier,
     active: Boolean = false
 ) {
-    val view = LocalView.current
     OutlinedButton(
         onClick = {
-            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            
             onClick()
         },
         modifier = modifier.height(58.dp),
@@ -505,7 +495,6 @@ fun TouchpadSurface(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(12.dp)
-    val view = LocalView.current
     Box(
         modifier = modifier.fillMaxWidth().height(176.dp).clip(shape)
             .background(RadioTvPalette.Black)
@@ -522,8 +511,8 @@ fun TouchpadSurface(
             }
             .pointerInput(enabled) {
                 detectTapGestures(
-                    onTap = { if (enabled) { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); onTap() } },
-                    onLongPress = { if (enabled) { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onLongPress() } }
+                    onTap = { if (enabled) { onTap() } },
+                    onLongPress = { if (enabled) { onLongPress() } }
                 )
             },
         contentAlignment = Alignment.Center
