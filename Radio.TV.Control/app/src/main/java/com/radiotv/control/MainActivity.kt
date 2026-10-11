@@ -562,11 +562,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 "Запуск Netflix напрямую пока не поддерживается выбранным протоколом. Откройте приложение на телевизоре."
             }
             RemoteFeatureAction.KEYBOARD -> {
-                if (selectedTab == RadioTvTab.REMOTE && !digitalPanel) {
-                    digitalPanel = true
+                if (selectedTab == RadioTvTab.REMOTE) {
+                    selectedTab = RadioTvTab.CONTROL
                     "Открыта цифровая панель."
                 } else {
-                    selectedTab = RadioTvTab.CONTROL
                     showKeyboard = !showKeyboard
                     if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
                 }
@@ -588,12 +587,22 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 else "Тачпад скрыт."
             }
             RemoteFeatureAction.CAST -> {
-                selectedTab = RadioTvTab.DUPLICATION
-                showCast = true
+                selectedTab = RadioTvTab.CONTROL
+                duplicationExpanded = true
+                refreshCastDevices()
                 mediaPicker.launch(arrayOf("image/*", "video/*"))
-                "Открываем системный выбор фото или видео. Разрешение локальной сети будет запрошено после выбора файла; аудио и другие файлы доступны на вкладке «Дублирование». DRM/HLS/DASH не поддерживается."
+                "Открываем выбор фото или видео для трансляции на DLNA-приёмник. DRM/HLS/DASH не поддерживается."
             }
         }
+        sendUiFeedback(when (action) {
+            RemoteFeatureAction.VOICE_INPUT -> "Микрофон"
+            RemoteFeatureAction.KEYBOARD -> "Клавиатура"
+            RemoteFeatureAction.AIR_MOUSE -> "Аэромышь"
+            RemoteFeatureAction.TOUCHPAD -> "Тачпад"
+            RemoteFeatureAction.CAST -> "Дублирование"
+            RemoteFeatureAction.APP_YOUTUBE -> "YouTube"
+            RemoteFeatureAction.APP_NETFLIX -> "Netflix"
+        })
         statusMessage = feedbackMessage
         scope.launch {
             runCatching {
