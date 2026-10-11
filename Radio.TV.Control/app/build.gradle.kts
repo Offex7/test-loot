@@ -62,6 +62,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("io.insert-koin:koin-android:4.1.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
