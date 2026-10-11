@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.media.AudioManager
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
@@ -59,8 +62,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.radiotv.control.ui.RadioTvPalette
+import com.radiotv.control.ui.RadioTvUiFeedback
 import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
@@ -142,6 +147,26 @@ class MainActivity : ComponentActivity() {
 private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
     val context = LocalContext.current
     val view = LocalView.current
+    val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
+    val speechReady = remember { mutableStateOf(false) }
+    val speechEngine = remember(context) {
+        TextToSpeech(context) { result -> speechReady.value = result == TextToSpeech.SUCCESS }
+    }
+    DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
+    LaunchedEffect(speechEngine, speechReady.value) {
+        if (speechReady.value) speechEngine.language = Locale("ru")
+    }
+    RadioTvUiFeedback.hapticEnabled = feedbackSettings.vibrationEnabled
+    val sendUiFeedback: (String) -> Unit = { label ->
+        if (feedbackSettings.vibrationEnabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (feedbackSettings.clickSoundEnabled) {
+            if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
+                speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click")
+            } else {
+                context.getSystemService(AudioManager::class.java)?.playSoundEffect(AudioManager.FX_KEY_CLICK)
+            }
+        }
+    }
     val status by remote.status.collectAsStateWithLifecycle()
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
