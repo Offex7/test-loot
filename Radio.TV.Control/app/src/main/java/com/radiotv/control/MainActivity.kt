@@ -413,7 +413,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
-                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target" }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV · " + target }
                 .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
         }
     }
@@ -569,40 +569,87 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    if (showOnboarding && !connected) {
+                        OnboardingScreen(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            onInfrared = { startFromOnboarding(true) },
+                            onSmartTv = { startFromOnboarding(false) },
+                            onUnknown = { startFromOnboarding(false) }
+                        )
+                    } else {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         when (selectedTab) {
                             RadioTvTab.REMOTE -> {
-                                BoxWithConstraints(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TvRemotePad(
-                                        enabled = connected || hidConnected,
-                                        modifier = Modifier
-                                            .widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp)
-                                            .fillMaxWidth()
-                                            .fillMaxHeight()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                        onKey = { key ->
-                                            scope.launch {
-                                                runCatching {
-                                                    when {
-                                                        wifiConnected -> remote.sendKey(key)
-                                                        otherConnected -> otherTvRemote.sendKey(key)
-                                                        hidConnected -> bluetoothHid.sendRemoteKey(key)
-                                                        else -> error("Сначала подключитесь к телевизору через вкладку «Контроль».")
+                                AnimatedContent(
+                                    targetState = digitalPanel,
+                                    transitionSpec = {
+                                        (fadeIn(tween(280)) + slideInHorizontally(tween(280)) { if (targetState) it / 12 else -it / 12 }) togetherWith
+                                            (fadeOut(tween(220)) + slideOutHorizontally(tween(220)) { if (targetState) -it / 12 else it / 12 })
+                                    },
+                                    label = "remote-page-transition"
+                                ) { showDigits ->
+                                    if (showDigits) {
+                                        DigitalRemotePanel(
+                                            modifier = Modifier.fillMaxSize(),
+                                            deviceName = selectedDeviceName.ifBlank { "Телевизор не подключён" },
+                                            enabled = connected || hidConnected,
+                                            micRecording = voiceStatus is VoiceInputStatus.Recording,
+                                            airMouseActive = airMouseStatus is AirMouseStatus.Active,
+                                            keyboardActive = showKeyboard,
+                                            onKey = { key ->
+                                                scope.launch {
+                                                    runCatching {
+                                                        when {
+                                                            wifiConnected -> remote.sendKey(key)
+                                                            otherConnected -> otherTvRemote.sendKey(key)
+                                                            hidConnected -> bluetoothHid.sendRemoteKey(key)
+                                                            else -> error("Сначала подключитесь к телевизору через вкладку «Контроль».")
+                                                        }
+                                                    }.onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
+                                                }
+                                            },
+                                            onFeatureAction = handleFeatureAction,
+                                            onSettings = { digitalPanel = false; selectedTab = RadioTvTab.SETTINGS },
+                                            onQuickApp = { app ->
+                                                statusMessage = "Быстрый запуск «" + app + "» зависит от модели телевизора и протокола."
+                                                scope.launch { snackbarHostState.showSnackbar(statusMessage, withDismissAction = true) }
+                                            },
+                                            onReturnRemote = { digitalPanel = false }
+                                        )
+                                    } else {
+                                        BoxWithConstraints(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            TvRemotePad(
+                                                enabled = connected || hidConnected,
+                                                modifier = Modifier
+                                                    .widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp)
+                                                    .fillMaxWidth()
+                                                    .fillMaxHeight()
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                onKey = { key ->
+                                                    scope.launch {
+                                                        runCatching {
+                                                            when {
+                                                                wifiConnected -> remote.sendKey(key)
+                                                                otherConnected -> otherTvRemote.sendKey(key)
+                                                                hidConnected -> bluetoothHid.sendRemoteKey(key)
+                                                                else -> error("Сначала подключитесь к телевизору через вкладку «Контроль».")
+                                                            }
+                                                        }.onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
                                                     }
-                                                }.onFailure { statusMessage = it.message ?: "Команда не отправлена." }
-                                            }
-                                        },
-                                        onFeatureAction = handleFeatureAction,
-                                        touchpadActive = showTouchpad,
-                                        airMouseActive = airMouseStatus is AirMouseStatus.Active,
-                                        voiceActive = voiceStatus is VoiceInputStatus.Recording,
-                                        keyboardActive = showKeyboard,
-                                        featureMessage = null,
-                                        showFeatureActions = false
-                                    )
+                                                },
+                                                onFeatureAction = handleFeatureAction,
+                                                touchpadActive = showTouchpad,
+                                                airMouseActive = airMouseStatus is AirMouseStatus.Active,
+                                                voiceActive = voiceStatus is VoiceInputStatus.Recording,
+                                                keyboardActive = showKeyboard,
+                                                featureMessage = null,
+                                                showFeatureActions = false
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             RadioTvTab.CONTROL -> {
@@ -969,6 +1016,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         },
                         modifier = Modifier.fillMaxWidth().height(72.dp)
                     )
+                    }
                 }
                 androidx.compose.material3.SnackbarHost(
                     hostState = snackbarHostState,
@@ -1015,7 +1063,7 @@ private fun RadioTvBottomBar(
                 Text(tab.icon, color = if (tab == selected) RadioTvPalette.Red else RadioTvPalette.Muted, fontSize = 22.sp)
                 Text(
                     tab.title,
-                    color = if (tab == selected) RadioTvPalette.Red else RadioTvPalette.Muted,
+                    color = if (tab == selected) RadioTvPalette.Blue else RadioTvPalette.Muted,
                     fontSize = if (tab == RadioTvTab.DUPLICATION) 10.sp else 11.sp,
                     fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1
