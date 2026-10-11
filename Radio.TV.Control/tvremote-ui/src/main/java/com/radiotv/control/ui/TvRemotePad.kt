@@ -67,7 +67,7 @@ import kotlin.math.roundToInt
 import com.radiotv.control.core.RemoteKey
 import kotlinx.coroutines.delay
 
-enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST }
+enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST, APP_YOUTUBE, APP_NETFLIX }
 
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
@@ -179,9 +179,9 @@ fun TvRemotePad(
                 TopRemoteButton("MENU", "Меню", RemoteKey.MENU, enabled, onKey,
                     Modifier.weight(1f).size(topSize))
                 TopRemoteButton("▶", "YouTube", RemoteKey.MENU, enabled, onKey,
-                    Modifier.weight(1f).size(topSize))
+                    Modifier.weight(1f).size(topSize), onClick = { onFeatureAction(RemoteFeatureAction.APP_YOUTUBE) })
                 TopRemoteButton("NETFLIX", "Netflix", RemoteKey.MENU, enabled, onKey,
-                    Modifier.weight(1f).size(topSize))
+                    Modifier.weight(1f).size(topSize), onClick = { onFeatureAction(RemoteFeatureAction.APP_NETFLIX) })
             }
 
             // Row 2: vertical volume/channel pills with separate round media keys.
@@ -314,7 +314,8 @@ private fun TopRemoteButton(
     enabled: Boolean,
     onKey: (RemoteKey) -> Unit,
     modifier: Modifier = Modifier,
-    powerIcon: Boolean = false
+    powerIcon: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
@@ -328,7 +329,7 @@ private fun TopRemoteButton(
             .semantics { contentDescription = description }
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, onClickLabel = description) {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onKey(key)
+                if (onClick != null) onClick() else onKey(key)
             },
         contentAlignment = Alignment.Center
     ) {
