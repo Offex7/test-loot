@@ -106,7 +106,7 @@ jobs:
           # Build stays on compileSdk/targetSdk 37; API 34 Google ATD is used only for UI screenshots.
           channel: stable
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader_indirect
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
       - name: Upload UI screenshots
