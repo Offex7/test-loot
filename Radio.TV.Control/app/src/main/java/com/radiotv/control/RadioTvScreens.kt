@@ -363,9 +363,15 @@ private fun TvInstalledAppShortcut(app: InstalledTvApp, onClick: () -> Unit) {
         normalized.contains("кинопоиск") -> "К"
         else -> name.take(1).uppercase().ifBlank { "•" }
     }
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(if (pressed) 0.91f else 1f, tween(140), label = "installed-app-scale")
     Column(
-        modifier = Modifier.width(76.dp).clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick).padding(3.dp),
+        modifier = Modifier.width(76.dp)
+            .graphicsLayer { scaleX = pressScale; scaleY = pressScale; alpha = if (pressed) 0.82f else 1f }
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick)
+            .padding(3.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -390,7 +396,7 @@ private fun NumberButton(
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(150), label = "number-key-scale")
+    val scale by animateFloatAsState(if (pressed) 0.91f else 1f, tween(140), label = "number-key-scale")
     val bg = if (outlined) Color(0xFF1A1A1A) else Color(0xFF343434)
     Box(
         modifier = modifier.height(57.dp)
@@ -422,9 +428,19 @@ private fun DigitalVolumePill(
     ) {
         val topIcon = when (title) { "VOL" -> Icons.Filled.VolumeUp; "CH" -> Icons.Filled.KeyboardArrowUp; else -> Icons.Filled.Add }
         val bottomIcon = when (title) { "VOL" -> Icons.Filled.VolumeDown; "CH" -> Icons.Filled.KeyboardArrowDown; else -> Icons.Filled.Remove }
-        Icon(topIcon, contentDescription = "$title up", tint = Color.White, modifier = Modifier.size(26.dp).clickable(enabled = enabled, onClick = onTop).padding(2.dp))
+        val topInteractions = remember { MutableInteractionSource() }
+        val topPressed by topInteractions.collectIsPressedAsState()
+        val topScale by animateFloatAsState(if (topPressed) 0.91f else 1f, tween(140), label = "digital-pill-top-scale")
+        val bottomInteractions = remember { MutableInteractionSource() }
+        val bottomPressed by bottomInteractions.collectIsPressedAsState()
+        val bottomScale by animateFloatAsState(if (bottomPressed) 0.91f else 1f, tween(140), label = "digital-pill-bottom-scale")
+        Icon(topIcon, contentDescription = "$title up", tint = Color.White, modifier = Modifier.size(26.dp)
+            .graphicsLayer { scaleX = topScale; scaleY = topScale; alpha = if (topPressed) 0.82f else 1f }
+            .clickable(interactionSource = topInteractions, indication = null, enabled = enabled, onClick = onTop).padding(2.dp))
         Text(title, color = Color(0xFFB0B0B0), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Icon(bottomIcon, contentDescription = "$title down", tint = Color.White, modifier = Modifier.size(26.dp).clickable(enabled = enabled, onClick = onBottom).padding(2.dp))
+        Icon(bottomIcon, contentDescription = "$title down", tint = Color.White, modifier = Modifier.size(26.dp)
+            .graphicsLayer { scaleX = bottomScale; scaleY = bottomScale; alpha = if (bottomPressed) 0.82f else 1f }
+            .clickable(interactionSource = bottomInteractions, indication = null, enabled = enabled, onClick = onBottom).padding(2.dp))
     }
 }
 
@@ -446,7 +462,7 @@ private fun DigitalAction(
     )
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else if (recording) pulse else 1f, tween(150), label = "digital-action-scale")
+    val scale by animateFloatAsState(if (pressed) 0.91f else if (recording) pulse else 1f, tween(140), label = "digital-action-scale")
     Column(
         modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .height(66.dp)

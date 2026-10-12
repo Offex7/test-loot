@@ -93,7 +93,7 @@ object RadioTvPalette {
     val DeepRed = Color(0xFFD32F2F)
     val Blue = Color(0xFF2196F3)
     val Green = Color(0xFF43A047)
-    val Black = Color(0xFF1A1A1A)
+    val Black = Color(0xFF000000)
     val Surface = Color(0xFF202020)
     val Raised = Color(0xFF333333)
     val Muted = Color(0xFFB0B0B0)
