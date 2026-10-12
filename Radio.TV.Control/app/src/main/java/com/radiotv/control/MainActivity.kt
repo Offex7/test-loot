@@ -966,6 +966,34 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                             )
                                         }
                                     }
+                                    item {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(RadioTvPalette.Raised)
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                                        ) {
+                                            Text("В разработке", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                            Text(
+                                                "Аппаратная проверка Samsung Tizen, LG webOS, Roku, Bluetooth HID, DLNA и аэромыши ещё не подтверждена на реальных телевизорах. План: проверить подключение, команды, повторное соединение и передачу медиа на устройствах каждого семейства.",
+                                                color = RadioTvPalette.Muted,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Text(
+                                                "Голосовой ввод PCM 16-bit mono не подтверждён на физическом Android TV. План: проверить запись, передачу аудиокадров и остановку голосовой сессии на совместимом телевизоре.",
+                                                color = RadioTvPalette.Muted,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Text(
+                                                "Реальные иконки приложений доступны не для всех протоколов; при отсутствии URL используется запасное обозначение. План: загружать и кешировать иконки там, где ТВ предоставляет их в API.",
+                                                color = RadioTvPalette.Muted,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
 
                                 }
                             }
