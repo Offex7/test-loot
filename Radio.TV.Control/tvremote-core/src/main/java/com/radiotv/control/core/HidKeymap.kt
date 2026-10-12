@@ -22,6 +22,8 @@ internal fun hidInputFor(key: RemoteKey): HidInputCommand = when (key) {
     RemoteKey.CHANNEL_DOWN -> HidInputCommand.Consumer(0x009D)
     RemoteKey.SOURCE -> HidInputCommand.Consumer(0x00B8)
     RemoteKey.PLAY_PAUSE -> HidInputCommand.Consumer(0x00CD)
+    RemoteKey.PLAY -> HidInputCommand.Consumer(0x00B0)
+    RemoteKey.PAUSE -> HidInputCommand.Consumer(0x00B1)
     RemoteKey.STOP -> HidInputCommand.Consumer(0x00B7)
     RemoteKey.REWIND -> HidInputCommand.Consumer(0x00B4)
     RemoteKey.FAST_FORWARD -> HidInputCommand.Consumer(0x00B3)

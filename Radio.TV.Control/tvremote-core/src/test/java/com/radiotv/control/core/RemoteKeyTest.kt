@@ -13,6 +13,8 @@ class RemoteKeyTest {
         assertTrue(RemoteKey.UP in RemoteKey.entries)
         assertTrue(RemoteKey.OK in RemoteKey.entries)
         assertTrue(RemoteKey.PLAY_PAUSE in RemoteKey.entries)
+        assertTrue(RemoteKey.PLAY in RemoteKey.entries)
+        assertTrue(RemoteKey.PAUSE in RemoteKey.entries)
         assertTrue(RemoteKey.SOURCE in RemoteKey.entries)
     }
 
@@ -26,6 +28,8 @@ class RemoteKeyTest {
         assertEquals(HidInputCommand.Consumer(0x00E9), hidInputFor(RemoteKey.VOLUME_UP))
         assertEquals(HidInputCommand.Consumer(0x00E2), hidInputFor(RemoteKey.MUTE))
         assertEquals(HidInputCommand.Consumer(0x00CD), hidInputFor(RemoteKey.PLAY_PAUSE))
+        assertEquals(HidInputCommand.Consumer(0x00B0), hidInputFor(RemoteKey.PLAY))
+        assertEquals(HidInputCommand.Consumer(0x00B1), hidInputFor(RemoteKey.PAUSE))
     }
 
     @Test fun asciiHidMappingSupportsTextAndShift() {

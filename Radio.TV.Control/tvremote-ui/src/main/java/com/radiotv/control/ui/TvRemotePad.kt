@@ -312,7 +312,7 @@ fun TvRemotePad(
                     modifier = Modifier.size(mediaButtonSize),
                     shape = RoundedCornerShape(18.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.PLAY_PAUSE) }
+                    onClick = { onKey(RemoteKey.PLAY) }
                 ) {
                     Icon(
                         Icons.Filled.PlayArrow,
@@ -326,7 +326,7 @@ fun TvRemotePad(
                     modifier = Modifier.size(mediaButtonSize),
                     shape = RoundedCornerShape(18.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.PLAY_PAUSE) }
+                    onClick = { onKey(RemoteKey.PAUSE) }
                 ) {
                     Icon(
                         Icons.Filled.Pause,

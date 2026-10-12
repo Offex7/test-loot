@@ -990,6 +990,8 @@ private fun remoteKeyFeedbackLabel(key: RemoteKey): String = when (key) {
     RemoteKey.CHANNEL_UP -> "Канал плюс"
     RemoteKey.CHANNEL_DOWN -> "Канал минус"
     RemoteKey.PLAY_PAUSE -> "Воспроизведение или пауза"
+    RemoteKey.PLAY -> "Воспроизведение"
+    RemoteKey.PAUSE -> "Пауза"
     RemoteKey.REWIND -> "Перемотка назад"
     RemoteKey.FAST_FORWARD -> "Перемотка вперёд"
     RemoteKey.SOURCE -> "Источник"

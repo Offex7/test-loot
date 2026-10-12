@@ -19,6 +19,8 @@ enum class RemoteKey(val wireCode: RemoteMessageProto.RemoteKeyCode) {
     CHANNEL_DOWN(RemoteMessageProto.RemoteKeyCode.KEYCODE_CHANNEL_DOWN),
     SOURCE(RemoteMessageProto.RemoteKeyCode.KEYCODE_TV_INPUT),
     PLAY_PAUSE(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_PLAY_PAUSE),
+    PLAY(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_PLAY),
+    PAUSE(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_PAUSE),
     STOP(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_STOP),
     REWIND(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_REWIND),
     FAST_FORWARD(RemoteMessageProto.RemoteKeyCode.KEYCODE_MEDIA_FAST_FORWARD),
