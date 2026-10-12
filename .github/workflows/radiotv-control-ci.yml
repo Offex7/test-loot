@@ -106,7 +106,7 @@ jobs:
           # Build stays on compileSdk/targetSdk 37; API 31 is only a lightweight screenshot runtime.
           channel: stable
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -memory 2048 -cores 2 -gpu off
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -memory 4096 -cores 2 -gpu swiftshader_indirect
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
       - name: Upload UI screenshots
