@@ -58,6 +58,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.TouchApp
@@ -789,18 +790,16 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                     Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled -> sendUiFeedback("Вибрация"); scope.launch { context.setVibrationEnabled(enabled) } })
                                                 }
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Column(Modifier.weight(1f)) { Text("Звук при нажатии", fontWeight = FontWeight.SemiBold); Text("Выключен по умолчанию", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
+                                                    Column(Modifier.weight(1f)) { Text("Звук при нажатии", fontWeight = FontWeight.SemiBold); Text(if (feedbackSettings.clickSoundEnabled) "Звук включён" else "Выключен по умолчанию", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
                                                     Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled -> sendUiFeedback("Звук"); scope.launch { context.setClickSoundEnabled(enabled) } })
                                                 }
-                                                if (feedbackSettings.clickSoundEnabled) {
-                                                    Text("Тип звука", fontWeight = FontWeight.SemiBold)
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                                        listOf(SOUND_TYPE_CLICK to "Клик", SOUND_TYPE_VOICE to "Голос").forEach { choice ->
-                                                            Box(Modifier.weight(1f).background(if (feedbackSettings.soundType == choice.first) RadioTvPalette.Red else RadioTvPalette.Black, RoundedCornerShape(10.dp)).clickable { sendUiFeedback(choice.second); scope.launch { context.setClickSoundType(choice.first) } }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(choice.second, color = Color.White, fontWeight = FontWeight.SemiBold) }
-                                                        }
+                                                Text("Тип звука", fontWeight = FontWeight.SemiBold)
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                    listOf(SOUND_TYPE_CLICK to "Клик", SOUND_TYPE_VOICE to "Голос").forEach { choice ->
+                                                        Box(Modifier.weight(1f).background(if (feedbackSettings.soundType == choice.first) RadioTvPalette.Red else RadioTvPalette.Black, RoundedCornerShape(10.dp)).clickable { sendUiFeedback(choice.second); scope.launch { context.setClickSoundType(choice.first) } }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(choice.second, color = Color.White, fontWeight = FontWeight.SemiBold) }
                                                     }
-                                                    if (feedbackSettings.soundType == SOUND_TYPE_VOICE) Text("Озвучивание действия на русском языке (если установлен TTS).", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
+                                                if (feedbackSettings.clickSoundEnabled && feedbackSettings.soundType == SOUND_TYPE_VOICE) Text("Озвучивание действия на русском языке (если установлен TTS).", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                             }
                                         }
                                     }
@@ -1243,7 +1242,7 @@ private fun ControlActionButton(
             "Аэромышь" -> Icons.Filled.Mouse
             "Клавиатура" -> Icons.Filled.Dialpad
             "Тачпад" -> Icons.Filled.TouchApp
-            "Трансляция" -> Icons.Filled.Tv
+            "Трансляция" -> Icons.Filled.Cast
             else -> null
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
