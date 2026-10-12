@@ -99,14 +99,14 @@ jobs:
         with:
           api-level: "34"
           system-image-api-level: "34"
-          target: google_atd
+          target: default
           emulator-boot-timeout: 720
           arch: x86_64
           profile: pixel_2
           # Build stays on compileSdk/targetSdk 37; API 34 Google ATD is used only for UI screenshots.
           channel: stable
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -memory 4096 -cores 2 -gpu swiftshader_indirect
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
       - name: Upload UI screenshots
