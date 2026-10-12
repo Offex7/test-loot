@@ -271,7 +271,7 @@ internal fun DigitalRemotePanel(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    NumberButton("TV", modifier = Modifier.weight(1f), outlined = true, onClick = { onKey(RemoteKey.SOURCE) })
+                    NumberButton("Cast", modifier = Modifier.weight(1f), outlined = true, onClick = { onFeatureAction(RemoteFeatureAction.CAST) })
                     NumberButton("0", modifier = Modifier.weight(1f), onClick = { onKey(RemoteKey.NUMBER_0) })
                     NumberButton("Menu", modifier = Modifier.weight(1f), outlined = true, onClick = { onKey(RemoteKey.MENU) })
                 }
@@ -401,7 +401,7 @@ private fun NumberButton(
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(title, color = Color.White, fontSize = if (title == "Menu") 15.sp else 23.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(title, color = Color.White, fontSize = if (title == "Menu" || title == "Cast") 15.sp else 23.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 

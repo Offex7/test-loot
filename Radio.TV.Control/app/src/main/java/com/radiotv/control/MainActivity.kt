@@ -669,10 +669,20 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                         when (selectedTab) {
                             RadioTvTab.REMOTE -> {
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    TvRemotePad(enabled = connected || hidConnected, modifier = Modifier.widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 4.dp, vertical = 2.dp),
-                                        onKey = dispatchRemoteKey, onFeatureAction = handleFeatureAction, touchpadActive = showTouchpad,
-                                        airMouseActive = airMouseStatus is AirMouseStatus.Active, voiceActive = voiceStatus is VoiceInputStatus.Recording,
-                                        keyboardActive = showKeyboard, featureMessage = null, showFeatureActions = false)
+                                    TvRemotePad(
+                                        enabled = connected || hidConnected,
+                                        modifier = Modifier.widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 4.dp, vertical = 2.dp),
+                                        onKey = dispatchRemoteKey,
+                                        onFeatureAction = handleFeatureAction,
+                                        touchpadActive = showTouchpad,
+                                        airMouseActive = airMouseStatus is AirMouseStatus.Active,
+                                        voiceActive = voiceStatus is VoiceInputStatus.Recording,
+                                        keyboardActive = showKeyboard,
+                                        featureMessage = null,
+                                        showFeatureActions = false,
+                                        deviceName = if (connected || hidConnected) selectedDeviceName.ifBlank { "Телевизор" } else "Нет подключения",
+                                        onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS }
+                                    )
                                 }
                             }
                             RadioTvTab.CONTROL -> {
