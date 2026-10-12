@@ -45,6 +45,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            systemProperty(
+                "radio.tv.screenshot.outputDir",
+                layout.buildDirectory.dir("outputs/roborazzi/radio-tv-screenshots").get().asFile.absolutePath
+            )
+        }
+    }
 }
 kotlin {
     compilerOptions {
@@ -61,6 +70,18 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
+    // JVM-only screenshot tests: native Robolectric graphics + Compose + Roborazzi (no emulator/ADB).
+    testImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.76.0")
+    testRuntimeOnly("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("io.insert-koin:koin-android:4.1.1")

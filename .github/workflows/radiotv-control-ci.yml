@@ -92,25 +92,23 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Capture UI screenshots in API 35 Google APIs emulator
+      - name: Capture UI screenshots with Robolectric and Compose (JVM, no emulator)
         if: github.event_name != 'pull_request'
-        timeout-minutes: 20
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: "35"
-          system-image-api-level: "35"
-          target: google_apis
-          emulator-boot-timeout: 720
-          arch: x86_64
-          profile: pixel_2
-          # Compile/target remain SDK 37; API 35 Google APIs provides a complete launcher and system UI for capture.
-          channel: stable
-          # The action's built-in settings command intermittently exits with Broken pipe on API 35.
-          # Handle animation scales best-effort in the capture script after sys.boot_completed=1.
-          disable-animations: false
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader_indirect -memory 4096 -cores 2
-          script: |
-            bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
+        run: gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest
+      - name: Validate and stage Robolectric screenshots
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_DIR="app/build/outputs/roborazzi/radio-tv-screenshots"
+          OUTPUT_DIR="app/ui-screenshots"
+          mkdir -p "$OUTPUT_DIR"
+          for file in remote.png digital-panel.png settings.png; do
+            test -s "$SOURCE_DIR/$file" || { echo "Missing Robolectric screenshot: $SOURCE_DIR/$file"; exit 1; }
+            python3 ../ci/validate-screenshot.py "$SOURCE_DIR/$file"
+            cp "$SOURCE_DIR/$file" "$OUTPUT_DIR/$file"
+            file "$OUTPUT_DIR/$file"
+          done
       - name: Upload UI screenshots
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
