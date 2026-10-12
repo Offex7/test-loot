@@ -28,6 +28,41 @@ wake_and_unlock() {
   adb shell input swipe 270 1080 270 260 350 >/dev/null 2>&1 || true
 }
 
+recover_system_dialog() {
+  attempt=1
+  while [ "$attempt" -le 5 ]; do
+    timeout 15s adb shell uiautomator dump /sdcard/radiotv-window.xml >/dev/null 2>&1 || { sleep 2; attempt=$((attempt + 1)); continue; }
+    timeout 5s adb shell cat /sdcard/radiotv-window.xml > "$OUT/.window-hierarchy.xml" 2>/dev/null || { sleep 2; attempt=$((attempt + 1)); continue; }
+    if grep -q "Process system isn.t responding" "$OUT/.window-hierarchy.xml"; then
+      point="$(python3 - "$OUT/.window-hierarchy.xml" <<'PY'
+import re, sys
+xml = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r'text="Wait"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
+if not m:
+    m = re.search(r'text="Wait"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]".{0,300}?', xml)
+if m:
+    x1, y1, x2, y2 = map(int, m.groups())
+    print((x1+x2)//2, (y1+y2)//2)
+PY
+      )"
+      if [ -n "$point" ]; then
+        echo "System-not-responding dialog detected; selecting Wait (attempt $attempt)." >&2
+        adb shell input tap $point >/dev/null 2>&1 || true
+        sleep 10
+      else
+        echo "System-not-responding dialog detected but Wait button could not be located." >&2
+        cat "$OUT/.window-hierarchy.xml" >&2 || true
+        return 1
+      fi
+    else
+      return 0
+    fi
+    attempt=$((attempt + 1))
+  done
+  echo "System-not-responding dialog persists after five Wait attempts." >&2
+  cat "$OUT/.window-hierarchy.xml" >&2 || true
+  return 1
+}
 wait_for_foreground() {
   elapsed=0
   while [ "$elapsed" -lt 45 ]; do
@@ -55,8 +90,10 @@ capture_screen() {
   timeout 15s adb shell am start -n "$ACTIVITY" --es ui-screen "$screen"
   wait_for_foreground
   wake_and_unlock
+  recover_system_dialog
   sleep 5
-  timeout 15s adb exec-out screencap -p > "$temp"
+  timeout 15s adb shell screencap -p /sdcard/radiotv-capture.png
+  timeout 15s adb pull /sdcard/radiotv-capture.png "$temp" >/dev/null
   test -s "$temp" || { echo "Missing screenshot: $filename" >&2; exit 1; }
   # Decode the screenshot with Python stdlib and reject blank frames even if ImageMagick is absent.
   if ! python3 - "$temp" <<'PY'
