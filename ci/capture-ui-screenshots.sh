@@ -78,8 +78,15 @@ capture_screen() {
   wake_and_unlock
   recover_system_dialog
   sleep 5
-  timeout 8s adb shell screencap -p /sdcard/radiotv-capture.png
-  timeout 12s adb pull /sdcard/radiotv-capture.png "$temp" >/dev/null
+  # Capture directly over ADB to avoid a second remote-file/pull operation.
+  # A blank or stalled emulator is a hard failure; bounded diagnostics are attached to the CI log.
+  if ! timeout 20s adb exec-out screencap -p > "$temp"; then
+    echo "ADB screencap failed or timed out for $filename; collecting bounded diagnostics." >&2
+    timeout 6s adb shell dumpsys power >&2 || true
+    timeout 6s adb shell dumpsys window windows >&2 || true
+    timeout 8s adb logcat -d -t 500 -v brief 2>&1 | grep -E "$PACKAGE|FATAL EXCEPTION|AndroidRuntime|ANR in|system_server|SurfaceFlinger" | tail -n 80 >&2 || true
+    exit 1
+  fi
   test -s "$temp" || { echo "Missing screenshot: $filename" >&2; exit 1; }
   # Decode the screenshot with Python stdlib and reject blank frames even if ImageMagick is absent.
   if ! python3 - "$temp" <<'PY'
