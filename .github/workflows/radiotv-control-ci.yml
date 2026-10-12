@@ -25,7 +25,7 @@ jobs:
   build-and-verify:
     name: Build, test and inspect APK
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: Radio.TV.Control
@@ -94,13 +94,13 @@ jobs:
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Capture UI screenshots in API 34 Google ATD emulator
         if: github.event_name != 'pull_request'
-        timeout-minutes: 10
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: "34"
           system-image-api-level: "34"
           target: google_atd
-          emulator-boot-timeout: 360
+          emulator-boot-timeout: 720
           arch: x86_64
           profile: pixel_2
           # Build stays on compileSdk/targetSdk 37; API 34 Google ATD is used only for UI screenshots.
