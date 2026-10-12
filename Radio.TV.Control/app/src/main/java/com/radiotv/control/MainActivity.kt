@@ -602,10 +602,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
             RemoteFeatureAction.KEYBOARD -> {
                 if (selectedTab == RadioTvTab.REMOTE) {
                     selectedTab = RadioTvTab.CONTROL
-                    "Открыта цифровая панель."
+                    showKeyboard = true
+                    "Открыта панель ввода. Нажмите поле «Текст для телевизора», введите текст и отправьте его."
                 } else {
                     showKeyboard = !showKeyboard
-                    if (showKeyboard) "Откройте клавиатуру и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
+                    if (showKeyboard) "Откройте поле ввода и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
                 }
             }
             RemoteFeatureAction.AIR_MOUSE -> {
@@ -620,9 +621,15 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 }
             }
             RemoteFeatureAction.TOUCHPAD -> {
-                showTouchpad = !showTouchpad
-                if (showTouchpad) "Тачпад включён. Для движения курсора требуется соединение Bluetooth HID."
-                else "Тачпад скрыт."
+                if (selectedTab == RadioTvTab.REMOTE) {
+                    selectedTab = RadioTvTab.CONTROL
+                    showTouchpad = true
+                    "Открыта панель тачпада. Для движения курсора подключите телевизор по Bluetooth HID."
+                } else {
+                    showTouchpad = !showTouchpad
+                    if (showTouchpad) "Тачпад включён. Для движения курсора требуется соединение Bluetooth HID."
+                    else "Тачпад скрыт."
+                }
             }
             RemoteFeatureAction.CAST -> {
                 // Show the system picker first; ask for LAN access only after content is selected.
