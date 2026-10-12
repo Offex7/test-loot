@@ -645,7 +645,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
             RemoteFeatureAction.KEYBOARD -> "Клавиатура"
             RemoteFeatureAction.AIR_MOUSE -> "Аэромышь"
             RemoteFeatureAction.TOUCHPAD -> "Тачпад"
-            RemoteFeatureAction.CAST -> "Дублирование"
+            RemoteFeatureAction.CAST -> "Трансляция"
             RemoteFeatureAction.APP_YOUTUBE -> "YouTube"
             RemoteFeatureAction.APP_NETFLIX -> "Netflix"
         })
@@ -704,7 +704,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                             RadioTvTab.REMOTE -> {
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     TvRemotePad(
-                                        enabled = connected || hidConnected,
+                                        enabled = connected || otherConnected || hidConnected,
                                         modifier = Modifier.widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 4.dp, vertical = 2.dp),
                                         onKey = dispatchRemoteKey,
                                         onFeatureAction = handleFeatureAction,
@@ -952,7 +952,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                             .onFailure { statusMessage = it.message ?: "Не удалось отправить текст." }
                                                     }
                                                 },
-                                                enabled = keyboardText.isNotEmpty() && (connected || hidConnected),
+                                                enabled = keyboardText.isNotEmpty() && (connected || otherConnected || hidConnected),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text("ОТПРАВИТЬ ТЕКСТ НА ТВ") }
                                         }
