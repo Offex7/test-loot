@@ -25,8 +25,14 @@ while [ "$attempt" -lt 60 ]; do
   attempt=$((attempt + 1))
 done
 [ "$boot_completed" = "1" ] || { echo "Android did not report sys.boot_completed=1 within 120 seconds." >&2; exit 1; }
-timeout 8s adb shell wm size 540x1200
-timeout 8s adb shell wm density 220
+
+# Avoid failing the whole emulator action if Android Settings briefly loses Binder/ADB during first boot.
+# The reactivecircus action's built-in animation setup was fatal on API 35 (Broken pipe), so these are best-effort.
+for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
+  timeout 8s adb shell settings put global "$setting" 0 >/dev/null 2>&1 || echo "Warning: could not set $setting; continuing."
+done
+timeout 8s adb shell wm size 540x1200 >/dev/null 2>&1 || echo "Warning: could not set 540x1200; using default display size."
+timeout 8s adb shell wm density 220 >/dev/null 2>&1 || echo "Warning: could not set 220 dpi; using default display density."
 timeout 8s adb shell settings put global stay_on_while_plugged_in 7 >/dev/null 2>&1 || true
 timeout 8s adb shell svc power stayon true >/dev/null 2>&1 || true
 timeout 8s adb shell settings put system screen_brightness_mode 0 >/dev/null 2>&1 || true

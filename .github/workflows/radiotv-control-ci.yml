@@ -105,7 +105,9 @@ jobs:
           profile: pixel_2
           # Compile/target remain SDK 37; API 35 Google APIs provides a complete launcher and system UI for capture.
           channel: stable
-          disable-animations: true
+          # The action's built-in settings command intermittently exits with Broken pipe on API 35.
+          # Handle animation scales best-effort in the capture script after sys.boot_completed=1.
+          disable-animations: false
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-load -gpu swiftshader_indirect -memory 4096 -cores 2
           script: |
             bash "$(git rev-parse --show-toplevel)/ci/capture-ui-screenshots.sh"
