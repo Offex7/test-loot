@@ -27,11 +27,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,6 +92,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -810,16 +814,51 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                         Text(voiceStatus.asUserLabel(), color = if (voiceStatus is VoiceInputStatus.Recording) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
                                     item {
+                                        if (installedApps.isNotEmpty()) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("ПРИЛОЖЕНИЯ НА ТЕЛЕВИЗОРЕ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                                                installedApps.take(12).forEach { app ->
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth()
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .background(RadioTvPalette.Raised)
+                                                            .padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(app.name, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.Medium)
+                                                        OutlinedButton(onClick = {
+                                                            sendUiFeedback(app.name)
+                                                            scope.launch {
+                                                                runCatching { otherTvRemote.launchInstalledApp(app) }
+                                                                    .onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
+                                                            }
+                                                        }) { Text("ОТКРЫТЬ") }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    item {
                                         Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("◉\nМикрофон", voiceStatus is VoiceInputStatus.Recording, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.VOICE_INPUT) }
-                                            ControlActionButton("✥\nАэромышь", airMouseStatus is AirMouseStatus.Active, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.AIR_MOUSE) }
+                                            ControlActionButton("Микрофон", voiceStatus is VoiceInputStatus.Recording, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.VOICE_INPUT) }
+                                            ControlActionButton("Аэромышь", airMouseStatus is AirMouseStatus.Active, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.AIR_MOUSE) }
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("⌨\nКлавиатура", showKeyboard, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.KEYBOARD) }
-                                            ControlActionButton("▧\nТачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
-                                            ControlActionButton("▣\nТрансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
+                                            ControlActionButton("Клавиатура", showKeyboard, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.KEYBOARD) }
+                                            ControlActionButton("Тачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
+                                            ControlActionButton("Трансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
                                         }
+                                        OutlinedButton(
+                                            onClick = {
+                                                sendUiFeedback("Дублирование")
+                                                selectedTab = RadioTvTab.CONTROL
+                                                duplicationExpanded = true
+                                                refreshCastDevices()
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) { Text("НАСТРОИТЬ ДУБЛИРОВАНИЕ / ТРАНСЛЯЦИЮ") }
                                         Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
@@ -1174,9 +1213,21 @@ private fun ControlActionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.91f else 1f,
+        animationSpec = tween(140),
+        label = "settings-feature-button-scale"
+    )
     Button(
         onClick = onClick,
-        modifier = modifier.height(60.dp),
+        modifier = modifier.height(60.dp).graphicsLayer {
+            scaleX = pressScale
+            scaleY = pressScale
+            alpha = if (pressed) 0.82f else 1f
+        },
+        interactionSource = interactions,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (active) RadioTvPalette.Red else RadioTvPalette.Raised,
             contentColor = Color.White,
