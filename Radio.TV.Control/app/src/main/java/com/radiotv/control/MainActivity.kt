@@ -713,7 +713,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                                         keyboardActive = showKeyboard,
                                         featureMessage = null,
                                         showFeatureActions = false,
-                                        deviceName = if (connected || hidConnected) selectedDeviceName.ifBlank { "Телевизор" } else "Нет подключения",
+                                        deviceName = if (connected || otherConnected || hidConnected) selectedDeviceName.ifBlank { "Телевизор" } else "Нет подключения",
                                         onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS }
                                     )
                                 }
