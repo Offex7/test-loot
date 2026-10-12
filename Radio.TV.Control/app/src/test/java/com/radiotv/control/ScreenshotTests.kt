@@ -17,7 +17,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.koin.core.context.GlobalContext
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -39,22 +38,30 @@ class ScreenshotTests {
     fun screenshotSettings() = captureScreen(screen = "settings", fileName = "settings.png")
 
     private fun captureScreen(screen: String, fileName: String) {
-        ApplicationProvider.getApplicationContext<Context>()
-        val koin = GlobalContext.get()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val remote = AndroidTvRemoteV2Transport(context)
+        val bluetoothHid = BluetoothHidController(context)
+        val airMouse = GyroAirMouseController(context, bluetoothHid)
+        val voiceInput = AndroidTvVoiceInputController(context, remote)
+        val otherTvRemote = OtherTvRemoteController(context)
+        val dlnaCast = DlnaCastController(context)
         val output = File("build/screenshots", fileName).absoluteFile
         output.parentFile?.mkdirs()
 
+        // Freeze the clock after the first second so infinite UI animations cannot block capture.
+        composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             RadioTvControlScreen(
-                remote = koin.get<AndroidTvRemoteV2Transport>(),
-                bluetoothHid = koin.get<BluetoothHidController>(),
-                airMouse = koin.get<GyroAirMouseController>(),
-                voiceInput = koin.get<AndroidTvVoiceInputController>(),
-                otherTvRemote = koin.get<OtherTvRemoteController>(),
-                dlnaCast = koin.get<DlnaCastController>(),
+                remote = remote,
+                bluetoothHid = bluetoothHid,
+                airMouse = airMouse,
+                voiceInput = voiceInput,
+                otherTvRemote = otherTvRemote,
+                dlnaCast = dlnaCast,
                 initialUiScreen = screen
             )
         }
+        composeRule.mainClock.advanceTimeBy(1_000L)
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage(output.absolutePath)
 
