@@ -15,6 +15,8 @@ adb shell wm size 540x1200
 adb shell wm density 220
 adb shell settings put global stay_on_while_plugged_in 7 >/dev/null 2>&1 || true
 adb shell svc power stayon true >/dev/null 2>&1 || true
+adb shell settings put system screen_brightness_mode 0 >/dev/null 2>&1 || true
+adb shell settings put system screen_brightness 255 >/dev/null 2>&1 || true
 timeout 90s adb install -r "$APK"
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_LOCAL_NETWORK >/dev/null 2>&1 || true
 
@@ -57,7 +59,7 @@ capture_screen() {
   timeout 15s adb exec-out screencap -p > "$temp"
   test -s "$temp" || { echo "Missing screenshot: $filename" >&2; exit 1; }
   # Decode the screenshot with Python stdlib and reject blank frames even if ImageMagick is absent.
-  python3 - "$temp" <<'PY'
+  if ! python3 - "$temp" <<'PY'
 import struct, sys, zlib
 
 path = sys.argv[1]
@@ -125,6 +127,16 @@ print(f"Screenshot check: {width}x{height}, sampled-colours={len(colours)}, mean
 if len(colours) < 16 or mean_rgb < 3.0:
     raise SystemExit("Screenshot appears blank/undrawn; refusing to publish it.")
 PY
+  then
+    echo "Diagnostic dump for blank screenshot: $filename" >&2
+    adb shell dumpsys power >&2 || true
+    adb shell dumpsys window windows >&2 || true
+    adb shell dumpsys activity activities >&2 || true
+    adb shell uiautomator dump /sdcard/radiotv-window.xml >/dev/null 2>&1 || true
+    adb shell cat /sdcard/radiotv-window.xml >&2 || true
+    adb logcat -d -t 1200 -v brief 2>&1 | grep -E "$PACKAGE|FATAL EXCEPTION|AndroidRuntime|ANR in|OpenGLRenderer|EGL_emulation|SurfaceFlinger" | tail -n 180 >&2 || true
+    exit 1
+  fi
   mv "$temp" "$OUT/$filename"
   file "$OUT/$filename"
 }
