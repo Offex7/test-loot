@@ -729,7 +729,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                 .onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
                                         }
                                     },
-                                    enabled = connected || hidConnected, micRecording = voiceStatus is VoiceInputStatus.Recording,
+                                    enabled = connected || otherConnected || hidConnected, micRecording = voiceStatus is VoiceInputStatus.Recording,
                                     airMouseActive = airMouseStatus is AirMouseStatus.Active, keyboardActive = showKeyboard,
                                     onKey = dispatchRemoteKey, onFeatureAction = handleFeatureAction,
                                     onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS },
