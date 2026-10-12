@@ -9,6 +9,7 @@ enum class RemoteKey(val wireCode: RemoteMessageProto.RemoteKeyCode) {
     RIGHT(RemoteMessageProto.RemoteKeyCode.KEYCODE_DPAD_RIGHT),
     OK(RemoteMessageProto.RemoteKeyCode.KEYCODE_DPAD_CENTER),
     BACK(RemoteMessageProto.RemoteKeyCode.KEYCODE_BACK),
+    EXIT(RemoteMessageProto.RemoteKeyCode.KEYCODE_ESCAPE),
     HOME(RemoteMessageProto.RemoteKeyCode.KEYCODE_HOME),
     MENU(RemoteMessageProto.RemoteKeyCode.KEYCODE_MENU),
     POWER(RemoteMessageProto.RemoteKeyCode.KEYCODE_POWER),

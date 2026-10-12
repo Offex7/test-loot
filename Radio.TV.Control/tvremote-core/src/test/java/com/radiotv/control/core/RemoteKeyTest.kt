@@ -12,6 +12,7 @@ class RemoteKeyTest {
     @Test fun basicControlAndMediaKeysExist() {
         assertTrue(RemoteKey.UP in RemoteKey.entries)
         assertTrue(RemoteKey.OK in RemoteKey.entries)
+        assertTrue(RemoteKey.EXIT in RemoteKey.entries)
         assertTrue(RemoteKey.PLAY_PAUSE in RemoteKey.entries)
         assertTrue(RemoteKey.PLAY in RemoteKey.entries)
         assertTrue(RemoteKey.PAUSE in RemoteKey.entries)
@@ -21,6 +22,7 @@ class RemoteKeyTest {
     @Test fun bluetoothHidMapsNavigationToKeyboardUsages() {
         assertEquals(HidInputCommand.Keyboard(0x52), hidInputFor(RemoteKey.UP))
         assertEquals(HidInputCommand.Keyboard(0x28), hidInputFor(RemoteKey.OK))
+        assertEquals(HidInputCommand.Keyboard(0x29), hidInputFor(RemoteKey.EXIT))
         assertEquals(HidInputCommand.Keyboard(0x27), hidInputFor(RemoteKey.NUMBER_0))
     }
 

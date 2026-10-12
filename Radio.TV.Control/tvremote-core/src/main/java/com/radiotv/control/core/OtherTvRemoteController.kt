@@ -420,7 +420,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
 
     private fun samsungKey(key: RemoteKey): String = when (key) {
         RemoteKey.UP -> "KEY_UP"; RemoteKey.DOWN -> "KEY_DOWN"; RemoteKey.LEFT -> "KEY_LEFT"; RemoteKey.RIGHT -> "KEY_RIGHT"
-        RemoteKey.OK -> "KEY_ENTER"; RemoteKey.BACK -> "KEY_RETURN"; RemoteKey.HOME -> "KEY_HOME"; RemoteKey.MENU -> "KEY_MENU"
+        RemoteKey.OK -> "KEY_ENTER"; RemoteKey.BACK -> "KEY_RETURN"; RemoteKey.EXIT -> "KEY_EXIT"; RemoteKey.HOME -> "KEY_HOME"; RemoteKey.MENU -> "KEY_MENU"
         RemoteKey.POWER -> "KEY_POWER"; RemoteKey.MUTE -> "KEY_MUTE"; RemoteKey.VOLUME_UP -> "KEY_VOLUP"; RemoteKey.VOLUME_DOWN -> "KEY_VOLDOWN"
         RemoteKey.CHANNEL_UP -> "KEY_CHUP"; RemoteKey.CHANNEL_DOWN -> "KEY_CHDOWN"; RemoteKey.SOURCE -> "KEY_SOURCE"
         RemoteKey.PLAY_PAUSE -> "KEY_PLAY"; RemoteKey.PLAY -> "KEY_PLAY"; RemoteKey.PAUSE -> "KEY_PAUSE"; RemoteKey.STOP -> "KEY_STOP"; RemoteKey.REWIND -> "KEY_REWIND"; RemoteKey.FAST_FORWARD -> "KEY_FF"
@@ -431,7 +431,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
 
     private fun lgKey(key: RemoteKey): String = when (key) {
         RemoteKey.UP -> "UP"; RemoteKey.DOWN -> "DOWN"; RemoteKey.LEFT -> "LEFT"; RemoteKey.RIGHT -> "RIGHT"
-        RemoteKey.OK -> "ENTER"; RemoteKey.BACK -> "BACK"; RemoteKey.HOME -> "HOME"; RemoteKey.MENU -> "MENU"
+        RemoteKey.OK -> "ENTER"; RemoteKey.BACK -> "BACK"; RemoteKey.EXIT -> "EXIT"; RemoteKey.HOME -> "HOME"; RemoteKey.MENU -> "MENU"
         RemoteKey.POWER -> "POWER"; RemoteKey.MUTE -> "MUTE"; RemoteKey.VOLUME_UP -> "VOLUMEUP"; RemoteKey.VOLUME_DOWN -> "VOLUMEDOWN"
         RemoteKey.CHANNEL_UP -> "CHANNELUP"; RemoteKey.CHANNEL_DOWN -> "CHANNELDOWN"; RemoteKey.SOURCE -> "INPUT"
         RemoteKey.PLAY_PAUSE -> "PLAY"; RemoteKey.PLAY -> "PLAY"; RemoteKey.PAUSE -> "PAUSE"; RemoteKey.STOP -> "STOP"; RemoteKey.REWIND -> "REWIND"; RemoteKey.FAST_FORWARD -> "FASTFORWARD"
@@ -442,7 +442,7 @@ class OtherTvRemoteController(context: Context) : AutoCloseable {
 
     private fun rokuKey(key: RemoteKey): String = when (key) {
         RemoteKey.UP -> "Up"; RemoteKey.DOWN -> "Down"; RemoteKey.LEFT -> "Left"; RemoteKey.RIGHT -> "Right"
-        RemoteKey.OK -> "Select"; RemoteKey.BACK -> "Back"; RemoteKey.HOME -> "Home"; RemoteKey.MENU -> "Info"
+        RemoteKey.OK -> "Select"; RemoteKey.BACK -> "Back"; RemoteKey.EXIT -> "Back"; RemoteKey.HOME -> "Home"; RemoteKey.MENU -> "Info"
         RemoteKey.POWER -> "Power"; RemoteKey.MUTE -> "VolumeMute"; RemoteKey.VOLUME_UP -> "VolumeUp"; RemoteKey.VOLUME_DOWN -> "VolumeDown"
         RemoteKey.CHANNEL_UP -> "ChannelUp"; RemoteKey.CHANNEL_DOWN -> "ChannelDown"; RemoteKey.SOURCE -> "InputTuner"
         RemoteKey.PLAY_PAUSE -> "Play"; RemoteKey.PLAY -> "Play"; RemoteKey.PAUSE -> "Play"; RemoteKey.STOP -> "Play"; RemoteKey.REWIND -> "Rev"; RemoteKey.FAST_FORWARD -> "Fwd"

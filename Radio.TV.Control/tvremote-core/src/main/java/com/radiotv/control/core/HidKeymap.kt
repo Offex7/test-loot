@@ -12,6 +12,7 @@ internal fun hidInputFor(key: RemoteKey): HidInputCommand = when (key) {
     RemoteKey.RIGHT -> HidInputCommand.Keyboard(0x4F)
     RemoteKey.OK -> HidInputCommand.Keyboard(0x28)
     RemoteKey.BACK -> HidInputCommand.Keyboard(0x29)
+    RemoteKey.EXIT -> HidInputCommand.Keyboard(0x29)
     RemoteKey.HOME -> HidInputCommand.Keyboard(0x4A)
     RemoteKey.MENU -> HidInputCommand.Keyboard(0x65)
     RemoteKey.POWER -> HidInputCommand.Consumer(0x0030)

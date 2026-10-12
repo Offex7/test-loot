@@ -1016,6 +1016,7 @@ private fun remoteKeyFeedbackLabel(key: RemoteKey): String = when (key) {
     RemoteKey.LEFT -> "Влево"
     RemoteKey.RIGHT -> "Вправо"
     RemoteKey.BACK -> "Назад"
+    RemoteKey.EXIT -> "Выход"
     RemoteKey.HOME -> "Домой"
     RemoteKey.MUTE -> "Без звука"
     RemoteKey.VOLUME_UP -> "Громкость плюс"

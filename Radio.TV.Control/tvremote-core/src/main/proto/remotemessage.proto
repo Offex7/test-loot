@@ -67,6 +67,7 @@ enum RemoteKeyCode {
   KEYCODE_UNKNOWN = 0;
   KEYCODE_HOME = 3;
   KEYCODE_BACK = 4;
+  KEYCODE_ESCAPE = 111;
   KEYCODE_0 = 7;
   KEYCODE_1 = 8;
   KEYCODE_2 = 9;

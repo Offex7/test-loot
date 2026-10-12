@@ -506,7 +506,7 @@ fun TvRemotePad(
                     modifier = Modifier.size(lowerButtonSize),
                     shape = CircleShape,
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.BACK) }
+                    onClick = { onKey(RemoteKey.EXIT) }
                 ) {
                     Text("EXIT", color = padIconColor, fontSize = if (tight) 11.sp else 14.sp, maxLines = 1)
                 }
