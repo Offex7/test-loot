@@ -13,6 +13,18 @@ test -s "$APK" || { echo "Debug APK not found: $APK" >&2; exit 1; }
 mkdir -p "$OUT"
 timeout 10s adb start-server >/dev/null 2>&1 || true
 timeout 30s adb wait-for-device
+# Do not touch the emulator display until Android's system boot is fully complete.
+boot_completed=0
+attempt=0
+while [ "$attempt" -lt 60 ]; do
+  boot_completed="$(timeout 8s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+  if [ "$boot_completed" = "1" ]; then
+    break
+  fi
+  sleep 2
+  attempt=$((attempt + 1))
+done
+[ "$boot_completed" = "1" ] || { echo "Android did not report sys.boot_completed=1 within 120 seconds." >&2; exit 1; }
 timeout 8s adb shell wm size 540x1200
 timeout 8s adb shell wm density 220
 timeout 8s adb shell settings put global stay_on_while_plugged_in 7 >/dev/null 2>&1 || true
@@ -21,6 +33,23 @@ timeout 8s adb shell settings put system screen_brightness_mode 0 >/dev/null 2>&
 timeout 8s adb shell settings put system screen_brightness 255 >/dev/null 2>&1 || true
 timeout 90s adb install -r "$APK"
 timeout 8s adb shell pm grant "$PACKAGE" android.permission.ACCESS_LOCAL_NETWORK >/dev/null 2>&1 || true
+
+# Verify that the emulator can render a system screen before blaming the app or publishing screenshots.
+echo "Checking emulator rendering on the Android Home screen."
+timeout 8s adb shell input keyevent 3 >/dev/null 2>&1 || true
+sleep 3
+home_check="$OUT/.emulator-home-check.png"
+if ! timeout 20s adb exec-out screencap -p > "$home_check"; then
+  echo "Could not capture the emulator Home screen." >&2
+  exit 1
+fi
+if ! python3 "$ROOT/ci/validate-screenshot.py" "$home_check"; then
+  echo "The emulator Home screen is also blank; this is an emulator/display failure, not a Radio.TV.Control screenshot." >&2
+  timeout 8s adb shell dumpsys window windows >&2 || true
+  timeout 8s adb logcat -d -t 500 -v brief 2>&1 | grep -E "SurfaceFlinger|OpenGLRenderer|EGL_emulation|ANR in|AndroidRuntime" | tail -n 100 >&2 || true
+  exit 1
+fi
+rm -f "$home_check"
 
 wake_and_unlock() {
   timeout 5s adb shell input keyevent 224 >/dev/null 2>&1 || true
@@ -89,75 +118,7 @@ capture_screen() {
   fi
   test -s "$temp" || { echo "Missing screenshot: $filename" >&2; exit 1; }
   # Decode the screenshot with Python stdlib and reject blank frames even if ImageMagick is absent.
-  if ! python3 - "$temp" <<'PY'
-import struct, sys, zlib
-
-path = sys.argv[1]
-data = open(path, "rb").read()
-if data[:8] != b"\x89PNG\r\n\x1a\n":
-    raise SystemExit("Screenshot is not a PNG.")
-pos, idat, ihdr = 8, bytearray(), None
-while pos < len(data):
-    length = struct.unpack(">I", data[pos:pos+4])[0]
-    kind = data[pos+4:pos+8]
-    chunk = data[pos+8:pos+8+length]
-    pos += 12 + length
-    if kind == b"IHDR":
-        ihdr = struct.unpack(">IIBBBBB", chunk)
-    elif kind == b"IDAT":
-        idat.extend(chunk)
-    elif kind == b"IEND":
-        break
-if ihdr is None:
-    raise SystemExit("PNG has no IHDR.")
-width, height, depth, colour, compression, filtering, interlace = ihdr
-if depth != 8 or colour not in (2, 6) or interlace != 0:
-    raise SystemExit(f"Unsupported screenshot PNG format: depth={depth}, type={colour}, interlace={interlace}.")
-bpp = 4 if colour == 6 else 3
-stride = width * bpp
-raw = zlib.decompress(idat)
-previous = bytearray(stride)
-cursor = 0
-colours = set()
-total = 0
-pixel_count = width * height
-
-def paeth(a, b, c):
-    p = a + b - c
-    pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
-    return a if pa <= pb and pa <= pc else b if pb <= pc else c
-
-for _ in range(height):
-    ft = raw[cursor]
-    cursor += 1
-    row = bytearray(raw[cursor:cursor+stride])
-    cursor += stride
-    for i in range(stride):
-        left = row[i-bpp] if i >= bpp else 0
-        above = previous[i]
-        upper_left = previous[i-bpp] if i >= bpp else 0
-        if ft == 1:
-            row[i] = (row[i] + left) & 255
-        elif ft == 2:
-            row[i] = (row[i] + above) & 255
-        elif ft == 3:
-            row[i] = (row[i] + ((left + above) // 2)) & 255
-        elif ft == 4:
-            row[i] = (row[i] + paeth(left, above, upper_left)) & 255
-        elif ft != 0:
-            raise SystemExit(f"Unsupported PNG filter: {ft}.")
-    for i in range(0, stride, bpp):
-        rgb = (row[i], row[i+1], row[i+2])
-        total += rgb[0] + rgb[1] + rgb[2]
-        if len(colours) < 64:
-            colours.add(rgb)
-    previous = row
-mean_rgb = total / (pixel_count * 3)
-print(f"Screenshot check: {width}x{height}, sampled-colours={len(colours)}, mean-RGB={mean_rgb:.2f}")
-if len(colours) < 16 or mean_rgb < 3.0:
-    raise SystemExit("Screenshot appears blank/undrawn; refusing to publish it.")
-PY
-  then
+  if ! python3 "$ROOT/ci/validate-screenshot.py" "$temp"; then
     echo "Diagnostic dump for blank screenshot: $filename" >&2
     adb shell dumpsys power >&2 || true
     adb shell dumpsys window windows >&2 || true
