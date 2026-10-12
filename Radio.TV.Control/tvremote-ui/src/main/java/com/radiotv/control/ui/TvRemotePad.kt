@@ -170,10 +170,14 @@ fun TvRemotePad(
         val headerHeight = if (tight) 48.dp else 56.dp
         val headerButtonSize = if (tight) 38.dp else 44.dp
         val powerSize = if (tight) 44.dp else 52.dp
-        val controlHeight = (maxHeight * 0.18f).coerceIn(88.dp, 136.dp)
+        // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
+        val topClusterHeight = (maxHeight * 0.39f).coerceIn(
+            if (tight) 155.dp else if (compact) 190.dp else 225.dp,
+            if (compact) 250.dp else 300.dp
+        )
         val volumePillWidth = (maxWidth * 0.19f).coerceIn(52.dp, 70.dp)
         val mediaButtonSize = (maxWidth * 0.205f).coerceIn(58.dp, 74.dp)
-        val secondRowButtonSize = if (tight) 48.dp else if (compact) 56.dp else 64.dp
+        val secondRowButtonSize = if (tight) 44.dp else if (compact) 54.dp else 64.dp
         val dpadHeight = (maxHeight * 0.34f).coerceIn(
             if (tight) 108.dp else if (compact) 132.dp else 155.dp,
             if (compact) 220.dp else 268.dp
@@ -290,9 +294,9 @@ fun TvRemotePad(
                 }
             }
 
-            // Volume and channel are tall white pills; Play and Pause are square white keys.
+            // Tall VOL/CH pills frame Play/Pause above Mute/MENU, matching the reference.
             Row(
-                modifier = Modifier.fillMaxWidth().height(controlHeight),
+                modifier = Modifier.fillMaxWidth().height(topClusterHeight),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -306,33 +310,78 @@ fun TvRemotePad(
                     onTop = { onKey(RemoteKey.VOLUME_UP) },
                     onBottom = { onKey(RemoteKey.VOLUME_DOWN) }
                 )
-                RemoteSurfaceButton(
-                    description = "Воспроизведение",
-                    modifier = Modifier.size(mediaButtonSize),
-                    shape = RoundedCornerShape(18.dp),
-                    background = padButtonColor,
-                    onClick = { onKey(RemoteKey.PLAY) }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = padIconColor,
-                        modifier = Modifier.size(if (tight) 30.dp else 36.dp)
-                    )
-                }
-                RemoteSurfaceButton(
-                    description = "Пауза",
-                    modifier = Modifier.size(mediaButtonSize),
-                    shape = RoundedCornerShape(18.dp),
-                    background = padButtonColor,
-                    onClick = { onKey(RemoteKey.PAUSE) }
-                ) {
-                    Icon(
-                        Icons.Filled.Pause,
-                        contentDescription = null,
-                        tint = padIconColor,
-                        modifier = Modifier.size(if (tight) 27.dp else 32.dp)
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        RemoteSurfaceButton(
+                            description = "Воспроизведение",
+                            modifier = Modifier.size(mediaButtonSize),
+                            shape = RoundedCornerShape(18.dp),
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.PLAY) }
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = padIconColor,
+                                modifier = Modifier.size(if (tight) 30.dp else 36.dp)
+                            )
+                        }
+                        RemoteSurfaceButton(
+                            description = "Пауза",
+                            modifier = Modifier.size(mediaButtonSize),
+                            shape = RoundedCornerShape(18.dp),
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.PAUSE) }
+                        ) {
+                            Icon(
+                                Icons.Filled.Pause,
+                                contentDescription = null,
+                                tint = padIconColor,
+                                modifier = Modifier.size(if (tight) 27.dp else 32.dp)
+                            )
+                        }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(if (tight) 14.dp else 22.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RemoteSurfaceButton(
+                            description = "Без звука",
+                            modifier = Modifier.size(secondRowButtonSize),
+                            shape = CircleShape,
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.MUTE) }
+                        ) {
+                            Icon(
+                                Icons.Filled.VolumeOff,
+                                contentDescription = null,
+                                tint = padIconColor,
+                                modifier = Modifier.size(if (tight) 25.dp else 30.dp)
+                            )
+                        }
+                        RemoteSurfaceButton(
+                            description = "Меню",
+                            modifier = Modifier.size(secondRowButtonSize),
+                            shape = CircleShape,
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.MENU) }
+                        ) {
+                            Text(
+                                "MENU",
+                                color = padIconColor,
+                                fontSize = if (tight) 14.sp else 18.sp,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
                 WhiteVolumePill(
                     title = "CH",
@@ -344,43 +393,6 @@ fun TvRemotePad(
                     onTop = { onKey(RemoteKey.CHANNEL_UP) },
                     onBottom = { onKey(RemoteKey.CHANNEL_DOWN) }
                 )
-            }
-
-            // Mute and Menu.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RemoteSurfaceButton(
-                    description = "Без звука",
-                    modifier = Modifier.size(secondRowButtonSize),
-                    shape = CircleShape,
-                    background = padButtonColor,
-                    onClick = { onKey(RemoteKey.MUTE) }
-                ) {
-                    Icon(
-                        Icons.Filled.VolumeOff,
-                        contentDescription = null,
-                        tint = padIconColor,
-                        modifier = Modifier.size(if (tight) 25.dp else 30.dp)
-                    )
-                }
-                RemoteSurfaceButton(
-                    description = "Меню",
-                    modifier = Modifier.size(secondRowButtonSize),
-                    shape = CircleShape,
-                    background = padButtonColor,
-                    onClick = { onKey(RemoteKey.MENU) }
-                ) {
-                    Text(
-                        "MENU",
-                        color = padIconColor,
-                        fontSize = if (tight) 14.sp else 18.sp,
-                        fontWeight = FontWeight.Normal,
-                        maxLines = 1
-                    )
-                }
             }
 
             // D-pad outline stays fixed while its rainbow gradient rotates around the cross.
@@ -486,7 +498,7 @@ fun TvRemotePad(
                 RemoteSurfaceButton(
                     description = "ОК",
                     modifier = Modifier.align(Alignment.Center).size(okSize),
-                    shape = CircleShape,
+                    shape = RoundedCornerShape(if (tight) 22.dp else 28.dp),
                     background = RadioTvPalette.Red,
                     pulseScale = okPulse,
                     onClick = { onKey(RemoteKey.OK) }
@@ -495,7 +507,7 @@ fun TvRemotePad(
                 }
             }
 
-            // EXIT keeps the Back mapping because the shared protocol model has no distinct Exit key.
+            // EXIT uses its own key where the connected TV protocol supports it.
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
