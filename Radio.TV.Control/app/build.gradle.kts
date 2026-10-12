@@ -47,8 +47,8 @@ android {
     buildFeatures { compose = true }
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        unitTests.all {
-            systemProperty(
+        unitTests.all { testTask ->
+            testTask.systemProperty(
                 "radio.tv.screenshot.outputDir",
                 layout.buildDirectory.dir("outputs/roborazzi/radio-tv-screenshots").get().asFile.absolutePath
             )
