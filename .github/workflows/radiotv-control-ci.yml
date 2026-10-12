@@ -94,30 +94,23 @@ jobs:
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Capture UI screenshots with Robolectric and Compose (JVM, no emulator)
         if: github.event_name != 'pull_request'
-        run: gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest
-      - name: Validate and stage Robolectric screenshots
+        run: gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest --tests "*ScreenshotTests*"
+      - name: List and validate generated screenshots
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_DIR="app/build/outputs/roborazzi/radio-tv-screenshots"
-          OUTPUT_DIR="app/ui-screenshots"
-          mkdir -p "$OUTPUT_DIR"
+          ls -la app/build/screenshots/
           for file in remote.png digital-panel.png settings.png; do
-            test -s "$SOURCE_DIR/$file" || { echo "Missing Robolectric screenshot: $SOURCE_DIR/$file"; exit 1; }
-            python3 ../ci/validate-screenshot.py "$SOURCE_DIR/$file"
-            cp "$SOURCE_DIR/$file" "$OUTPUT_DIR/$file"
-            file "$OUTPUT_DIR/$file"
+            test -s "app/build/screenshots/$file"
+            python3 ../ci/validate-screenshot.py "app/build/screenshots/$file"
           done
       - name: Upload UI screenshots
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
-          path: |
-            Radio.TV.Control/ui-screenshots/remote.png
-            Radio.TV.Control/ui-screenshots/digital-panel.png
-            Radio.TV.Control/ui-screenshots/settings.png
+          path: Radio.TV.Control/app/build/screenshots/*.png
           if-no-files-found: error
           retention-days: 30
 
