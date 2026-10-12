@@ -256,6 +256,7 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 castMessage = "Подготовлено: ${media.title}. Выберите DLNA-приёмник."
                 val renderer = selectedCastRenderer
                 if (renderer != null) {
+                    castMessage = "Подготовлено: ${media.title}. Начинаем трансляцию…"
                     runCatching { dlnaCast.play(renderer, media) }
                         .onSuccess {
                             castPlaybackStatus = "Воспроизведение"
@@ -265,6 +266,10 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                             castPlaybackStatus = "Ошибка"
                             castMessage = it.message ?: "Не удалось начать DLNA-воспроизведение."
                         }
+                } else if (castDevices.isEmpty()) {
+                    castMessage = "Файл подготовлен, но DLNA-приёмник не найден. Убедитесь, что телефон и телевизор в одной Wi-Fi сети и ТВ поддерживает DLNA/UPnP."
+                } else {
+                    castMessage = "Подготовлено: ${media.title}. Выберите телевизор в списке DLNA-приёмников."
                 }
             }.onFailure {
                 castPlaybackStatus = "Ошибка"
@@ -376,8 +381,29 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
         val uri = pendingPickedUri ?: return@LaunchedEffect
         runWithLocalNetworkPermission {
             pendingPickedUri = null
-            discoverCastDevices()
-            processPickedMedia(uri)
+            scope.launch {
+                castScanning = true
+                castMessage = "Ищем DLNA-приёмники…"
+                runCatching { dlnaCast.discoverRenderers() }
+                    .onSuccess { result ->
+                        castDevices = result
+                        if (selectedCastRenderer?.location !in result.map { it.location }) {
+                            selectedCastRenderer = null
+                        }
+                        if (selectedCastRenderer == null && result.size == 1) {
+                            selectedCastRenderer = result.single()
+                        }
+                        castScanning = false
+                        processPickedMedia(uri)
+                    }
+                    .onFailure { error ->
+                        castScanning = false
+                        castDevices = emptyList()
+                        selectedCastRenderer = null
+                        castMessage = error.message ?: "Не удалось найти DLNA-приёмники. Повторите поиск в разделе «Контроль»."
+                        processPickedMedia(uri)
+                    }
+            }
         }
     }
 
@@ -599,11 +625,11 @@ private fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHi
                 else "Тачпад скрыт."
             }
             RemoteFeatureAction.CAST -> {
+                // Show the system picker first; ask for LAN access only after content is selected.
                 selectedTab = RadioTvTab.CONTROL
                 duplicationExpanded = true
-                refreshCastDevices()
-                mediaPicker.launch(arrayOf("image/*", "video/*"))
-                "Открываем выбор фото или видео для трансляции на DLNA-приёмник. DRM/HLS/DASH не поддерживается."
+                mediaPicker.launch(arrayOf("*/*"))
+                "Выберите фото, видео, аудио или файл для трансляции на DLNA-совместимый телевизор. DRM/HLS/DASH не поддерживается."
             }
         }
         sendUiFeedback(when (action) {
