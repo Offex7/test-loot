@@ -95,6 +95,16 @@ jobs:
       - name: Capture UI screenshots with Robolectric and Compose (JVM, no emulator)
         if: github.event_name != 'pull_request'
         run: gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest --tests "*ScreenshotTests*"
+      - name: Upload JVM screenshot test diagnostics
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Radio.TV.Control-jvm-test-report-run-${{ github.run_number }}
+          path: |
+            Radio.TV.Control/app/build/reports/tests/testDebugUnitTest/**
+            Radio.TV.Control/app/build/test-results/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 14
       - name: List and validate generated screenshots
         if: github.event_name != 'pull_request'
         shell: bash

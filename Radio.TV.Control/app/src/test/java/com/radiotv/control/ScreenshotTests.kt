@@ -1,5 +1,6 @@
 package com.radiotv.control
 
+import android.app.Application
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -23,7 +24,7 @@ import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w393dp-h873dp")
+@Config(sdk = [34], application = ScreenshotTestApplication::class, qualifiers = "w393dp-h873dp")
 class ScreenshotTests {
     @get:Rule
     val composeRule = createComposeRule()
@@ -88,3 +89,6 @@ class ScreenshotTests {
         }
     }
 }
+
+/** Prevents RadioTvControlApp from starting a process-global Koin graph in every Robolectric sandbox. */
+class ScreenshotTestApplication : Application()
