@@ -206,7 +206,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
-    var showOnboarding by rememberSaveable { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
@@ -512,7 +511,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
-                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; showOnboarding = false; selectedTab = RadioTvTab.REMOTE }
+                .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; selectedTab = RadioTvTab.REMOTE }
                 .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
         }
     }
@@ -520,7 +519,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
 
     fun chooseDevice(device: DiscoveredRemoteDevice) {
         selectedDeviceName = friendlyDeviceName(device)
-        showOnboarding = false
         when (device.type) {
             RemoteDeviceType.ANDROID_TV -> {
                 host = device.ip
@@ -569,20 +567,12 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         }
     }
 
-    LaunchedEffect(initialUiScreen) {
-        if (initialUiScreen == "pairing") refreshDevices()
+    LaunchedEffect(initialUiScreen, pairedHost) {
+        if (initialUiScreen == "pairing" || (initialUiScreen == "remote" && pairedHost.isBlank())) refreshDevices()
     }
 
     LaunchedEffect(pairedHost) {
         if (pairedHost.isNotBlank() && !connected) connectPairedHost(pairedHost)
-    }
-
-    val startFromOnboarding: (Boolean) -> Unit = { infraredPath ->
-        showOnboarding = false
-        selectedTab = RadioTvTab.SETTINGS
-        manualEntry = infraredPath
-        statusMessage = if (infraredPath) "Поиск в локальной сети запущен. Если ваш ИК-мост не найден, введите его IP вручную." else "Ищем телевизоры и медиаприёмники в локальной сети."
-        refreshDevices()
     }
 
     val handleFeatureAction: (RemoteFeatureAction) -> Unit = { action ->
@@ -710,14 +700,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (showOnboarding && !connected) {
-                        OnboardingScreen(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            onInfrared = { startFromOnboarding(true) },
-                            onSmartTv = { startFromOnboarding(false) },
-                            onUnknown = { startFromOnboarding(false) }
-                        )
-                    } else {
                     Box(
                         modifier = Modifier.weight(1f).fillMaxWidth().pointerInput(selectedTab) {
                             var horizontalDrag = 0f
@@ -826,6 +808,17 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                 contentAlignment = Alignment.Center
                                             ) { Icon(Icons.Filled.ArrowBack, contentDescription = "Назад к пульту", tint = Color.White) }
                                             Text("Настройки", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                                OutlinedButton(onClick = { sendUiFeedback("Поиск по Wi-Fi"); manualEntry = false; refreshDevices() }, modifier = Modifier.weight(1f)) { Text("Wi‑Fi", maxLines = 1) }
+                                                OutlinedButton(onClick = { sendUiFeedback("Ручной IP"); manualEntry = true }, modifier = Modifier.weight(1f)) { Text("IP / ИК-мост", maxLines = 1) }
+                                                OutlinedButton(onClick = { sendUiFeedback("Bluetooth HID"); beginBluetoothSession() }, modifier = Modifier.weight(1f)) { Text("Bluetooth", maxLines = 1) }
+                                            }
+                                            Text("ИК-пульт поддерживается через совместимый сетевой ИК-мост. Для прямого Bluetooth-управления подключите Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                     item {
@@ -1116,7 +1109,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                             .onSuccess {
                                                                 pairedHost = remote.pairedHost().orEmpty()
                                                                 statusMessage = "Телевизор подключён."
-                                                                showOnboarding = false
                                                                 selectedTab = RadioTvTab.REMOTE
                                                             }
                                                             .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
@@ -1196,7 +1188,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                 }
                             }
                         }
-                    }
                     }
                 }
                 androidx.compose.material3.SnackbarHost(
