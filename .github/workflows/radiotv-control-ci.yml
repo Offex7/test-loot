@@ -126,7 +126,9 @@ jobs:
             cd Radio.TV.Control
             gradle --no-daemon --console=plain --stacktrace :app:connectedDebugAndroidTest
             mkdir -p app/build/screenshots
-            adb pull /sdcard/Android/data/com.radiotv.control/files/screenshots/. app/build/screenshots/
+            for file in remote.png digital-panel.png settings.png; do
+              adb exec-out run-as com.radiotv.control cat "files/screenshots/$file" > "app/build/screenshots/$file"
+            done
             for file in remote.png digital-panel.png settings.png; do
               test -s "app/build/screenshots/$file"
               python3 ../ci/validate-screenshot.py "app/build/screenshots/$file"
