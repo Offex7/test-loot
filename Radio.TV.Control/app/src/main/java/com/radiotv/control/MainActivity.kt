@@ -534,7 +534,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
                 .onSuccess { statusMessage = "Подключено к сохранённому телевизору: $target"; selectedDeviceName = "Android TV"; selectedTab = RadioTvTab.REMOTE }
-                .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору." }
+                .onFailure { statusMessage = it.message ?: "Не удалось подключиться к сохранённому телевизору."; refreshDevices() }
         }
     }
 
@@ -612,6 +612,14 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                 host = remembered.host
                 selectedDeviceName = remembered.name.ifBlank { "Android TV" }
                 connectPairedHost(remembered.host)
+            }
+            remembered.host.isNotBlank() && remembered.type == RemoteDeviceType.KIVI_ADB.name -> {
+                host = remembered.host
+                selectedDeviceName = "Kivi TV (ADB)"
+                statusMessage = "Восстанавливаем подключение к Kivi через ADB…"
+                runCatching { adbRemote.connect(remembered.host, 5555) }
+                    .onSuccess { statusMessage = "Kivi TV подключён через ADB."; selectedTab = RadioTvTab.REMOTE }
+                    .onFailure { statusMessage = it.message ?: "Для управления Kivi включите отладку по ADB в настройках телевизора." }
             }
             remembered.host.isNotBlank() -> {
                 host = remembered.host

@@ -13,7 +13,6 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
-import java.security.GeneralSecurityException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,8 +40,6 @@ class AdbRemoteDevice(context: Context) : RemoteDevice, Closeable {
     private val commandMutex = Mutex()
 
     @Volatile private var connection: AdbConnection? = null
-    @Volatile private var connectedHost: String? = null
-    @Volatile private var connectedPort: Int = DEFAULT_PORT
 
     override suspend fun connect(host: String, port: Int) = withContext(Dispatchers.IO) {
         val target = host.trim()
@@ -60,14 +57,12 @@ class AdbRemoteDevice(context: Context) : RemoteDevice, Closeable {
             val ready = candidate.connect(ADB_HANDSHAKE_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS, false)
             check(ready) { ADB_HELP }
             connection = candidate
-            connectedHost = target
-            connectedPort = port
             stateMutable.value = AdbRemoteStatus.Connected(target, port)
         } catch (error: Exception) {
             runCatching { candidate?.close() }
             runCatching { socket?.close() }
             val message = when (error) {
-                is SocketTimeoutException -> ADB_HELP
+                is SocketTimeoutException, is IOException -> ADB_HELP
                 else -> error.message?.takeIf { it.isNotBlank() } ?: ADB_HELP
             }
             stateMutable.value = AdbRemoteStatus.Error(message)
@@ -137,9 +132,10 @@ class AdbRemoteDevice(context: Context) : RemoteDevice, Closeable {
             var stream: AdbStream? = null
             val result = ByteArrayOutputStream()
             try {
-                stream = active.open("shell:$command")
+                val opened = active.open("shell:$command")
+                stream = opened
                 while (true) {
-                    result.write(stream.read())
+                    result.write(opened.read())
                 }
                 @Suppress("UNREACHABLE_CODE")
                 result.toString(Charsets.UTF_8.name())
@@ -172,7 +168,6 @@ class AdbRemoteDevice(context: Context) : RemoteDevice, Closeable {
     private fun disconnectInternal() {
         val previous = connection
         connection = null
-        connectedHost = null
         runCatching { previous?.close() }
     }
 
