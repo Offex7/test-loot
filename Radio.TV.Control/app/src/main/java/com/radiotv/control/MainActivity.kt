@@ -581,7 +581,24 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                 host = device.ip
                 statusMessage = "Найден Google Cast по адресу " + device.ip + ". Управляющий Cast-адаптер добавляется отдельно."
             }
-            RemoteDeviceType.UNKNOWN -> startPairing(device.ip)
+            RemoteDeviceType.UNKNOWN -> {
+                host = device.ip
+                scope.launch {
+                    statusMessage = "Пробуем подключение ADB на порту 5555…"
+                    val adbFailure = runCatching { adbRemote.connect(device.ip, 5555) }.exceptionOrNull()
+                    if (adbFailure == null) {
+                        selectedDeviceName = "Kivi TV (ADB)"
+                        selectedTab = RadioTvTab.REMOTE
+                        statusMessage = "Устройство подключено через ADB."
+                    } else {
+                        runCatching { remote.beginPairing(device.ip) }
+                            .onSuccess { statusMessage = "ADB не ответил. Начато стандартное сопряжение Android TV." }
+                            .onFailure {
+                                statusMessage = "Не удалось определить протокол. Для управления Kivi включите отладку по ADB в настройках телевизора."
+                            }
+                    }
+                }
+            }
             else -> {
                 host = device.ip
                 statusMessage = "Определено: " + device.type.label + " (" + device.ip + "). Для этого типа нужен отдельный протокол."

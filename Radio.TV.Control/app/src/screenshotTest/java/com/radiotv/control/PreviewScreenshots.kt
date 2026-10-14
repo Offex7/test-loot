@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,7 +43,7 @@ fun remoteScreenPreview() {
         TvRemotePad(
             enabled = true,
             onKey = { _: RemoteKey -> },
-            deviceName = "Xiaomi",
+            deviceName = "Xiaomi TV A",
             onFeatureAction = { _: RemoteFeatureAction -> },
             onSettings = {}
         )
@@ -53,7 +56,7 @@ fun remoteScreenPreview() {
 fun controlScreenPreview() {
     MaterialTheme(colorScheme = radioTvColorScheme()) {
         DigitalRemotePanel(
-            deviceName = "Xiaomi",
+            deviceName = "Xiaomi TV A",
             installedApps = emptyList<InstalledTvApp>(),
             onLaunchApp = {},
             enabled = true,
@@ -93,8 +96,32 @@ private fun SettingsPreviewContent() {
             .padding(horizontal = 14.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp).clip(CircleShape),
+                color = Color(0xFF2A2A2A),
+                shape = CircleShape
+            ) { Box(contentAlignment = Alignment.Center) { Text("‹", color = Color.White, style = MaterialTheme.typography.headlineMedium) } }
+            Text("Настройки", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        }
         Text("НАСТРОЙКИ УСТРОЙСТВ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleMedium)
         Text("Телефон и телевизор должны быть в одной Wi-Fi сети.", color = RadioTvPalette.Muted)
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    SettingsChoice("Wi‑Fi", selected = true, modifier = Modifier.weight(1f))
+                    SettingsChoice("IP / ИК", selected = false, modifier = Modifier.weight(1f))
+                    SettingsChoice("Bluetooth", selected = false, modifier = Modifier.weight(1f))
+                }
+                Text("Поиск устройств · Подключение к сохранённому ТВ", color = Color.White)
+                Text("Ручной ввод IP · Kivi TV (ADB)", color = RadioTvPalette.Muted)
+            }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
