@@ -24,8 +24,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,7 +63,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -91,7 +88,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -742,7 +738,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                 }
                             }
                             RadioTvTab.CONTROL -> {
-                                DigitalRemotePanel(modifier = Modifier.fillMaxSize(), deviceName = selectedDeviceName.ifBlank { "Телевизор не подключён" },
+                                DigitalRemotePanel(modifier = Modifier.fillMaxSize(), deviceName = selectedDeviceName.ifBlank { "Нет подключения" },
                                     installedApps = installedApps,
                                     onLaunchApp = { app ->
                                         sendUiFeedback(app.name)
@@ -1248,10 +1244,8 @@ private fun remoteKeyFeedbackLabel(key: RemoteKey): String = when (key) {
     RemoteKey.NUMBER_9 -> "Девять"
     else -> "Кнопка пульта"
 }
-private enum class RadioTvTab(val title: String, val icon: String) {
-    REMOTE("Пульт", "▣"),
-    CONTROL("Контроль", "▦"),
-    SETTINGS("Настройки", "⚙")
+private enum class RadioTvTab {
+    REMOTE, CONTROL, SETTINGS
 }
 
 @Composable
