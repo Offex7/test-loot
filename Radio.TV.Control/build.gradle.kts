@@ -3,4 +3,5 @@ plugins {
     id("com.android.library") version "9.3.1" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21" apply false
     id("com.google.protobuf") version "0.10.0" apply false
+    id("app.cash.paparazzi") version "1.3.5" apply false
 }
