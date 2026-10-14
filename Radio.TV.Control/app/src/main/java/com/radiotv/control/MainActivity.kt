@@ -124,6 +124,7 @@ import com.radiotv.control.core.OtherTvRemoteStatus
 import com.radiotv.control.ui.TouchpadSurface
 import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
@@ -187,7 +188,9 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     var installedApps by remember { mutableStateOf<List<InstalledTvApp>>(emptyList()) }
     val otherRemoteStatus by otherTvRemote.status.collectAsStateWithLifecycle()
     LaunchedEffect(otherRemoteStatus) {
-        if (otherRemoteStatus is OtherTvRemoteStatus.Connected) {
+        val active = otherRemoteStatus as? OtherTvRemoteStatus.Connected
+        if (active != null) {
+            context.setLastConnectedDevice(active.ip, active.type.label, active.type.name)
             installedApps = runCatching { otherTvRemote.listInstalledApps() }.getOrDefault(emptyList())
         } else {
             installedApps = emptyList()
@@ -202,6 +205,13 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(status) {
+        val active = status as? RemoteStatus.Connected
+        if (active != null) {
+            pairedHost = remote.pairedHost().orEmpty().ifBlank { active.host }
+            context.setLastConnectedDevice(active.host, selectedDeviceName.ifBlank { "Android TV" }, RemoteDeviceType.ANDROID_TV.name)
+        }
+    }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
@@ -563,12 +573,25 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         }
     }
 
-    LaunchedEffect(initialUiScreen, pairedHost) {
-        if (initialUiScreen == "pairing" || (initialUiScreen == "remote" && pairedHost.isBlank())) refreshDevices()
-    }
-
-    LaunchedEffect(pairedHost) {
-        if (pairedHost.isNotBlank() && !connected) connectPairedHost(pairedHost)
+    LaunchedEffect(Unit) {
+        if (connected || otherConnected) return@LaunchedEffect
+        val remembered = context.radioTvLastDevice.first()
+        when {
+            remembered.host.isNotBlank() && remembered.type == RemoteDeviceType.ANDROID_TV.name -> {
+                host = remembered.host
+                selectedDeviceName = remembered.name.ifBlank { "Android TV" }
+                connectPairedHost(remembered.host)
+            }
+            remembered.host.isNotBlank() -> {
+                host = remembered.host
+                statusMessage = "Восстанавливаем сохранённое подключение…"
+                runCatching { discovery.detectHost(remembered.host) }
+                    .onSuccess { device -> chooseDevice(device.copy(name = remembered.name.ifBlank { device.name })) }
+                    .onFailure { statusMessage = "Не удалось восстановить подключение. Поиск устройств запущен."; refreshDevices() }
+            }
+            pairedHost.isNotBlank() -> connectPairedHost(pairedHost)
+            else -> refreshDevices()
+        }
     }
 
     val handleFeatureAction: (RemoteFeatureAction) -> Unit = { action ->

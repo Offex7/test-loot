@@ -33,17 +33,28 @@ class LocalNetworkDeviceDiscovery(context: Context) {
 
     suspend fun discover(): List<DiscoveredRemoteDevice> = withContext(Dispatchers.IO) {
         val found = ConcurrentHashMap<String, DiscoveredRemoteDevice>()
-        coroutineScope {
-            val mdns = async {
-                listOf("_androidtvremote2._tcp.", "_googlecast._tcp.", "_airplay._tcp.")
-                    .map { serviceType -> async(Dispatchers.Main) { browseMdns(serviceType, found) } }
-                    .awaitAll()
+        val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val multicastLock = runCatching {
+            wifi?.createMulticastLock("radio-tv-control-discovery")?.apply {
+                setReferenceCounted(false)
+                acquire()
             }
-            val ssdp = async { discoverSsdp(found) }
-            val tcp = async { scanSubnet(found) }
-            awaitAll(mdns, ssdp, tcp)
+        }.getOrNull()
+        try {
+            coroutineScope {
+                val mdns = async {
+                    listOf("_androidtvremote2._tcp.", "_googlecast._tcp.", "_airplay._tcp.")
+                        .map { serviceType -> async(Dispatchers.Main) { browseMdns(serviceType, found) } }
+                        .awaitAll()
+                }
+                val ssdp = async { discoverSsdp(found) }
+                val tcp = async { scanSubnet(found) }
+                awaitAll(mdns, ssdp, tcp)
+            }
+            found.values.sortedWith(compareBy<DiscoveredRemoteDevice> { rank(it.type) }.thenBy { it.name.lowercase(Locale.ROOT) })
+        } finally {
+            runCatching { if (multicastLock?.isHeld == true) multicastLock.release() }
         }
-        found.values.sortedWith(compareBy<DiscoveredRemoteDevice> { rank(it.type) }.thenBy { it.name.lowercase(Locale.ROOT) })
     }
 
     /** Probes only the user-entered local IPv4 address, then maps open control ports to a protocol. */
