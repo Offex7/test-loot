@@ -108,6 +108,8 @@ import com.radiotv.control.cast.DlnaDevice
 import com.radiotv.control.cast.LocalNetworkDeviceDiscovery
 import com.radiotv.control.cast.LocalMediaHttpServer
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.AdbRemoteDevice
+import com.radiotv.control.core.AdbRemoteStatus
 import com.radiotv.control.core.AndroidTvVoiceInputController
 import com.radiotv.control.core.VoiceInputStatus
 import com.radiotv.control.core.AirMouseStatus
@@ -133,6 +135,7 @@ private const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWOR
 
 class MainActivity : ComponentActivity() {
     private val remote: AndroidTvRemoteV2Transport by inject()
+    private val adbRemote: AdbRemoteDevice by inject()
     private val bluetoothHid: BluetoothHidController by inject()
     private val airMouse: GyroAirMouseController by inject()
     private val voiceInput: AndroidTvVoiceInputController by inject()
@@ -143,12 +146,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val initialUiScreen = intent.getStringExtra("ui-screen") ?: "remote"
-        setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
+        setContent { RadioTvControlScreen(remote, adbRemote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
     }
 
     override fun onDestroy() {
         if (isFinishing) {
             remote.close()
+            adbRemote.close()
             bluetoothHid.close()
             airMouse.close()
             voiceInput.close()
@@ -159,7 +163,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
+internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote: AdbRemoteDevice, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
     val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
     val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
@@ -182,6 +186,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         }
     }
     val status by remote.status.collectAsStateWithLifecycle()
+    val adbStatus by adbRemote.status.collectAsStateWithLifecycle()
     val bluetoothStatus by bluetoothHid.status.collectAsStateWithLifecycle()
     val airMouseStatus by airMouse.status.collectAsStateWithLifecycle()
     val voiceStatus by voiceInput.status.collectAsStateWithLifecycle()
@@ -194,6 +199,13 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
             installedApps = runCatching { otherTvRemote.listInstalledApps() }.getOrDefault(emptyList())
         } else {
             installedApps = emptyList()
+        }
+    }
+    LaunchedEffect(adbStatus) {
+        val active = adbStatus as? AdbRemoteStatus.Connected
+        if (active != null) {
+            context.setLastConnectedDevice(active.host, "Kivi TV (ADB)", RemoteDeviceType.KIVI_ADB.name)
+            installedApps = runCatching { adbRemote.listInstalledApps() }.getOrDefault(emptyList())
         }
     }
     val scope = rememberCoroutineScope()
@@ -303,16 +315,20 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     val codeRequested = status is RemoteStatus.AwaitingCode
     val wifiConnected = status is RemoteStatus.Connected
     val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
-    val connected = wifiConnected || otherConnected
+    val adbConnected = adbStatus is AdbRemoteStatus.Connected
+    val connected = wifiConnected || otherConnected || adbConnected
     val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
     // Two protocol sessions may remain connected at once. Route commands to the device selected
     // in Settings instead of accidentally sending keys to an older Android TV session.
     val connectedWifiHost = (status as? RemoteStatus.Connected)?.host
     val connectedOtherIp = (otherRemoteStatus as? OtherTvRemoteStatus.Connected)?.ip
+    val connectedAdbHost = (adbStatus as? AdbRemoteStatus.Connected)?.host
     val selectedWifiConnected = wifiConnected &&
         (host.isBlank() || connectedWifiHost.equals(host, ignoreCase = true))
     val selectedOtherConnected = otherConnected &&
         (host.isBlank() || connectedOtherIp.equals(host, ignoreCase = true))
+    val selectedAdbConnected = adbConnected &&
+        (host.isBlank() || connectedAdbHost.equals(host, ignoreCase = true))
 
     val startPairing: (String) -> Unit = { target ->
         scope.launch {
@@ -546,6 +562,21 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                         .onFailure { statusMessage = it.message ?: "Не удалось подключить телевизор." }
                 }
             }
+            RemoteDeviceType.KIVI_ADB -> {
+                host = device.ip
+                selectedDeviceName = "Kivi TV (ADB)"
+                scope.launch {
+                    statusMessage = "Подключаемся к Kivi через ADB…"
+                    runCatching { adbRemote.connect(device.ip, device.ports.firstOrNull { it == 5555 } ?: 5555) }
+                        .onSuccess {
+                            selectedTab = RadioTvTab.REMOTE
+                            statusMessage = "Kivi TV подключён. Команды отправляются через ADB."
+                        }
+                        .onFailure {
+                            statusMessage = it.message ?: "Для управления Kivi включите отладку по ADB в настройках телевизора."
+                        }
+                }
+            }
             RemoteDeviceType.CHROMECAST -> {
                 host = device.ip
                 statusMessage = "Найден Google Cast по адресу " + device.ip + ". Управляющий Cast-адаптер добавляется отдельно."
@@ -694,6 +725,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         scope.launch {
             runCatching {
                 when {
+                    selectedAdbConnected -> adbRemote.sendKey(key)
                     selectedOtherConnected -> otherTvRemote.sendKey(key)
                     selectedWifiConnected -> remote.sendKey(key)
                     hidConnected -> bluetoothHid.sendRemoteKey(key)
@@ -750,6 +782,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                         featureMessage = null,
                                         showFeatureActions = false,
                                         deviceName = when {
+                                            selectedAdbConnected -> "Kivi TV (ADB)"
                                             selectedOtherConnected -> selectedDeviceName.ifBlank { "Телевизор" }
                                             selectedWifiConnected -> selectedDeviceName.ifBlank { "Android TV" }
                                             hidConnected -> selectedDeviceName.ifBlank { "Bluetooth HID" }
@@ -766,8 +799,10 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                     onLaunchApp = { app ->
                                         sendUiFeedback(app.name)
                                         scope.launch {
-                                            runCatching { otherTvRemote.launchInstalledApp(app) }
-                                                .onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
+                                            runCatching {
+                                                if (selectedAdbConnected) adbRemote.launchApp(app.id)
+                                                else otherTvRemote.launchInstalledApp(app)
+                                            }.onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
                                         }
                                     },
                                     enabled = connected || otherConnected || hidConnected, micRecording = voiceStatus is VoiceInputStatus.Recording,
@@ -1106,6 +1141,9 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                         if (otherRemoteStatus !is OtherTvRemoteStatus.Disconnected) {
                                             Text(otherRemoteStatus.asUserLabel(), color = if (otherConnected) RadioTvPalette.Red else RadioTvPalette.Muted)
                                         }
+                                        if (adbStatus !is AdbRemoteStatus.Disconnected) {
+                                            Text(adbStatus.asUserLabel(), color = if (adbConnected) RadioTvPalette.Red else RadioTvPalette.Muted)
+                                        }
                                         Text(statusMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (codeRequested) {
@@ -1151,6 +1189,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                     scope.launch {
                                                         runCatching {
                                                             when {
+                                                                selectedAdbConnected -> adbRemote.sendText(keyboardText)
                                                                 selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
                                                                 selectedWifiConnected -> remote.sendText(keyboardText)
                                                                 hidConnected -> bluetoothHid.sendText(keyboardText)
@@ -1222,6 +1261,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
 }
 
 private fun friendlyDeviceName(device: DiscoveredRemoteDevice): String {
+    if (device.type == RemoteDeviceType.KIVI_ADB) return "Kivi TV (ADB)"
     val name = device.name.trim()
     return when {
         name.isBlank() || name == device.ip -> "Телевизор"
@@ -1384,6 +1424,7 @@ private fun deviceIcon(type: RemoteDeviceType): String = when (type) {
     RemoteDeviceType.ROKU -> "ROKU"
     RemoteDeviceType.DLNA -> "DLNA"
     RemoteDeviceType.AIRPLAY -> "AIR"
+    RemoteDeviceType.KIVI_ADB -> "ADB"
     RemoteDeviceType.UNKNOWN -> "?"
 }
 
@@ -1415,4 +1456,11 @@ private fun OtherTvRemoteStatus.asUserLabel(): String = when (this) {
     is OtherTvRemoteStatus.Pairing -> "Ожидается сопряжение: " + message
     is OtherTvRemoteStatus.Connected -> "Подключено: " + type.label + " · " + ip
     is OtherTvRemoteStatus.Error -> "Ошибка подключения: " + message
+}
+
+private fun AdbRemoteStatus.asUserLabel(): String = when (this) {
+    AdbRemoteStatus.Disconnected -> "ADB: отключён."
+    is AdbRemoteStatus.Connecting -> "ADB: подключение к ${host}…"
+    is AdbRemoteStatus.Connected -> "Kivi TV (ADB): подключено · ${host}:${port}"
+    is AdbRemoteStatus.Error -> message
 }

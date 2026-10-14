@@ -2,6 +2,7 @@ package com.radiotv.control
 
 import android.app.Application
 import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.AdbRemoteDevice
 import com.radiotv.control.core.OtherTvRemoteController
 import com.radiotv.control.cast.DlnaCastController
 import com.radiotv.control.core.AndroidTvVoiceInputController
@@ -18,6 +19,7 @@ class RadioTvControlApp : Application() {
             androidContext(this@RadioTvControlApp)
             modules(module {
                 single { AndroidTvRemoteV2Transport(androidContext()) }
+                single { AdbRemoteDevice(androidContext()) }
                 single { BluetoothHidController(androidContext()) }
                 single { GyroAirMouseController(androidContext(), get()) }
                 single { AndroidTvVoiceInputController(androidContext(), get()) }
