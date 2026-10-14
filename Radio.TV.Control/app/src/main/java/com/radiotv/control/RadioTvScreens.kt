@@ -222,7 +222,7 @@ internal fun DigitalRemotePanel(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A1A))
+            .background(RadioTvPalette.Black)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)
@@ -233,7 +233,7 @@ internal fun DigitalRemotePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color(0xFFB0B0B0), modifier = Modifier.size(25.dp).clickable(onClick = onSettings).padding(1.dp))
+                Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color.White, modifier = Modifier.size(25.dp).clickable(onClick = onSettings).padding(1.dp))
                 Text(
                     deviceName.ifBlank { "Телевизор не подключён" },
                     modifier = Modifier.weight(1f),
@@ -243,10 +243,10 @@ internal fun DigitalRemotePanel(
                     maxLines = 1
                 )
                 Box(
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF24562A))
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(RadioTvPalette.Red)
                         .clickable(enabled = enabled, onClick = { onKey(RemoteKey.POWER) }),
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.PowerSettingsNew, contentDescription = "Питание", tint = Color(0xFF58C45F), modifier = Modifier.size(25.dp)) }
+                ) { Icon(Icons.Filled.PowerSettingsNew, contentDescription = "Питание", tint = Color.White, modifier = Modifier.size(25.dp)) }
             }
         }
         if (installedApps.isNotEmpty()) {
@@ -260,7 +260,7 @@ internal fun DigitalRemotePanel(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF383838)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF222222)))
         AnimatedVisibility(visible = true, enter = fadeIn(tween(250, delayMillis = 100)) + slideInVertically(tween(250, delayMillis = 100)) { it / 8 }) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 (1..9).toList().chunked(3).forEach { row ->
@@ -397,17 +397,17 @@ private fun NumberButton(
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.91f else 1f, tween(140), label = "number-key-scale")
-    val bg = if (outlined) Color(0xFF1A1A1A) else Color(0xFF343434)
+    val bg = Color(0xFFF8F8F5)
     Box(
         modifier = modifier.height(57.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
-            .then(if (outlined) Modifier.border(1.dp, Color(0xFF383838), RoundedCornerShape(12.dp)) else Modifier)
+            .then(if (outlined) Modifier.border(1.dp, RadioTvPalette.Red, RoundedCornerShape(12.dp)) else Modifier)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(title, color = Color.White, fontSize = if (title == "Menu" || title == "Cast") 15.sp else 23.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(title, color = Color(0xFF252A29), fontSize = if (title == "Menu" || title == "Cast") 15.sp else 23.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 
@@ -422,7 +422,7 @@ private fun DigitalVolumePill(
     onBottom: () -> Unit
 ) {
     Column(
-        modifier = modifier.clip(RoundedCornerShape(26.dp)).background(Color(0xFF343434)).padding(vertical = 7.dp, horizontal = 2.dp),
+        modifier = modifier.clip(RoundedCornerShape(26.dp)).background(Color(0xFFF8F8F5)).padding(vertical = 7.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -434,11 +434,11 @@ private fun DigitalVolumePill(
         val bottomInteractions = remember { MutableInteractionSource() }
         val bottomPressed by bottomInteractions.collectIsPressedAsState()
         val bottomScale by animateFloatAsState(if (bottomPressed) 0.91f else 1f, tween(140), label = "digital-pill-bottom-scale")
-        Icon(topIcon, contentDescription = "$title up", tint = Color.White, modifier = Modifier.size(26.dp)
+        Icon(topIcon, contentDescription = "$title up", tint = Color(0xFF252A29), modifier = Modifier.size(26.dp)
             .graphicsLayer { scaleX = topScale; scaleY = topScale; alpha = if (topPressed) 0.82f else 1f }
             .clickable(interactionSource = topInteractions, indication = null, enabled = enabled, onClick = onTop).padding(2.dp))
-        Text(title, color = Color(0xFFB0B0B0), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Icon(bottomIcon, contentDescription = "$title down", tint = Color.White, modifier = Modifier.size(26.dp)
+        Text(title, color = Color(0xFF252A29), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Icon(bottomIcon, contentDescription = "$title down", tint = Color(0xFF252A29), modifier = Modifier.size(26.dp)
             .graphicsLayer { scaleX = bottomScale; scaleY = bottomScale; alpha = if (bottomPressed) 0.82f else 1f }
             .clickable(interactionSource = bottomInteractions, indication = null, enabled = enabled, onClick = onBottom).padding(2.dp))
     }
@@ -467,22 +467,23 @@ private fun DigitalAction(
         modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (pressed) 0.80f else 1f }
             .height(66.dp)
             .clip(CircleShape)
-            .background(if (active) Color(0xFFE53935) else Color(0xFF333538))
+            .background(Color(0xFFF8F8F5))
+            .then(if (active) Modifier.border(1.dp, RadioTvPalette.Red, CircleShape) else Modifier)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick)
             .padding(horizontal = 2.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         when (label) {
-            "Клавиатура" -> Icon(Icons.Filled.Keyboard, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            "Домой" -> Icon(Icons.Filled.Home, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            "Аэромышь" -> Icon(Icons.Filled.Mouse, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            "Без звука" -> Icon(Icons.Filled.VolumeOff, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            "Микрофон" -> Icon(Icons.Filled.Mic, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            "Назад" -> Icon(Icons.Filled.ArrowBack, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-            else -> Text(icon, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Medium)
+            "Клавиатура" -> Icon(Icons.Filled.Keyboard, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            "Домой" -> Icon(Icons.Filled.Home, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            "Аэромышь" -> Icon(Icons.Filled.Mouse, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            "Без звука" -> Icon(Icons.Filled.VolumeOff, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            "Микрофон" -> Icon(Icons.Filled.Mic, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            "Назад" -> Icon(Icons.Filled.ArrowBack, contentDescription = label, tint = Color(0xFF252A29), modifier = Modifier.size(22.dp))
+            else -> Text(icon, color = Color(0xFF252A29), fontSize = 21.sp, fontWeight = FontWeight.Medium)
         }
-        Text(label, color = Color(0xFFB0B0B0), fontSize = 8.sp, maxLines = 1)
+        Text(label, color = Color(0xFF252A29), fontSize = 8.sp, maxLines = 1)
     }
 }
 
