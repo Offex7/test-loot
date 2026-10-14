@@ -864,15 +864,123 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                             ControlActionButton("Тачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
                                             ControlActionButton("Трансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
                                         }
-                                        OutlinedButton(
-                                            onClick = {
-                                                sendUiFeedback("Дублирование")
-                                                selectedTab = RadioTvTab.CONTROL
-                                                duplicationExpanded = true
-                                                refreshCastDevices()
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) { Text("НАСТРОИТЬ ДУБЛИРОВАНИЕ / ТРАНСЛЯЦИЮ") }
+                                        Card(
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth()
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .clickable {
+                                                            sendUiFeedback("Дублирование")
+                                                            duplicationExpanded = !duplicationExpanded
+                                                            if (duplicationExpanded) refreshCastDevices()
+                                                        }
+                                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text("Дублирование / трансляция", fontWeight = FontWeight.SemiBold)
+                                                        Text(
+                                                            if (duplicationExpanded) "Панель развёрнута" else "Фото, видео, аудио и DLNA · нажмите, чтобы открыть",
+                                                            color = RadioTvPalette.Muted,
+                                                            style = MaterialTheme.typography.bodySmall
+                                                        )
+                                                    }
+                                                    Text(if (duplicationExpanded) "−" else "+", color = RadioTvPalette.Red, fontSize = 22.sp)
+                                                }
+                                                if (duplicationExpanded) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        OutlinedButton(
+                                                            onClick = { sendUiFeedback("Фото и видео"); launchMediaPicker(arrayOf("image/*", "video/*")) },
+                                                            modifier = Modifier.weight(1f)
+                                                        ) { Text("Фото / видео") }
+                                                        OutlinedButton(
+                                                            onClick = { sendUiFeedback("Музыка и аудио"); launchAudioPicker() },
+                                                            modifier = Modifier.weight(1f)
+                                                        ) { Text("Музыка / аудио") }
+                                                    }
+                                                    OutlinedButton(
+                                                        onClick = { sendUiFeedback("Выбрать файл"); launchMediaPicker(arrayOf("*/*")) },
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) { Text("ВЫБРАТЬ ЛЮБОЙ ФАЙЛ") }
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Text("DLNA-приёмники", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                                        OutlinedButton(
+                                                            onClick = { sendUiFeedback("Обновить DLNA"); refreshCastDevices() },
+                                                            enabled = !castScanning
+                                                        ) { Text(if (castScanning) "ПОИСК…" else "ОБНОВИТЬ") }
+                                                    }
+                                                    if (castDevices.isEmpty() && !castScanning) {
+                                                        Text("Нажмите «Обновить» или выберите файл: поиск DLNA начнётся автоматически.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    castDevices.take(6).forEach { renderer ->
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                                                .background(RadioTvPalette.Black).padding(8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Text(
+                                                                renderer.friendlyName?.takeIf { it.isNotBlank() } ?: "DLNA-устройство",
+                                                                modifier = Modifier.weight(1f),
+                                                                maxLines = 2,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    sendUiFeedback("Выбрать DLNA")
+                                                                    selectedCastRenderer = renderer
+                                                                    val media = castMedia
+                                                                    if (media != null) scope.launch {
+                                                                        runCatching { dlnaCast.play(renderer, media) }
+                                                                            .onSuccess { castPlaybackStatus = "Воспроизведение"; castMessage = "Передаём медиа на выбранное устройство." }
+                                                                            .onFailure { castPlaybackStatus = "Ошибка"; castMessage = it.message ?: "Не удалось запустить медиа." }
+                                                                    } else {
+                                                                        castMessage = "Телевизор выбран. Теперь выберите фото, видео, аудио или файл."
+                                                                    }
+                                                                }
+                                                            ) { Text(if (selectedCastRenderer?.location == renderer.location) "ВЫБРАНО" else "ВЫБРАТЬ") }
+                                                        }
+                                                    }
+                                                    Text(castMedia?.let { "Медиа: ${it.title}" } ?: "Медиа ещё не выбрано.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                    Text("Состояние: $castPlaybackStatus", color = if (castPlaybackStatus == "Воспроизведение") RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                    Text(castMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        Button(
+                                                            onClick = {
+                                                                val renderer = selectedCastRenderer
+                                                                val media = castMedia
+                                                                if (renderer != null && media != null) scope.launch {
+                                                                    runCatching { dlnaCast.play(renderer, media) }
+                                                                        .onSuccess { castPlaybackStatus = "Воспроизведение"; castMessage = "Команда Play отправлена." }
+                                                                        .onFailure { castPlaybackStatus = "Ошибка"; castMessage = it.message ?: "Не удалось начать воспроизведение." }
+                                                                }
+                                                            },
+                                                            enabled = selectedCastRenderer != null && castMedia != null,
+                                                            modifier = Modifier.weight(1f)
+                                                        ) { Text("▶ Play") }
+                                                        OutlinedButton(
+                                                            onClick = { selectedCastRenderer?.let { renderer -> scope.launch {
+                                                                runCatching { dlnaCast.pause(renderer) }
+                                                                    .onSuccess { castPlaybackStatus = "Пауза"; castMessage = "Команда Pause отправлена." }
+                                                                    .onFailure { castMessage = it.message ?: "Pause не поддерживается." }
+                                                            } } },
+                                                            enabled = selectedCastRenderer != null,
+                                                            modifier = Modifier.weight(1f)
+                                                        ) { Text("Ⅱ Pause") }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                     }
