@@ -64,6 +64,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Paparazzi records Compose snapshots directly on the JVM; no emulator, Robolectric or ADB.
+    testImplementation("app.cash.paparazzi:paparazzi:1.3.5")
     testImplementation("junit:junit:4.13.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
