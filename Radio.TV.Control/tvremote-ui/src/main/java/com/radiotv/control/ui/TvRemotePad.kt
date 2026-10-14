@@ -172,7 +172,7 @@ fun TvRemotePad(
         val powerSize = if (tight) 40.dp else 52.dp
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
         val topClusterHeight = if (tight) {
-            (maxHeight * 0.33f).coerceAtLeast(96.dp)
+            (maxHeight * 0.30f).coerceAtLeast(72.dp)
         } else {
             (maxHeight * 0.39f).coerceIn(if (compact) 190.dp else 225.dp, if (compact) 250.dp else 300.dp)
         }
@@ -180,7 +180,7 @@ fun TvRemotePad(
         val mediaButtonSize = if (tight) (maxWidth * 0.16f).coerceIn(44.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(58.dp, 74.dp)
         val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
         val dpadHeight = if (tight) {
-            (maxHeight * 0.25f).coerceAtLeast(78.dp)
+            (maxHeight * 0.22f).coerceAtLeast(62.dp)
         } else {
             (maxHeight * 0.34f).coerceIn(if (compact) 132.dp else 155.dp, if (compact) 220.dp else 268.dp)
         }
