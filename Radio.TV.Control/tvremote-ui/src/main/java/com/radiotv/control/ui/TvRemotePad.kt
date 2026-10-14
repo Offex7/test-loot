@@ -503,7 +503,7 @@ fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -529,7 +529,7 @@ fun TvRemotePad(
 
             // The four lower quick actions match the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
