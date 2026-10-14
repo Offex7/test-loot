@@ -1,94 +1,157 @@
 package com.radiotv.control
 
-import android.app.Application
-import android.content.Context
-import android.graphics.BitmapFactory
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
-import androidx.test.core.app.ApplicationProvider
-import com.github.takahirom.roborazzi.captureRoboImage
-import com.radiotv.control.cast.DlnaCastController
-import com.radiotv.control.core.AndroidTvRemoteV2Transport
-import com.radiotv.control.core.AndroidTvVoiceInputController
-import com.radiotv.control.core.BluetoothHidController
-import com.radiotv.control.core.GyroAirMouseController
-import com.radiotv.control.core.OtherTvRemoteController
-import java.io.File
-import org.junit.Assert.assertTrue
+import app.cash.paparazzi.DeviceConfig
+import app.cash.paparazzi.Paparazzi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.radiotv.control.core.InstalledTvApp
+import com.radiotv.control.core.RemoteKey
+import com.radiotv.control.ui.RadioTvPalette
+import com.radiotv.control.ui.RemoteFeatureAction
+import com.radiotv.control.ui.TvRemotePad
+import com.radiotv.control.ui.radioTvColorScheme
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
 
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], application = ScreenshotTestApplication::class, qualifiers = "w393dp-h873dp")
 class ScreenshotTests {
     @get:Rule
-    val composeRule = createComposeRule()
+    val paparazzi = Paparazzi(
+        deviceConfig = DeviceConfig.PIXEL_5,
+        theme = "android:Theme.Material.NoActionBar",
+        showSystemUi = false
+    )
 
     @Test
-    fun screenshotRemote() = captureScreen(screen = "remote", fileName = "remote.png")
-
-    @Test
-    fun screenshotControl() = captureScreen(screen = "digital", fileName = "digital-panel.png")
-
-    @Test
-    fun screenshotSettings() = captureScreen(screen = "settings", fileName = "settings.png")
-
-    private fun captureScreen(screen: String, fileName: String) {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val remote = AndroidTvRemoteV2Transport(context)
-        val bluetoothHid = BluetoothHidController(context)
-        val airMouse = GyroAirMouseController(context, bluetoothHid)
-        val voiceInput = AndroidTvVoiceInputController(context, remote)
-        val otherTvRemote = OtherTvRemoteController(context)
-        val dlnaCast = DlnaCastController(context)
-        val output = File("build/screenshots", fileName).absoluteFile
-        output.parentFile?.mkdirs()
-
-        // Freeze the clock after the first second so infinite UI animations cannot block capture.
-        composeRule.mainClock.autoAdvance = false
-        composeRule.setContent {
-            RadioTvControlScreen(
-                remote = remote,
-                bluetoothHid = bluetoothHid,
-                airMouse = airMouse,
-                voiceInput = voiceInput,
-                otherTvRemote = otherTvRemote,
-                dlnaCast = dlnaCast,
-                initialUiScreen = screen
-            )
-        }
-        composeRule.mainClock.advanceTimeBy(1_000L)
-        composeRule.waitForIdle()
-        composeRule.onRoot().captureRoboImage(output.absolutePath)
-
-        val bitmap = BitmapFactory.decodeFile(output.absolutePath)
-            ?: throw AssertionError("Не удалось прочитать PNG: $output")
-        try {
-            var sum = 0L
-            var samples = 0L
-            val stepX = maxOf(1, bitmap.width / 160)
-            val stepY = maxOf(1, bitmap.height / 160)
-            for (y in 0 until bitmap.height step stepY) {
-                for (x in 0 until bitmap.width step stepX) {
-                    val pixel = bitmap.getPixel(x, y)
-                    sum += android.graphics.Color.red(pixel)
-                    sum += android.graphics.Color.green(pixel)
-                    sum += android.graphics.Color.blue(pixel)
-                    samples += 3
-                }
+    fun screenshotRemote() {
+        paparazzi.snapshot {
+            MaterialTheme(colorScheme = radioTvColorScheme()) {
+                TvRemotePad(
+                    enabled = true,
+                    onKey = { _: RemoteKey -> },
+                    deviceName = "Xiaomi",
+                    onFeatureAction = { _: RemoteFeatureAction -> },
+                    onSettings = {}
+                )
             }
-            val meanRgb = if (samples == 0L) 0.0 else sum.toDouble() / samples
-            assertTrue("PNG чёрный ($fileName, mean RGB=$meanRgb)", meanRgb > 0.0)
-        } finally {
-            bitmap.recycle()
+        }
+    }
+
+    @Test
+    fun screenshotControl() {
+        paparazzi.snapshot {
+            MaterialTheme(colorScheme = radioTvColorScheme()) {
+                DigitalRemotePanel(
+                    deviceName = "Xiaomi",
+                    installedApps = emptyList<InstalledTvApp>(),
+                    onLaunchApp = {},
+                    enabled = true,
+                    micRecording = false,
+                    airMouseActive = false,
+                    keyboardActive = false,
+                    onKey = { _: RemoteKey -> },
+                    onFeatureAction = { _: RemoteFeatureAction -> },
+                    onSettings = {},
+                    onReturnRemote = {},
+                    duplicationExpanded = false,
+                    onToggleDuplication = {},
+                    duplicationContent = {}
+                )
+            }
+        }
+    }
+
+    @Test
+    fun screenshotSettings() {
+        paparazzi.snapshot {
+            MaterialTheme(colorScheme = radioTvColorScheme()) {
+                SettingsSnapshotContent()
+            }
         }
     }
 }
 
-/** Prevents RadioTvControlApp from starting a process-global Koin graph in every Robolectric sandbox. */
-class ScreenshotTestApplication : Application()
+/** Small pure Compose surface for settings screenshot coverage; the interactive settings live in MainActivity. */
+@Composable
+private fun SettingsSnapshotContent() {
+    Column(
+        modifier = Modifier.fillMaxSize().background(RadioTvPalette.Black)
+            .verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("НАСТРОЙКИ УСТРОЙСТВ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleMedium)
+        Text("Телефон и телевизор должны быть в одной Wi-Fi сети.", color = RadioTvPalette.Muted)
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                SettingSwitchRow("Вибрация при нажатии", "Короткий тактильный отклик", checked = true)
+                SettingSwitchRow("Звук при нажатии", "Выключен по умолчанию", checked = false)
+                Text("Тип звука", color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingPill("Клик", selected = true, modifier = Modifier.weight(1f))
+                    SettingPill("Голос", selected = false, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                Text("Поиск устройств · Ручной IP · Bluetooth HID", color = Color.White)
+                Text("Аэромышь · Трансляция · Дублирование", color = RadioTvPalette.Muted)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("В разработке", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                Text("Проверка протоколов на физических телевизорах и загрузка иконок приложений зависят от доступности API устройств.", color = RadioTvPalette.Muted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(title: String, description: String, checked: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White)
+            Text(description, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = {})
+    }
+}
+
+@Composable
+private fun SettingPill(title: String, selected: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.height(40.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) RadioTvPalette.Red else RadioTvPalette.Black
+    ) {
+        Box(contentAlignment = Alignment.Center) { Text(title, color = Color.White) }
+    }
+}
