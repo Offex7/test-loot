@@ -91,11 +91,13 @@ class ManualScreenshotTest {
     }
 
     private fun capture(fileName: String, content: @Composable () -> Unit) {
+        composeRule.mainClock.autoAdvance = false
         composeRule.setContent { content() }
+        composeRule.mainClock.advanceTimeBy(600L)
         composeRule.waitForIdle()
         val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val base = context.getExternalFilesDir(null) ?: context.cacheDir
+        val base = context.filesDir
         val output = File(base, "screenshots/$fileName")
         output.parentFile?.mkdirs()
         try {
