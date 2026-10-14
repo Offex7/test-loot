@@ -92,35 +92,27 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Capture UI screenshots with Robolectric and Compose (JVM, no emulator)
+      - name: Record Compose snapshots with Paparazzi (JVM, no emulator)
         if: github.event_name != 'pull_request'
-        run: gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest --tests "*ScreenshotTests*"
-      - name: Upload JVM screenshot test diagnostics
-        if: always() && github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Radio.TV.Control-jvm-test-report-run-${{ github.run_number }}
-          path: |
-            Radio.TV.Control/app/build/reports/tests/testDebugUnitTest/**
-            Radio.TV.Control/app/build/test-results/testDebugUnitTest/**
-          if-no-files-found: warn
-          retention-days: 14
-      - name: List and validate generated screenshots
+        run: gradle --no-daemon --console=plain --stacktrace :app:recordPaparazziDebug
+      - name: List and validate Paparazzi snapshots
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          ls -la app/build/screenshots/
-          for file in remote.png digital-panel.png settings.png; do
-            test -s "app/build/screenshots/$file"
-            python3 ../ci/validate-screenshot.py "app/build/screenshots/$file"
+          SNAPSHOT_DIR="app/src/test/snapshots/images"
+          mapfile -t screenshots < <(find "$SNAPSHOT_DIR" -type f -name '*.png' -print | sort)
+          test "${#screenshots[@]}" -ge 3 || { echo "Expected at least 3 Paparazzi PNGs in $SNAPSHOT_DIR"; exit 1; }
+          for file in "${screenshots[@]}"; do
+            test -s "$file"
+            python3 ../ci/validate-screenshot.py "$file"
           done
       - name: Upload UI screenshots
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
-          path: Radio.TV.Control/app/build/screenshots/*.png
+          path: Radio.TV.Control/app/src/test/snapshots/images/**/*.png
           if-no-files-found: error
           retention-days: 30
 
