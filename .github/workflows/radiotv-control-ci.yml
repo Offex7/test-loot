@@ -92,27 +92,29 @@ jobs:
           grep -F 'TouchpadSurface' dex-strings.txt
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
-      - name: Record Compose snapshots with Paparazzi (JVM, no emulator)
+      - name: Generate Compose reference screenshots (JVM, no emulator)
         if: github.event_name != 'pull_request'
-        run: gradle --no-daemon --console=plain --stacktrace :app:recordPaparazziDebug
-      - name: List and validate Paparazzi snapshots
+        run: gradle --no-daemon --console=plain --stacktrace :app:updateDebugScreenshotTest
+      - name: Validate Compose reference screenshots
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          SNAPSHOT_DIR="app/src/test/snapshots/images"
+          SNAPSHOT_DIR="app/src/screenshotTestDebug/reference/com/radiotv/control"
+          ls -la "$SNAPSHOT_DIR"
           mapfile -t screenshots < <(find "$SNAPSHOT_DIR" -type f -name '*.png' -print | sort)
-          test "${#screenshots[@]}" -ge 3 || { echo "Expected at least 3 Paparazzi PNGs in $SNAPSHOT_DIR"; exit 1; }
+          test "${#screenshots[@]}" -ge 3 || { echo "Expected 3 Compose reference PNGs in $SNAPSHOT_DIR"; exit 1; }
           for file in "${screenshots[@]}"; do
             test -s "$file"
             python3 ../ci/validate-screenshot.py "$file"
           done
+          gradle --no-daemon --console=plain --stacktrace :app:validateDebugScreenshotTest
       - name: Upload UI screenshots
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
-          path: Radio.TV.Control/app/src/test/snapshots/images/**/*.png
+          path: Radio.TV.Control/app/src/screenshotTestDebug/reference/**/*.png
           if-no-files-found: error
           retention-days: 30
 
