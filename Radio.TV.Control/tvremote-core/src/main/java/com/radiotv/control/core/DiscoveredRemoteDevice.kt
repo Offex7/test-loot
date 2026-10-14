@@ -8,6 +8,7 @@ enum class RemoteDeviceType(val label: String) {
     ROKU("Roku"),
     DLNA("DLNA / UPnP"),
     AIRPLAY("AirPlay"),
+    KIVI_ADB("Kivi TV (ADB)"),
     UNKNOWN("Неизвестное устройство")
 }
 

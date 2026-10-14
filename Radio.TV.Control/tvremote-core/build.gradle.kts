@@ -29,5 +29,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.80")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.tananaev:adblib:1.3")
     testImplementation("junit:junit:4.13.2")
 }

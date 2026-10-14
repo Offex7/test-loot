@@ -259,6 +259,7 @@ class LocalNetworkDeviceDiscovery(context: Context) {
         6466 in ports || 6467 in ports -> RemoteDeviceType.ANDROID_TV
         8060 in ports -> RemoteDeviceType.ROKU
         8001 in ports || 8002 in ports -> RemoteDeviceType.SAMSUNG
+        5555 in ports -> RemoteDeviceType.KIVI_ADB
         3000 in ports || 3001 in ports -> RemoteDeviceType.LG
         8008 in ports || 8009 in ports -> RemoteDeviceType.CHROMECAST
         else -> RemoteDeviceType.UNKNOWN
@@ -270,6 +271,7 @@ class LocalNetworkDeviceDiscovery(context: Context) {
         RemoteDeviceType.LG -> "LG"
         RemoteDeviceType.ROKU -> "Roku"
         RemoteDeviceType.AIRPLAY -> "Apple"
+        RemoteDeviceType.KIVI_ADB -> "Kivi"
         RemoteDeviceType.DLNA -> fallback?.substringBefore('/')?.takeIf { it.isNotBlank() }
         RemoteDeviceType.UNKNOWN -> null
     }
@@ -298,6 +300,7 @@ class LocalNetworkDeviceDiscovery(context: Context) {
         RemoteDeviceType.ROKU -> 4
         RemoteDeviceType.DLNA -> 5
         RemoteDeviceType.AIRPLAY -> 6
+        RemoteDeviceType.KIVI_ADB -> 2
         RemoteDeviceType.UNKNOWN -> 7
     }
 
@@ -307,6 +310,6 @@ class LocalNetworkDeviceDiscovery(context: Context) {
         const val SSDP_READ_TIMEOUT_MS = 240
         const val TCP_CONNECT_TIMEOUT_MS = 180
         const val MAX_PARALLEL_HOSTS = 48
-        val TCP_PORTS = listOf(6466, 6467, 8008, 8009, 9080, 8060, 8001, 8002, 3000, 3001)
+        val TCP_PORTS = listOf(6466, 6467, 8008, 8009, 9080, 8060, 8001, 8002, 3000, 3001, 5555)
     }
 }
