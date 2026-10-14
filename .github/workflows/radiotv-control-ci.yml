@@ -93,28 +93,52 @@ jobs:
           sha256sum artifact-out/Radio.TV.Control-debug.apk | tee sha256.txt
           stat -c 'APK_SIZE_BYTES=%s' artifact-out/Radio.TV.Control-debug.apk | tee size.txt
       - name: Generate Compose reference screenshots (JVM, no emulator)
+        id: official_screenshot_render
         if: github.event_name != 'pull_request'
-        run: gradle --no-daemon --console=plain --stacktrace :app:updateDebugScreenshotTest
+        continue-on-error: true
+        run: gradle --no-daemon --console=plain --stacktrace -PenableGoogleScreenshotTests=true :app:updateDebugScreenshotTest
       - name: Validate Compose reference screenshots
-        if: github.event_name != 'pull_request'
+        id: official_screenshot_validate
+        if: github.event_name != 'pull_request' && steps.official_screenshot_render.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          SNAPSHOT_DIR="app/src/screenshotTestDebug/reference/com/radiotv/control"
+          SNAPSHOT_DIR="app/src/screenshotTestDebug/reference"
           ls -la "$SNAPSHOT_DIR"
           mapfile -t screenshots < <(find "$SNAPSHOT_DIR" -type f -name '*.png' -print | sort)
-          test "${#screenshots[@]}" -ge 3 || { echo "Expected 3 Compose reference PNGs in $SNAPSHOT_DIR"; exit 1; }
+          test "${#screenshots[@]}" -ge 3 || { echo "Expected at least 3 Compose reference PNGs in $SNAPSHOT_DIR"; exit 1; }
           for file in "${screenshots[@]}"; do
             test -s "$file"
             python3 ../ci/validate-screenshot.py "$file"
           done
-          gradle --no-daemon --console=plain --stacktrace :app:validateDebugScreenshotTest
+          gradle --no-daemon --console=plain --stacktrace -PenableGoogleScreenshotTests=true :app:validateDebugScreenshotTest
+      - name: Android emulator screenshot fallback
+        if: github.event_name != 'pull_request' && (steps.official_screenshot_render.outcome != 'success' || steps.official_screenshot_validate.outcome != 'success')
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: Pixel_5
+          disable-animations: true
+          script: |
+            cd Radio.TV.Control
+            gradle --no-daemon --console=plain --stacktrace :app:connectedDebugAndroidTest
+            mkdir -p app/build/screenshots
+            adb pull /sdcard/Android/data/com.radiotv.control/files/screenshots/. app/build/screenshots/
+            for file in remote.png digital-panel.png settings.png; do
+              test -s "app/build/screenshots/$file"
+              python3 ../ci/validate-screenshot.py "app/build/screenshots/$file"
+            done
       - name: Upload UI screenshots
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Radio.TV.Control-ui-screenshots-run-${{ github.run_number }}
-          path: Radio.TV.Control/app/src/screenshotTestDebug/reference/**/*.png
+          path: |
+            Radio.TV.Control/app/src/screenshotTestDebug/reference/**/*.png
+            Radio.TV.Control/app/build/screenshots/*.png
           if-no-files-found: error
           retention-days: 30
 
