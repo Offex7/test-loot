@@ -8,7 +8,6 @@ import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.HapticFeedbackConstants
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import java.util.Locale
@@ -98,8 +97,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
     val context = LocalContext.current
-    val view = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
     val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
     val speechReady = remember { mutableStateOf(false) }
     val speechEngine = remember(context) {
@@ -175,7 +175,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         if (speechReady.value) speechEngine.language = Locale("ru")
     }
     val sendUiFeedback: (String) -> Unit = { label ->
-        if (feedbackSettings.vibrationEnabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (feedbackSettings.vibrationEnabled) hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
         if (feedbackSettings.clickSoundEnabled) {
             if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
                 speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click")
