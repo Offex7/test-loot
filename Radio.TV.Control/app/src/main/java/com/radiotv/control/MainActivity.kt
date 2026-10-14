@@ -296,6 +296,14 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
     val connected = wifiConnected || otherConnected
     val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
+    // Two protocol sessions may remain connected at once. Route commands to the device selected
+    // in Settings instead of accidentally sending keys to an older Android TV session.
+    val connectedWifiHost = (status as? RemoteStatus.Connected)?.host
+    val connectedOtherIp = (otherRemoteStatus as? OtherTvRemoteStatus.Connected)?.ip
+    val selectedWifiConnected = wifiConnected &&
+        (host.isBlank() || connectedWifiHost.equals(host, ignoreCase = true))
+    val selectedOtherConnected = otherConnected &&
+        (host.isBlank() || connectedOtherIp.equals(host, ignoreCase = true))
 
     val startPairing: (String) -> Unit = { target ->
         scope.launch {
@@ -495,6 +503,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     }
 
     val connectPairedHost: (String) -> Unit = { target ->
+        host = target
+        selectedDeviceName = "Android TV"
         scope.launch {
             statusMessage = "Подключаемся к ранее сопряжённому Android TV…"
             runCatching { remote.connect(target) }
@@ -671,10 +681,10 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
         scope.launch {
             runCatching {
                 when {
-                    wifiConnected -> remote.sendKey(key)
-                    otherConnected -> otherTvRemote.sendKey(key)
+                    selectedOtherConnected -> otherTvRemote.sendKey(key)
+                    selectedWifiConnected -> remote.sendKey(key)
                     hidConnected -> bluetoothHid.sendRemoteKey(key)
-                    else -> error("Сначала подключитесь к телевизору через вкладку «Настройки».")
+                    else -> error("Выбранный телевизор не подключён. Выберите устройство в настройках.")
                 }
             }.onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
         }
@@ -719,7 +729,12 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                         keyboardActive = showKeyboard,
                                         featureMessage = null,
                                         showFeatureActions = false,
-                                        deviceName = if (connected || otherConnected || hidConnected) selectedDeviceName.ifBlank { "Телевизор" } else "Нет подключения",
+                                        deviceName = when {
+                                            selectedOtherConnected -> selectedDeviceName.ifBlank { "Телевизор" }
+                                            selectedWifiConnected -> selectedDeviceName.ifBlank { "Android TV" }
+                                            hidConnected -> selectedDeviceName.ifBlank { "Bluetooth HID" }
+                                            else -> "Нет подключения"
+                                        },
                                         onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS }
                                     )
                                 }
@@ -981,16 +996,16 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                                     scope.launch {
                                                         runCatching {
                                                             when {
-                                                                wifiConnected -> remote.sendText(keyboardText)
-                                                                otherConnected -> otherTvRemote.sendText(keyboardText)
+                                                                selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
+                                                                selectedWifiConnected -> remote.sendText(keyboardText)
                                                                 hidConnected -> bluetoothHid.sendText(keyboardText)
-                                                                else -> error("Сначала подключитесь по Wi‑Fi или Bluetooth HID.")
+                                                                else -> error("Выбранный телевизор не подключён. Выберите устройство в настройках.")
                                                             }
                                                         }.onSuccess { statusMessage = "Текст отправлен."; keyboardText = "" }
                                                             .onFailure { statusMessage = it.message ?: "Не удалось отправить текст." }
                                                     }
                                                 },
-                                                enabled = keyboardText.isNotEmpty() && (connected || otherConnected || hidConnected),
+                                                enabled = keyboardText.isNotEmpty() && (selectedWifiConnected || selectedOtherConnected || hidConnected),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text("ОТПРАВИТЬ ТЕКСТ НА ТВ") }
                                         }
