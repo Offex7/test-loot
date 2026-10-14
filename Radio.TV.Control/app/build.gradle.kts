@@ -1,7 +1,12 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.android.compose.screenshot")
+}
+
+val enableGoogleScreenshotTests = providers.gradleProperty("enableGoogleScreenshotTests").orNull == "true"
+if (enableGoogleScreenshotTests) {
+    // Apply only for the official snapshot task so the APK and emulator fallback build stay independent.
+    apply(plugin = "com.android.compose.screenshot")
 }
 
 val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
@@ -15,6 +20,7 @@ android {
         applicationId = "com.radiotv.control"
         minSdk = 31
         targetSdk = 37
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = ciRunNumber
         versionName = "0.1.$ciRunNumber"
     }
@@ -46,7 +52,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
-    experimentalProperties["android.experimental.enableScreenshotTest"] = true
+    if (enableGoogleScreenshotTests) {
+        experimentalProperties["android.experimental.enableScreenshotTest"] = true
+    }
 }
 kotlin {
     compilerOptions {
@@ -64,9 +72,16 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    screenshotTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
-    screenshotTestImplementation("com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha16")
-    screenshotTestImplementation("androidx.compose.ui:ui-tooling")
+    if (enableGoogleScreenshotTests) {
+        add("screenshotTestImplementation", platform("androidx.compose:compose-bom:2025.10.01"))
+        add("screenshotTestImplementation", "com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha16")
+        add("screenshotTestImplementation", "androidx.compose.ui:ui-tooling")
+    }
+    add("androidTestImplementation", platform("androidx.compose:compose-bom:2025.10.01"))
+    add("androidTestImplementation", "androidx.compose.ui:ui-test-junit4")
+    add("androidTestImplementation", "androidx.test.ext:junit:1.2.1")
+    add("androidTestImplementation", "androidx.test:runner:1.6.2")
+    add("debugImplementation", "androidx.compose.ui:ui-test-manifest")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("io.insert-koin:koin-android:4.1.1")
