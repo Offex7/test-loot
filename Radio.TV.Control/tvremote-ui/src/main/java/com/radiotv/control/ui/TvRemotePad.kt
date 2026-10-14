@@ -160,7 +160,8 @@ fun TvRemotePad(
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
     deviceName: String = "Телевизор не подключён",
-    onSettings: () -> Unit = {}
+    onSettings: () -> Unit = {},
+    onBack: () -> Unit = { onKey(RemoteKey.BACK) }
 ) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize().background(Color(0xFF000000))
@@ -176,8 +177,8 @@ fun TvRemotePad(
         } else {
             (maxHeight * 0.39f).coerceIn(if (compact) 190.dp else 225.dp, if (compact) 250.dp else 300.dp)
         }
-        val volumePillWidth = if (tight) (maxWidth * 0.15f).coerceIn(42.dp, 56.dp) else (maxWidth * 0.19f).coerceIn(52.dp, 70.dp)
-        val mediaButtonSize = if (tight) (maxWidth * 0.16f).coerceIn(44.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(58.dp, 74.dp)
+        val volumePillWidth = if (tight) (maxWidth * 0.16f).coerceIn(46.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(60.dp, 78.dp)
+        val mediaButtonSize = if (tight) (maxWidth * 0.17f).coerceIn(48.dp, 64.dp) else (maxWidth * 0.215f).coerceIn(64.dp, 82.dp)
         val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
         val dpadHeight = if (tight) {
             (maxHeight * 0.22f).coerceAtLeast(62.dp)
@@ -191,8 +192,9 @@ fun TvRemotePad(
         val sideInset = if (tight) 6.dp else 13.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
-        val headerColor = RadioTvPalette.Black
-        val headerButtonColor = padButtonColor
+        val headerColor = Color(0xFF1A1A1A)
+        val headerButtonColor = Color(0xFF2A2A2A)
+        val headerIconColor = Color(0xFFE8E8E8)
 
         val transition = rememberInfiniteTransition(label = "remote-animations")
         val okPulse by transition.animateFloat(
@@ -236,7 +238,7 @@ fun TvRemotePad(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(headerHeight)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(headerColor)
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -247,12 +249,12 @@ fun TvRemotePad(
                     modifier = Modifier.size(headerButtonSize),
                     shape = CircleShape,
                     background = headerButtonColor,
-                    onClick = { onKey(RemoteKey.BACK) }
+                    onClick = onBack
                 ) {
                     Icon(
                         Icons.Filled.ArrowBack,
                         contentDescription = null,
-                        tint = padIconColor,
+                        tint = headerIconColor,
                         modifier = Modifier.size(25.dp)
                     )
                 }
@@ -266,12 +268,12 @@ fun TvRemotePad(
                     Icon(
                         Icons.Filled.Settings,
                         contentDescription = null,
-                        tint = padIconColor,
+                        tint = headerIconColor,
                         modifier = Modifier.size(25.dp)
                     )
                 }
                 Text(
-                    text = deviceName.ifBlank { "Телевизор не подключён" },
+                    text = deviceName.ifBlank { "Нет подключения" },
                     modifier = Modifier.weight(1f).padding(horizontal = 3.dp),
                     color = Color.White,
                     fontSize = if (tight) 16.sp else 19.sp,

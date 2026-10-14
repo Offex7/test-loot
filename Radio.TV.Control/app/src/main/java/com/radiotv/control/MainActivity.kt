@@ -33,6 +33,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -56,8 +57,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mouse
@@ -94,6 +97,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -141,7 +145,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val initialUiScreen = intent.getStringExtra("ui-screen") ?: "onboarding"
+        val initialUiScreen = intent.getStringExtra("ui-screen") ?: "remote"
         setContent { RadioTvControlScreen(remote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
     }
 
@@ -202,7 +206,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
     var statusMessage by rememberSaveable { mutableStateOf("Телефон и телевизор должны быть в одной сети Wi‑Fi.") }
     var devices by remember { mutableStateOf<List<DiscoveredRemoteDevice>>(emptyList()) }
     var selectedDeviceName by rememberSaveable { mutableStateOf("") }
-    var showOnboarding by rememberSaveable { mutableStateOf(initialUiScreen !in setOf("remote", "digital", "pairing", "settings", "cast")) }
+    var showOnboarding by rememberSaveable { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
@@ -714,7 +718,22 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                             onUnknown = { startFromOnboarding(false) }
                         )
                     } else {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth().pointerInput(selectedTab) {
+                            var horizontalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
+                                onDragEnd = {
+                                    if (horizontalDrag < -100f && selectedTab == RadioTvTab.REMOTE) {
+                                        selectedTab = RadioTvTab.CONTROL
+                                    } else if (horizontalDrag > 100f && selectedTab != RadioTvTab.REMOTE) {
+                                        selectedTab = RadioTvTab.REMOTE
+                                    }
+                                    horizontalDrag = 0f
+                                }
+                            )
+                        }
+                    ) {
                         when (selectedTab) {
                             RadioTvTab.REMOTE -> {
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -735,7 +754,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                             hidConnected -> selectedDeviceName.ifBlank { "Bluetooth HID" }
                                             else -> "Нет подключения"
                                         },
-                                        onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS }
+                                        onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
+                                        onBack = { sendUiFeedback("Контроль"); selectedTab = RadioTvTab.CONTROL }
                                     )
                                 }
                             }
@@ -752,7 +772,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                                     enabled = connected || otherConnected || hidConnected, micRecording = voiceStatus is VoiceInputStatus.Recording,
                                     airMouseActive = airMouseStatus is AirMouseStatus.Active, keyboardActive = showKeyboard,
                                     onKey = dispatchRemoteKey, onFeatureAction = handleFeatureAction,
-                                    onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS },
+                                    onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
                                     onReturnRemote = { sendUiFeedback("Пульт"); selectedTab = RadioTvTab.REMOTE },
                                     duplicationExpanded = duplicationExpanded,
                                     onToggleDuplication = { sendUiFeedback("Дублирование"); duplicationExpanded = !duplicationExpanded; if (duplicationExpanded) refreshCastDevices() },
@@ -789,9 +809,25 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                             RadioTvTab.SETTINGS -> {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                                    contentPadding = PaddingValues(top = 14.dp, bottom = 16.dp),
+                                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
                                     verticalArrangement = Arrangement.spacedBy(9.dp)
                                 ) {
+                                    item {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.size(40.dp).clip(CircleShape)
+                                                    .background(Color(0xFF2A2A2A))
+                                                    .clickable { sendUiFeedback("Назад"); selectedTab = RadioTvTab.REMOTE }
+                                                    .padding(8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) { Icon(Icons.Filled.ArrowBack, contentDescription = "Назад к пульту", tint = Color.White) }
+                                            Text("Настройки", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                     item {
                                         Text("НАСТРОЙКИ УСТРОЙСТВ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                                         Text("Телефон и телевизор должны быть в одной Wi‑Fi сети.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
@@ -1161,16 +1197,6 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                             }
                         }
                     }
-                    RadioTvBottomBar(
-                        selected = selectedTab,
-                        onFeedback = sendUiFeedback,
-                        onSelect = { tab ->
-                            val tabChanged = selectedTab != tab
-                            selectedTab = tab
-                            if (tabChanged && tab == RadioTvTab.SETTINGS) refreshDevices()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(72.dp)
-                    )
                     }
                 }
                 androidx.compose.material3.SnackbarHost(
@@ -1178,7 +1204,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 12.dp, end = 12.dp, bottom = 84.dp)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
                 )
             }
         }
@@ -1267,63 +1293,6 @@ private fun DiscoverySkeletonCard() {
                 Box(Modifier.fillMaxWidth(0.88f).height(9.dp).background(RadioTvPalette.Muted.copy(alpha = alpha * 0.8f), RoundedCornerShape(4.dp)))
             }
             Box(Modifier.size(32.dp).background(RadioTvPalette.Muted.copy(alpha = alpha * 0.7f), RoundedCornerShape(16.dp)))
-        }
-    }
-}
-
-@Composable
-private fun RadioTvBottomBar(
-    selected: RadioTvTab,
-    onFeedback: (String) -> Unit,
-    onSelect: (RadioTvTab) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.background(RadioTvPalette.Black).padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        RadioTvTab.entries.forEach { tab ->
-            val active = tab == selected
-            val iconColor by animateColorAsState(
-                if (active) RadioTvPalette.Blue else RadioTvPalette.Muted,
-                animationSpec = tween(180),
-                label = "tab-icon-color"
-            )
-            val titleColor by animateColorAsState(
-                if (active) RadioTvPalette.Blue else RadioTvPalette.Muted,
-                animationSpec = tween(180),
-                label = "tab-title-color"
-            )
-            val iconLift by animateDpAsState(
-                if (active) (-3).dp else 0.dp,
-                animationSpec = tween(180),
-                label = "tab-icon-lift"
-            )
-            Column(
-                modifier = Modifier.weight(1f).fillMaxHeight()
-                    .clickable {
-                        onFeedback(tab.title)
-                        onSelect(tab)
-                    }
-                    .padding(horizontal = 1.dp, vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                val tabIcon = when (tab) {
-                    RadioTvTab.REMOTE -> Icons.Filled.Tv
-                    RadioTvTab.CONTROL -> Icons.Filled.Dialpad
-                    RadioTvTab.SETTINGS -> Icons.Filled.Settings
-                }
-                Icon(tabIcon, contentDescription = tab.title, modifier = Modifier.offset(y = iconLift).size(22.dp), tint = iconColor)
-                Text(
-                    tab.title,
-                    color = titleColor,
-                    fontSize = 11.sp,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                    maxLines = 1
-                )
-            }
         }
     }
 }

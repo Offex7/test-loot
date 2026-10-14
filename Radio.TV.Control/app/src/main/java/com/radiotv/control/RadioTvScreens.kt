@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radiotv.control.core.InstalledTvApp
@@ -233,14 +234,24 @@ internal fun DigitalRemotePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color.White, modifier = Modifier.size(25.dp).clickable(onClick = onSettings).padding(1.dp))
+                Box(
+                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF2A2A2A))
+                        .clickable(onClick = onReturnRemote),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.ArrowBack, contentDescription = "Назад к пульту", tint = Color(0xFFE8E8E8), modifier = Modifier.size(21.dp)) }
+                Box(
+                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF2A2A2A))
+                        .clickable(onClick = onSettings),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color(0xFFE8E8E8), modifier = Modifier.size(21.dp)) }
                 Text(
-                    deviceName.ifBlank { "Телевизор не подключён" },
-                    modifier = Modifier.weight(1f),
+                    deviceName.ifBlank { "Нет подключения" },
+                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                     color = Color.White,
-                    fontSize = 17.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Box(
                     modifier = Modifier.size(40.dp).clip(CircleShape).background(RadioTvPalette.Red)
@@ -276,14 +287,6 @@ internal fun DigitalRemotePanel(
                     NumberButton("Menu", modifier = Modifier.weight(1f), outlined = true, onClick = { onKey(RemoteKey.MENU) })
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 0.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("●", color = Color(0xFF555555), fontSize = 10.sp, modifier = Modifier.clickable(onClick = onReturnRemote).padding(horizontal = 3.dp))
-            Text("●", color = Color(0xFF2196F3), fontSize = 10.sp, modifier = Modifier.clickable(onClick = { /* already on digit page */ }).padding(horizontal = 3.dp))
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 6.dp),
