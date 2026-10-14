@@ -24,6 +24,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -73,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -175,7 +177,7 @@ fun TvRemotePad(
         val topClusterHeight = if (tight) {
             (maxHeight * 0.30f).coerceAtLeast(72.dp)
         } else {
-            (maxHeight * 0.39f).coerceIn(if (compact) 190.dp else 225.dp, if (compact) 250.dp else 300.dp)
+            (maxHeight * 0.41f).coerceIn(if (compact) 205.dp else 235.dp, if (compact) 290.dp else 365.dp)
         }
         val volumePillWidth = if (tight) (maxWidth * 0.16f).coerceIn(46.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(60.dp, 78.dp)
         val mediaButtonSize = if (tight) (maxWidth * 0.17f).coerceIn(48.dp, 64.dp) else (maxWidth * 0.215f).coerceIn(64.dp, 82.dp)
@@ -183,8 +185,12 @@ fun TvRemotePad(
         val dpadHeight = if (tight) {
             (maxHeight * 0.22f).coerceAtLeast(62.dp)
         } else {
-            (maxHeight * 0.34f).coerceIn(if (compact) 132.dp else 155.dp, if (compact) 220.dp else 268.dp)
+            (maxHeight * 0.44f).coerceIn(if (compact) 155.dp else 180.dp, if (compact) 310.dp else 400.dp)
         }
+        val clusterVisualOffset = if (tight) 0.dp else topClusterHeight * 0.14f
+        val dpadVisualOffset = if (tight) 0.dp else -(maxHeight * 0.033f)
+        val lowerVisualOffset = if (tight) 0.dp else -(dpadHeight * 0.31f)
+        val footerVisualOffset = if (tight) 0.dp else -footerButtonSize
         val arrowSize = if (tight) 29.dp else if (compact) 42.dp else 50.dp
         val okSize = if (tight) 64.dp else if (compact) 84.dp else 98.dp
         val lowerButtonSize = if (tight) 38.dp else if (compact) 50.dp else 56.dp
@@ -300,7 +306,7 @@ fun TvRemotePad(
 
             // Tall VOL/CH pills frame Play/Pause above Mute/MENU, matching the reference.
             Row(
-                modifier = Modifier.fillMaxWidth().height(topClusterHeight),
+                modifier = Modifier.fillMaxWidth().height(topClusterHeight).offset(y = clusterVisualOffset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -404,6 +410,7 @@ fun TvRemotePad(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(dpadHeight)
+                    .offset(y = dpadVisualOffset)
                     .padding(horizontal = 1.dp)
                     .drawBehind {
                         val w = size.width
@@ -428,31 +435,19 @@ fun TvRemotePad(
                             cubicTo(w * 0.30f, h * 0.29f, w * 0.36f, h * 0.23f, w * 0.36f, h * 0.08f)
                             close()
                         }
-                        val angle = Math.toRadians(rainbowRotation.toDouble())
-                        val radius = maxOf(w, h)
                         val center = Offset(w / 2f, h / 2f)
-                        val gradientStart = Offset(
-                            center.x + kotlin.math.cos(angle).toFloat() * radius,
-                            center.y + kotlin.math.sin(angle).toFloat() * radius
-                        )
-                        val gradientEnd = Offset(
-                            center.x - kotlin.math.cos(angle).toFloat() * radius,
-                            center.y - kotlin.math.sin(angle).toFloat() * radius
-                        )
                         drawPath(
                             path,
                             color = Color(0xFF191919),
                             style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round)
                         )
-                        drawPath(
-                            path,
-                            brush = Brush.linearGradient(
-                                colors = rainbowColors,
-                                start = gradientStart,
-                                end = gradientEnd
-                            ),
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                        )
+                        rotate(rainbowRotation, pivot = center) {
+                            drawPath(
+                                path,
+                                brush = Brush.sweepGradient(colors = rainbowColors, center = center),
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                            )
+                        }
                     }
             ) {
                 RemoteSurfaceButton(
@@ -513,7 +508,7 @@ fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset).offset(y = lowerVisualOffset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -539,7 +534,7 @@ fun TvRemotePad(
 
             // The four lower quick actions match the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = sideInset).offset(y = footerVisualOffset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
