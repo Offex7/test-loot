@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <!-- createComposeRule() launches ComponentActivity inside the Robolectric sandbox. -->
+        <!-- createComposeRule() launches ComponentActivity via an explicit MAIN/LAUNCHER intent. -->
         <activity
             android:name="androidx.activity.ComponentActivity"
-            android:exported="false" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
