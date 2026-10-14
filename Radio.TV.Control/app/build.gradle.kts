@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("app.cash.paparazzi")
+    id("com.android.compose.screenshot")
 }
 
 val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
@@ -46,6 +46,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 }
 kotlin {
     compilerOptions {
@@ -63,9 +64,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Paparazzi records Compose snapshots directly on the JVM; no emulator, Robolectric or ADB.
-    testImplementation("app.cash.paparazzi:paparazzi:1.3.5")
-    testImplementation("junit:junit:4.13.2")
+    screenshotTestImplementation("com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha16")
+    screenshotTestImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("io.insert-koin:koin-android:4.1.1")
