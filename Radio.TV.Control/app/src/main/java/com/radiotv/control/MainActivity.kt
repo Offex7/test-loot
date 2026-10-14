@@ -591,11 +591,11 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, bluetoothH
                             .onFailure { statusMessage = it.message ?: "Не удалось остановить запись." }
                     }
                     "Останавливаем голосовой ввод…"
-                } else if (!wifiConnected) {
-                    if (otherConnected) {
-                        "Голосовой ввод доступен через Android TV Remote v2. Подключитесь к Android TV по Wi-Fi."
+                } else if (!selectedWifiConnected) {
+                    if (selectedOtherConnected) {
+                        "Голосовой ввод доступен только через Android TV Remote v2. Выберите Android TV и подключитесь по Wi-Fi."
                     } else {
-                        "Сначала подключитесь к телевизору."
+                        "Сначала подключитесь к Android TV по Wi-Fi."
                     }
                 } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     scope.launch {
