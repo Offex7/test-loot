@@ -167,30 +167,32 @@ fun TvRemotePad(
     ) {
         val tight = maxHeight < 520.dp
         val compact = maxHeight < 650.dp
-        val headerHeight = if (tight) 48.dp else 56.dp
-        val headerButtonSize = if (tight) 38.dp else 44.dp
-        val powerSize = if (tight) 44.dp else 52.dp
+        val headerHeight = if (tight) 42.dp else 56.dp
+        val headerButtonSize = if (tight) 34.dp else 44.dp
+        val powerSize = if (tight) 40.dp else 52.dp
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
-        val topClusterHeight = (maxHeight * 0.39f).coerceIn(
-            if (tight) 155.dp else if (compact) 190.dp else 225.dp,
-            if (compact) 250.dp else 300.dp
-        )
-        val volumePillWidth = (maxWidth * 0.19f).coerceIn(52.dp, 70.dp)
-        val mediaButtonSize = (maxWidth * 0.205f).coerceIn(58.dp, 74.dp)
-        val secondRowButtonSize = if (tight) 44.dp else if (compact) 54.dp else 64.dp
-        val dpadHeight = (maxHeight * 0.34f).coerceIn(
-            if (tight) 108.dp else if (compact) 132.dp else 155.dp,
-            if (compact) 220.dp else 268.dp
-        )
-        val arrowSize = if (tight) 34.dp else if (compact) 42.dp else 50.dp
-        val okSize = if (tight) 72.dp else if (compact) 84.dp else 98.dp
-        val lowerButtonSize = if (tight) 44.dp else if (compact) 50.dp else 56.dp
-        val footerButtonSize = if (tight) 42.dp else if (compact) 48.dp else 54.dp
-        val sideInset = if (tight) 9.dp else 13.dp
+        val topClusterHeight = if (tight) {
+            (maxHeight * 0.33f).coerceAtLeast(96.dp)
+        } else {
+            (maxHeight * 0.39f).coerceIn(if (compact) 190.dp else 225.dp, if (compact) 250.dp else 300.dp)
+        }
+        val volumePillWidth = if (tight) (maxWidth * 0.15f).coerceIn(42.dp, 56.dp) else (maxWidth * 0.19f).coerceIn(52.dp, 70.dp)
+        val mediaButtonSize = if (tight) (maxWidth * 0.16f).coerceIn(44.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(58.dp, 74.dp)
+        val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
+        val dpadHeight = if (tight) {
+            (maxHeight * 0.25f).coerceAtLeast(78.dp)
+        } else {
+            (maxHeight * 0.34f).coerceIn(if (compact) 132.dp else 155.dp, if (compact) 220.dp else 268.dp)
+        }
+        val arrowSize = if (tight) 29.dp else if (compact) 42.dp else 50.dp
+        val okSize = if (tight) 64.dp else if (compact) 84.dp else 98.dp
+        val lowerButtonSize = if (tight) 38.dp else if (compact) 50.dp else 56.dp
+        val footerButtonSize = if (tight) 36.dp else if (compact) 48.dp else 54.dp
+        val sideInset = if (tight) 6.dp else 13.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
-        val headerColor = Color(0xFF111817)
-        val headerButtonColor = Color(0xFF17201F)
+        val headerColor = RadioTvPalette.Black
+        val headerButtonColor = padButtonColor
 
         val transition = rememberInfiniteTransition(label = "remote-animations")
         val okPulse by transition.animateFloat(
@@ -250,7 +252,7 @@ fun TvRemotePad(
                     Icon(
                         Icons.Filled.ArrowBack,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = padIconColor,
                         modifier = Modifier.size(25.dp)
                     )
                 }
@@ -264,7 +266,7 @@ fun TvRemotePad(
                     Icon(
                         Icons.Filled.Settings,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = padIconColor,
                         modifier = Modifier.size(25.dp)
                     )
                 }
