@@ -187,6 +187,7 @@ fun TvRemotePad(
         } else {
             (maxHeight * 0.44f).coerceIn(if (compact) 155.dp else 180.dp, if (compact) 310.dp else 400.dp)
         }
+        val footerButtonSize = if (tight) 36.dp else if (compact) 48.dp else 54.dp
         val clusterVisualOffset = if (tight) 0.dp else topClusterHeight * 0.14f
         val dpadVisualOffset = if (tight) 0.dp else -(maxHeight * 0.033f)
         val lowerVisualOffset = if (tight) 0.dp else -(dpadHeight * 0.31f)
@@ -194,7 +195,6 @@ fun TvRemotePad(
         val arrowSize = if (tight) 29.dp else if (compact) 42.dp else 50.dp
         val okSize = if (tight) 64.dp else if (compact) 84.dp else 98.dp
         val lowerButtonSize = if (tight) 38.dp else if (compact) 50.dp else 56.dp
-        val footerButtonSize = if (tight) 36.dp else if (compact) 48.dp else 54.dp
         val sideInset = if (tight) 6.dp else 13.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
