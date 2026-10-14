@@ -294,14 +294,14 @@ class LocalNetworkDeviceDiscovery(context: Context) {
 
     private fun rank(type: RemoteDeviceType) = when (type) {
         RemoteDeviceType.ANDROID_TV -> 0
-        RemoteDeviceType.CHROMECAST -> 1
-        RemoteDeviceType.SAMSUNG -> 2
-        RemoteDeviceType.LG -> 3
-        RemoteDeviceType.ROKU -> 4
-        RemoteDeviceType.DLNA -> 5
-        RemoteDeviceType.AIRPLAY -> 6
-        RemoteDeviceType.KIVI_ADB -> 2
-        RemoteDeviceType.UNKNOWN -> 7
+        RemoteDeviceType.KIVI_ADB -> 1
+        RemoteDeviceType.CHROMECAST -> 2
+        RemoteDeviceType.SAMSUNG -> 3
+        RemoteDeviceType.LG -> 4
+        RemoteDeviceType.ROKU -> 5
+        RemoteDeviceType.DLNA -> 6
+        RemoteDeviceType.AIRPLAY -> 7
+        RemoteDeviceType.UNKNOWN -> 8
     }
 
     private companion object {
