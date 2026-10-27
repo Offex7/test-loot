@@ -1202,6 +1202,134 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                         }
                     }
                 }
+                if (showKeyboard) {
+                    Dialog(onDismissRequest = {
+                        showKeyboard = false
+                        keyboardController?.hide()
+                    }) {
+                        Surface(shape = RoundedCornerShape(18.dp), color = RadioTvPalette.Raised, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Текст на телевизор", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                OutlinedTextField(
+                                    value = keyboardText,
+                                    onValueChange = { keyboardText = it },
+                                    modifier = Modifier.fillMaxWidth().focusRequester(keyboardFocusRequester),
+                                    placeholder = { Text("Введите текст…") },
+                                    label = { Text("Сообщение") },
+                                    singleLine = false,
+                                    minLines = 2,
+                                    maxLines = 5,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedButton(onClick = {
+                                        showKeyboard = false
+                                        keyboardController?.hide()
+                                    }, modifier = Modifier.weight(1f)) { Text("Закрыть") }
+                                    Button(
+                                        onClick = {
+                                            val textToSend = keyboardText
+                                            if (textToSend.isNotBlank()) scope.launch {
+                                                runCatching {
+                                                    if (companionConnected) {
+                                                        runCatching { companionClient.sendText(textToSend) }
+                                                            .recoverCatching {
+                                                                when {
+                                                                    selectedAdbConnected -> adbRemote.sendText(textToSend)
+                                                                    selectedOtherConnected -> otherTvRemote.sendText(textToSend)
+                                                                    selectedWifiConnected -> remote.sendText(textToSend)
+                                                                    hidConnected -> bluetoothHid.sendText(textToSend)
+                                                                    else -> throw it
+                                                                }
+                                                            }.getOrThrow()
+                                                    } else when {
+                                                        selectedAdbConnected -> adbRemote.sendText(textToSend)
+                                                        selectedOtherConnected -> otherTvRemote.sendText(textToSend)
+                                                        selectedWifiConnected -> remote.sendText(textToSend)
+                                                        hidConnected -> bluetoothHid.sendText(textToSend)
+                                                        else -> error("Сначала подключитесь к телевизору.")
+                                                    }
+                                                }.onSuccess {
+                                                    keyboardText = ""
+                                                    showKeyboard = false
+                                                    keyboardController?.hide()
+                                                    statusMessage = "Текст отправлен."
+                                                }.onFailure {
+                                                    statusMessage = it.message ?: "Не удалось отправить текст на телевизор."
+                                                }
+                                            }
+                                        },
+                                        enabled = keyboardText.isNotBlank() && (companionConnected || selectedAdbConnected || selectedOtherConnected || selectedWifiConnected || hidConnected),
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Отправить") }
+                                }
+                                LaunchedEffect(Unit) {
+                                    delay(180)
+                                    keyboardFocusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            }
+                        }
+                    }
+                }
+                if (showTouchpad) {
+                    Dialog(onDismissRequest = { showTouchpad = false }) {
+                        Surface(shape = RoundedCornerShape(18.dp), color = RadioTvPalette.Raised, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Тачпад / Аэромышь", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                TouchpadSurface(
+                                    enabled = hidConnected,
+                                    modifier = Modifier.fillMaxWidth().height(236.dp),
+                                    onMove = { dx, dy -> scope.launch { runCatching { bluetoothHid.moveMouse(dx, dy) }.onFailure { statusMessage = it.message ?: "Не удалось переместить курсор." } } },
+                                    onTap = { sendUiFeedback("Клик тачпада"); scope.launch { runCatching { bluetoothHid.clickMouse(1) }.onFailure { statusMessage = it.message ?: "Не удалось нажать мышь." } } },
+                                    onLongPress = { sendUiFeedback("Контекстный клик"); scope.launch { runCatching { bluetoothHid.clickMouse(2) }.onFailure { statusMessage = it.message ?: "Не удалось отправить контекстный клик." } } }
+                                )
+                                Button(
+                                    onClick = {
+                                        when {
+                                            airMouseStatus is AirMouseStatus.Active -> airMouse.toggle()
+                                            !airMouse.hasGyroscope -> airMouse.toggle()
+                                            !hidConnected -> beginBluetoothSession()
+                                            else -> airMouse.toggle()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Black)
+                                ) {
+                                    Text(if (airMouseStatus is AirMouseStatus.Active) "ВЫКЛЮЧИТЬ АЭРОМЫШЬ" else "ВКЛЮЧИТЬ АЭРОМЫШЬ")
+                                }
+                                Text(
+                                    if (airMouseStatus is AirMouseStatus.Active) "Аэромышь работает даже после закрытия этого окна." else if (hidConnected) "Свайпы перемещают курсор; аэромышь использует гироскоп." else "Для тачпада и аэромыши подключите Bluetooth HID.",
+                                    color = RadioTvPalette.Muted,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                OutlinedButton(onClick = { showTouchpad = false }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                            }
+                        }
+                    }
+                }
+                if (showDigitPad) {
+                    Dialog(onDismissRequest = { showDigitPad = false }) {
+                        Surface(shape = RoundedCornerShape(18.dp), color = RadioTvPalette.Raised, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Цифры", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                (1..9).toList().chunked(3).forEach { row ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        row.forEach { digit ->
+                                            Button(onClick = { dispatchRemoteKey(digitKey(digit)) }, modifier = Modifier.weight(1f)) { Text(digit.toString()) }
+                                        }
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Spacer(Modifier.weight(1f))
+                                    Button(onClick = { dispatchRemoteKey(RemoteKey.NUMBER_0) }, modifier = Modifier.weight(1f)) { Text("0") }
+                                    Spacer(Modifier.weight(1f))
+                                }
+                                OutlinedButton(onClick = { showDigitPad = false }, modifier = Modifier.fillMaxWidth()) { Text("Назад / Закрыть") }
+                            }
+                        }
+                    }
+                }
                 androidx.compose.material3.SnackbarHost(
                     hostState = snackbarHostState,
                     modifier = Modifier
