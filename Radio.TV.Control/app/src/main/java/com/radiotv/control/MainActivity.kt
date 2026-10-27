@@ -1085,19 +1085,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                             } else if (devices.isEmpty()) {
                                                 Text("Устройства не найдены. Запустите поиск ещё раз или введите IP вручную.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                             }
-                                            items(devices, key = { it.ip }) { device ->
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                        Text(friendlyDeviceName(device), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                                        Text(device.ip, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    OutlinedButton(onClick = { sendUiFeedback("Подключить ТВ"); chooseDevice(device) }) { Text("Подключить") }
-                                                }
-                                            }
+                                            if (devices.isNotEmpty()) Text("Найдено устройств: ${devices.size}", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                             if (pairedHost.isNotBlank()) {
                                                 Text("Сохранённый телевизор доступен для повторного подключения.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 OutlinedButton(onClick = { connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) { Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ") }
@@ -1138,6 +1126,24 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                 ) { Text("ПОДТВЕРДИТЬ КОД") }
                                             }
                                             if (statusMessage.isNotBlank()) Text(statusMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                    items(devices, key = { it.ip }) { device ->
+                                        Card(
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text(friendlyDeviceName(device), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                                    Text(device.ip, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                OutlinedButton(onClick = { sendUiFeedback("Подключить ТВ"); chooseDevice(device) }) { Text("Подключить") }
+                                            }
                                         }
                                     }
                                     item {
