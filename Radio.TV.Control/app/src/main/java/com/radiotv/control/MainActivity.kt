@@ -13,6 +13,7 @@ import android.content.res.Configuration
 import android.provider.Settings
 import android.net.Uri
 import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -22,6 +23,7 @@ import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -74,6 +76,7 @@ import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -106,6 +109,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -138,6 +144,8 @@ import com.radiotv.control.core.OtherTvRemoteStatus
 import com.radiotv.control.ui.TouchpadSurface
 import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -160,6 +168,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestedOrientation = if (isTelevision()) ActivityInfo.SCREEN_ORIENTATION_SENSOR else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         val initialUiScreen = intent.getStringExtra("ui-screen") ?: "remote"
         setContent { RadioTvControlScreen(remote, adbRemote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
         startTvCompanionIfNeeded()
@@ -257,16 +266,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     val hapticFeedback = LocalHapticFeedback.current
     val vibrator = remember(context) { context.getSystemService(VibratorManager::class.java)?.defaultVibrator }
     val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
-    val speechReady = remember { mutableStateOf(false) }
-    val speechEngine = remember(context) {
-        TextToSpeech(context) { result -> speechReady.value = result == TextToSpeech.SUCCESS }
-    }
     val clickTone = remember(context) { ToneGenerator(AudioManager.STREAM_MUSIC, 35) }
     DisposableEffect(clickTone) { onDispose { clickTone.release() } }
-    DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
-    LaunchedEffect(speechEngine, speechReady.value) {
-        if (speechReady.value && speechEngine.setLanguage(Locale("ru")) < 0) speechReady.value = false
-    }
     val sendUiFeedback: (String) -> Unit = { label ->
         if (feedbackSettings.vibrationEnabled) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -277,11 +278,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             }
         }
         if (feedbackSettings.clickSoundEnabled) {
-            if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
-                if (speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click") == TextToSpeech.ERROR) clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
-            } else {
-                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
-            }
+            clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
         }
     }
     val status by remote.status.collectAsStateWithLifecycle()
@@ -327,7 +324,11 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     var manualEntry by rememberSaveable { mutableStateOf(false) }
     var showTouchpad by rememberSaveable { mutableStateOf(false) }
     var showKeyboard by rememberSaveable { mutableStateOf(false) }
+    var showDigitPad by rememberSaveable { mutableStateOf(false) }
     var keyboardText by rememberSaveable { mutableStateOf("") }
+    var muteActive by rememberSaveable { mutableStateOf(false) }
+    val keyboardFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     var castMessage by rememberSaveable { mutableStateOf("Нажмите «Обновить», чтобы найти DLNA-приёмники.") }
     var duplicationExpanded by rememberSaveable { mutableStateOf(initialUiScreen == "cast") }
     var castScanning by remember { mutableStateOf(false) }
@@ -340,6 +341,14 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             "digital", "cast" -> RadioTvTab.CONTROL
             else -> RadioTvTab.REMOTE
         })
+    }
+    BackHandler(enabled = showKeyboard || showTouchpad || showDigitPad || selectedTab != RadioTvTab.REMOTE) {
+        when {
+            showKeyboard -> showKeyboard = false
+            showDigitPad -> showDigitPad = false
+            showTouchpad -> showTouchpad = false
+            else -> selectedTab = RadioTvTab.REMOTE
+        }
     }
     var castMedia by remember { mutableStateOf<CastMedia?>(null) }
     var castPlaybackStatus by rememberSaveable { mutableStateOf("Остановлено") }
@@ -809,14 +818,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                 "Запуск Netflix напрямую пока не поддерживается выбранным протоколом. Откройте приложение на телевизоре."
             }
             RemoteFeatureAction.KEYBOARD -> {
-                if (selectedTab == RadioTvTab.REMOTE) {
-                    selectedTab = RadioTvTab.CONTROL
-                    showKeyboard = true
-                    "Открыта панель ввода. Нажмите поле «Текст для телевизора», введите текст и отправьте его."
-                } else {
-                    showKeyboard = !showKeyboard
-                    if (showKeyboard) "Откройте поле ввода и отправьте текст на подключённый телевизор." else "Клавиатура скрыта."
-                }
+                showKeyboard = true
+                "Открыто окно ввода текста на телевизор."
             }
             RemoteFeatureAction.AIR_MOUSE -> {
                 when {
@@ -830,15 +833,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                 }
             }
             RemoteFeatureAction.TOUCHPAD -> {
-                if (selectedTab == RadioTvTab.REMOTE) {
-                    selectedTab = RadioTvTab.CONTROL
-                    showTouchpad = true
-                    "Открыта панель тачпада. Для движения курсора подключите телевизор по Bluetooth HID."
-                } else {
-                    showTouchpad = !showTouchpad
-                    if (showTouchpad) "Тачпад включён. Для движения курсора требуется соединение Bluetooth HID."
-                    else "Тачпад скрыт."
-                }
+                showTouchpad = true
+                "Открыто окно тачпада."
             }
             RemoteFeatureAction.CAST -> {
                 // Show the system picker first; ask for LAN access only after content is selected.
@@ -858,13 +854,15 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             RemoteFeatureAction.APP_NETFLIX -> "Netflix"
         })
         statusMessage = feedbackMessage
-        scope.launch {
-            runCatching {
-                snackbarHostState.showSnackbar(
-                    message = feedbackMessage,
-                    withDismissAction = true,
-                    duration = androidx.compose.material3.SnackbarDuration.Short
-                )
+        if (feedbackSettings.notificationsEnabled) {
+            scope.launch {
+                withTimeoutOrNull(3_000L) {
+                    snackbarHostState.showSnackbar(
+                        message = feedbackMessage,
+                        withDismissAction = true,
+                        duration = androidx.compose.material3.SnackbarDuration.Indefinite
+                    )
+                }
             }
         }
     }
@@ -891,7 +889,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                     hidConnected -> bluetoothHid.sendRemoteKey(key)
                     else -> error("Выбранный телевизор не подключён. Выберите устройство в настройках.")
                 }
-            }.onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
+            }.onSuccess { if (key == RemoteKey.MUTE) muteActive = !muteActive }
+                .onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
         }
     }
 
