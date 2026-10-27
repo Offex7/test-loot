@@ -49,7 +49,10 @@ class RadioTvCompanionService : Service() {
         serviceScope.launch { adbCommandMutex.withLock { ensureLoopbackAdb() } }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RETRY_MDNS) runCatching { companionServer?.start() }
+        return START_STICKY
+    }
 
     private suspend fun executeCommand(command: JSONObject) {
         if (!ensureLoopbackAdb()) return
@@ -154,6 +157,7 @@ class RadioTvCompanionService : Service() {
     companion object {
         const val ACTION_ADB_REQUIRED = "com.radiotv.control.action.ADB_REQUIRED"
         const val EXTRA_REASON = "reason"
+        const val ACTION_RETRY_MDNS = "com.radiotv.control.action.RETRY_MDNS"
         private const val TAG = "RadioTvCompanionService"
         private const val CHANNEL_ID = "radiotv_companion"
         private const val NOTIFICATION_ID = 8089
