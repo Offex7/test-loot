@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "Radio.TV.Control"
-include(":app", ":tvremote-core", ":tvremote-ui", ":tvremote-cast")
+include(":app", ":tvremote-core", ":tvremote-ui", ":tvremote-cast", ":tvremote-companion")
