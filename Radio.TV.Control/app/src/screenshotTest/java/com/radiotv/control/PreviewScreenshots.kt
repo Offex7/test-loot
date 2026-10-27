@@ -114,12 +114,12 @@ private fun SettingsPreviewContent() {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    SettingsChoice("Wi‑Fi", selected = true, modifier = Modifier.weight(1f))
-                    SettingsChoice("IP / ИК", selected = false, modifier = Modifier.weight(1f))
-                    SettingsChoice("Bluetooth", selected = false, modifier = Modifier.weight(1f))
+                    SettingsChoice("Автопоиск", selected = true, modifier = Modifier.weight(1f))
+                    SettingsChoice("Ручной IP", selected = false, modifier = Modifier.weight(1f))
+                    SettingsChoice("Bluetooth HID", selected = false, modifier = Modifier.weight(1f))
                 }
-                Text("Поиск устройств · Подключение к сохранённому ТВ", color = Color.White)
-                Text("Ручной ввод IP · Kivi TV (ADB)", color = RadioTvPalette.Muted)
+                Text("Автопоиск Companion и телевизоров в локальной сети.", color = Color.White)
+                Text("Подключение к Radio.TV приложению — если оно установлено на ТВ.", color = RadioTvPalette.Muted)
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
