@@ -194,9 +194,9 @@ fun TvRemotePad(
         val dpadHeight = okSize + (arrowSize + arrowVerticalInset + 4.dp) * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSize - 6.dp).coerceIn(8.dp, 82.dp)
+        val arrowInset = (((maxWidth - okSize) / 2) - arrowSize - 4.dp).coerceIn(8.dp, 82.dp)
         val dpadLift = (maxHeight * 0.045f).coerceIn(35.dp, 45.dp)
-        val lowerRowLift = (maxHeight * 0.20f).coerceIn(150.dp, 180.dp)
+        val lowerRowLift = (maxHeight * 0.20f).coerceIn(138.dp, 160.dp)
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
@@ -435,28 +435,29 @@ fun TvRemotePad(
                     .drawBehind {
                         val w = size.width
                         val h = size.height
-                        // Organic four-lobed cross: each quadrant pinches inward between adjacent keys.
+                        // Compact organic clover contour. The narrow top/bottom lobes hug
+                        // the arrow keys; the side lobes bulge only far enough to frame them.
                         val path = Path().apply {
-                            moveTo(w * 0.34f, h * 0.035f)
-                            cubicTo(w * 0.31f, h * 0.035f, w * 0.29f, h * 0.06f, w * 0.29f, h * 0.12f)
-                            cubicTo(w * 0.29f, h * 0.20f, w * 0.29f, h * 0.245f, w * 0.335f, h * 0.285f)
-                            cubicTo(w * 0.37f, h * 0.315f, w * 0.28f, h * 0.315f, w * 0.19f, h * 0.315f)
-                            cubicTo(w * 0.10f, h * 0.325f, w * 0.06f, h * 0.36f, w * 0.06f, h * 0.43f)
-                            lineTo(w * 0.06f, h * 0.57f)
-                            cubicTo(w * 0.06f, h * 0.64f, w * 0.10f, h * 0.675f, w * 0.19f, h * 0.685f)
-                            cubicTo(w * 0.28f, h * 0.685f, w * 0.37f, h * 0.685f, w * 0.335f, h * 0.715f)
-                            cubicTo(w * 0.29f, h * 0.755f, w * 0.29f, h * 0.80f, w * 0.29f, h * 0.88f)
-                            cubicTo(w * 0.29f, h * 0.94f, w * 0.31f, h * 0.965f, w * 0.34f, h * 0.965f)
-                            lineTo(w * 0.66f, h * 0.965f)
-                            cubicTo(w * 0.69f, h * 0.965f, w * 0.71f, h * 0.94f, w * 0.71f, h * 0.88f)
-                            cubicTo(w * 0.71f, h * 0.80f, w * 0.71f, h * 0.755f, w * 0.665f, h * 0.715f)
-                            cubicTo(w * 0.63f, h * 0.685f, w * 0.72f, h * 0.685f, w * 0.81f, h * 0.685f)
-                            cubicTo(w * 0.90f, h * 0.675f, w * 0.94f, h * 0.64f, w * 0.94f, h * 0.57f)
-                            lineTo(w * 0.94f, h * 0.43f)
-                            cubicTo(w * 0.94f, h * 0.36f, w * 0.90f, h * 0.325f, w * 0.81f, h * 0.315f)
-                            cubicTo(w * 0.72f, h * 0.315f, w * 0.63f, h * 0.315f, w * 0.665f, h * 0.285f)
-                            cubicTo(w * 0.71f, h * 0.245f, w * 0.71f, h * 0.20f, w * 0.71f, h * 0.12f)
-                            cubicTo(w * 0.71f, h * 0.06f, w * 0.69f, h * 0.035f, w * 0.66f, h * 0.035f)
+                            moveTo(w * 0.38f, h * 0.025f)
+                            cubicTo(w * 0.35f, h * 0.025f, w * 0.34f, h * 0.045f, w * 0.34f, h * 0.10f)
+                            cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.39f, h * 0.285f)
+                            cubicTo(w * 0.425f, h * 0.32f, w * 0.36f, h * 0.325f, w * 0.28f, h * 0.325f)
+                            cubicTo(w * 0.18f, h * 0.325f, w * 0.12f, h * 0.36f, w * 0.12f, h * 0.43f)
+                            lineTo(w * 0.12f, h * 0.57f)
+                            cubicTo(w * 0.12f, h * 0.64f, w * 0.18f, h * 0.675f, w * 0.28f, h * 0.675f)
+                            cubicTo(w * 0.36f, h * 0.675f, w * 0.425f, h * 0.68f, w * 0.39f, h * 0.715f)
+                            cubicTo(w * 0.34f, h * 0.765f, w * 0.34f, h * 0.83f, w * 0.34f, h * 0.90f)
+                            cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.975f, w * 0.38f, h * 0.975f)
+                            lineTo(w * 0.62f, h * 0.975f)
+                            cubicTo(w * 0.65f, h * 0.975f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
+                            cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.61f, h * 0.715f)
+                            cubicTo(w * 0.575f, h * 0.68f, w * 0.64f, h * 0.675f, w * 0.72f, h * 0.675f)
+                            cubicTo(w * 0.82f, h * 0.675f, w * 0.88f, h * 0.64f, w * 0.88f, h * 0.57f)
+                            lineTo(w * 0.88f, h * 0.43f)
+                            cubicTo(w * 0.88f, h * 0.36f, w * 0.82f, h * 0.325f, w * 0.72f, h * 0.325f)
+                            cubicTo(w * 0.64f, h * 0.325f, w * 0.575f, h * 0.32f, w * 0.61f, h * 0.285f)
+                            cubicTo(w * 0.66f, h * 0.235f, w * 0.66f, h * 0.17f, w * 0.66f, h * 0.10f)
+                            cubicTo(w * 0.66f, h * 0.045f, w * 0.65f, h * 0.025f, w * 0.62f, h * 0.025f)
                             close()
                         }
                         drawPath(
