@@ -741,8 +741,8 @@ fun TouchpadSurface(
 ) {
     val shape = RoundedCornerShape(12.dp)
     Box(
-        modifier = modifier.fillMaxWidth().height(176.dp).clip(shape)
-            .background(RadioTvPalette.Black)
+        modifier = modifier.fillMaxWidth().height(236.dp).clip(shape)
+            .background(Color(0xFF414141))
             .border(1.dp, if (enabled) RadioTvPalette.Red else RadioTvPalette.Border, shape)
             .pointerInput(enabled) {
                 detectDragGestures { change, dragAmount ->
@@ -763,7 +763,7 @@ fun TouchpadSurface(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("ТАЧПАД", color = if (enabled) RadioTvPalette.Red else RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
+            Text("ТАЧПАД", color = if (enabled) Color.White else RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
             Text(
                 if (enabled) "Свайп — курсор · тап — клик · долгий тап — контекстное меню"
                 else "Сначала подключите Bluetooth HID на телевизоре",
