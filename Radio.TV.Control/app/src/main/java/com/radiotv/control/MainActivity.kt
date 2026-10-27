@@ -903,7 +903,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         featureMessage = null,
                                         showFeatureActions = false,
                                         deviceName = when {
-                                            companionConnected -> "Подключено к Radio.TV приложению"
+                                            companionConnected -> (companionStatus as? CompanionConnectionStatus.Connected)?.serviceName?.substringAfter(" - ")?.takeIf { it.isNotBlank() } ?: "Телевизор"
                                             selectedAdbConnected -> "Kivi TV (ADB)"
                                             selectedOtherConnected -> selectedDeviceName.ifBlank { "Телевизор" }
                                             selectedWifiConnected -> selectedDeviceName.ifBlank { "Android TV" }
