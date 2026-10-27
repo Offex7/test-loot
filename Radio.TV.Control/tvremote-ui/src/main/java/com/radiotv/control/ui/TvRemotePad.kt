@@ -180,9 +180,9 @@ fun TvRemotePad(
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
         // Button diameters follow width; vertical groups grow moderately on taller phones.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.31f).coerceIn(190.dp, 230.dp)
-            compact -> (maxHeight * 0.31f).coerceIn(220.dp, 260.dp)
-            else -> (maxHeight * 0.31f).coerceIn(255.dp, 300.dp)
+            tight -> (maxHeight * 0.30f).coerceIn(180.dp, 215.dp)
+            compact -> (maxHeight * 0.30f).coerceIn(205.dp, 250.dp)
+            else -> (maxHeight * 0.30f).coerceIn(245.dp, 280.dp)
         }
         val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
@@ -198,7 +198,8 @@ fun TvRemotePad(
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
         val arrowInset = (maxWidth * (if (tight) 0.12f else 0.135f)).coerceIn(36.dp, 58.dp)
-        val dpadLift = (maxHeight * 0.112f).coerceIn(68.dp, 104.dp)
+        val dpadLift = (maxHeight * 0.09f).coerceIn(60.dp, 86.dp)
+        val lowerRowLift = (maxHeight * 0.20f).coerceIn(150.dp, 180.dp)
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
@@ -438,23 +439,23 @@ fun TvRemotePad(
                         val w = size.width
                         val h = size.height
                         val path = Path().apply {
-                            moveTo(w * 0.38f, h * 0.05f)
-                            cubicTo(w * 0.38f, h * 0.025f, w * 0.42f, h * 0.02f, w * 0.45f, h * 0.02f)
-                            lineTo(w * 0.55f, h * 0.02f)
-                            cubicTo(w * 0.58f, h * 0.02f, w * 0.62f, h * 0.025f, w * 0.62f, h * 0.08f)
-                            cubicTo(w * 0.62f, h * 0.23f, w * 0.67f, h * 0.29f, w * 0.77f, h * 0.30f)
-                            cubicTo(w * 0.87f, h * 0.31f, w * 0.90f, h * 0.36f, w * 0.90f, h * 0.44f)
-                            lineTo(w * 0.90f, h * 0.56f)
-                            cubicTo(w * 0.90f, h * 0.64f, w * 0.87f, h * 0.69f, w * 0.77f, h * 0.70f)
-                            cubicTo(w * 0.67f, h * 0.71f, w * 0.62f, h * 0.77f, w * 0.62f, h * 0.92f)
-                            cubicTo(w * 0.62f, h * 0.975f, w * 0.58f, h * 0.98f, w * 0.55f, h * 0.98f)
-                            lineTo(w * 0.45f, h * 0.98f)
-                            cubicTo(w * 0.42f, h * 0.98f, w * 0.38f, h * 0.975f, w * 0.38f, h * 0.92f)
-                            cubicTo(w * 0.38f, h * 0.77f, w * 0.33f, h * 0.71f, w * 0.23f, h * 0.70f)
-                            cubicTo(w * 0.13f, h * 0.69f, w * 0.10f, h * 0.64f, w * 0.10f, h * 0.56f)
-                            lineTo(w * 0.10f, h * 0.44f)
-                            cubicTo(w * 0.10f, h * 0.36f, w * 0.13f, h * 0.31f, w * 0.23f, h * 0.30f)
-                            cubicTo(w * 0.33f, h * 0.29f, w * 0.38f, h * 0.23f, w * 0.38f, h * 0.08f)
+                            moveTo(w * 0.34f, h * 0.05f)
+                            cubicTo(w * 0.34f, h * 0.025f, w * 0.39f, h * 0.02f, w * 0.44f, h * 0.02f)
+                            lineTo(w * 0.56f, h * 0.02f)
+                            cubicTo(w * 0.61f, h * 0.02f, w * 0.66f, h * 0.025f, w * 0.66f, h * 0.08f)
+                            cubicTo(w * 0.66f, h * 0.23f, w * 0.72f, h * 0.29f, w * 0.83f, h * 0.30f)
+                            cubicTo(w * 0.92f, h * 0.31f, w * 0.94f, h * 0.36f, w * 0.94f, h * 0.44f)
+                            lineTo(w * 0.94f, h * 0.56f)
+                            cubicTo(w * 0.94f, h * 0.64f, w * 0.92f, h * 0.69f, w * 0.83f, h * 0.70f)
+                            cubicTo(w * 0.72f, h * 0.71f, w * 0.66f, h * 0.77f, w * 0.66f, h * 0.92f)
+                            cubicTo(w * 0.66f, h * 0.975f, w * 0.61f, h * 0.98f, w * 0.56f, h * 0.98f)
+                            lineTo(w * 0.44f, h * 0.98f)
+                            cubicTo(w * 0.39f, h * 0.98f, w * 0.34f, h * 0.975f, w * 0.34f, h * 0.92f)
+                            cubicTo(w * 0.34f, h * 0.77f, w * 0.28f, h * 0.71f, w * 0.17f, h * 0.70f)
+                            cubicTo(w * 0.08f, h * 0.69f, w * 0.06f, h * 0.64f, w * 0.06f, h * 0.56f)
+                            lineTo(w * 0.06f, h * 0.44f)
+                            cubicTo(w * 0.06f, h * 0.36f, w * 0.08f, h * 0.31f, w * 0.17f, h * 0.30f)
+                            cubicTo(w * 0.28f, h * 0.29f, w * 0.34f, h * 0.23f, w * 0.34f, h * 0.08f)
                             close()
                         }
                         val center = Offset(w / 2f, h / 2f)
@@ -533,7 +534,7 @@ fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).offset(y = -dpadLift).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).offset(y = -lowerRowLift).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -559,7 +560,7 @@ fun TvRemotePad(
 
             // The four lower quick actions match the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().height(footerButtonSize).offset(y = -dpadLift).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(footerButtonSize).offset(y = -lowerRowLift).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
