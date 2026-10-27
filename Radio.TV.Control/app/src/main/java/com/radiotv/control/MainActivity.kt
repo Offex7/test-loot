@@ -247,6 +247,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     val companionClient = remember(context) { RadioTvCompanionClient(context) }
     val companionStatus by companionClient.status.collectAsStateWithLifecycle(initialValue = CompanionConnectionStatus.Searching)
     val companionConnected = companionStatus is CompanionConnectionStatus.Connected
+    var companionWasConnected by remember { mutableStateOf(false) }
     LaunchedEffect(companionClient) { companionClient.start() }
     DisposableEffect(companionClient) { onDispose { companionClient.close() } }
     LaunchedEffect(companionStatus) {
@@ -635,6 +636,19 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
 
     val refreshDevices: () -> Unit = {
         runWithLocalNetworkPermission { runDiscovery() }
+    }
+
+    LaunchedEffect(companionStatus) {
+        when (companionStatus) {
+            is CompanionConnectionStatus.Connected -> companionWasConnected = true
+            is CompanionConnectionStatus.Unavailable -> {
+                if (companionWasConnected) {
+                    companionWasConnected = false
+                    if (!wifiConnected && !otherConnected && !adbConnected) refreshDevices()
+                }
+            }
+            else -> Unit
+        }
     }
 
     val connectPairedHost: (String) -> Unit = { target ->
