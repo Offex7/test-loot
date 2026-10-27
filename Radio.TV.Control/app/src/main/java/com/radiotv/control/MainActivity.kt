@@ -923,7 +923,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         onFeatureAction = handleFeatureAction,
                                         touchpadActive = showTouchpad,
                                         airMouseActive = airMouseStatus is AirMouseStatus.Active,
-                                        voiceActive = voiceStatus is VoiceInputStatus.Recording,
+                                        muteActive = muteActive,
+voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                         keyboardActive = showKeyboard,
                                         featureMessage = null,
                                         showFeatureActions = false,
@@ -1418,9 +1419,9 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                 androidx.compose.material3.SnackbarHost(
                     hostState = snackbarHostState,
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
+                        .align(Alignment.TopCenter)
                         .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                        .padding(start = 12.dp, end = 12.dp, top = 12.dp)
                 )
             }
         }
