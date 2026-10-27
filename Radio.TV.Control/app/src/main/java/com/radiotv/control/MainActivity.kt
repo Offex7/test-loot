@@ -939,8 +939,16 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         sendUiFeedback(app.name)
                                         scope.launch {
                                             runCatching {
-                                                if (companionConnected) companionClient.launchApp(app.id)
-                                                else if (selectedAdbConnected) adbRemote.launchApp(app.id)
+                                                if (companionConnected) {
+                                                    runCatching { companionClient.launchApp(app.id) }
+                                                        .recoverCatching {
+                                                            when {
+                                                                selectedAdbConnected -> adbRemote.launchApp(app.id)
+                                                                selectedOtherConnected -> otherTvRemote.launchInstalledApp(app)
+                                                                else -> throw it
+                                                            }
+                                                        }.getOrThrow()
+                                                } else if (selectedAdbConnected) adbRemote.launchApp(app.id)
                                                 else otherTvRemote.launchInstalledApp(app)
                                             }.onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
                                         }
@@ -1328,9 +1336,19 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                                     sendUiFeedback("Отправить текст")
                                                     scope.launch {
                                                         runCatching {
-                                                            when {
-                                                                companionConnected -> companionClient.sendText(keyboardText)
-                                                            selectedAdbConnected -> adbRemote.sendText(keyboardText)
+                                                            if (companionConnected) {
+                                                                runCatching { companionClient.sendText(keyboardText) }
+                                                                    .recoverCatching {
+                                                                        when {
+                                                                            selectedAdbConnected -> adbRemote.sendText(keyboardText)
+                                                                            selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
+                                                                            selectedWifiConnected -> remote.sendText(keyboardText)
+                                                                            hidConnected -> bluetoothHid.sendText(keyboardText)
+                                                                            else -> throw it
+                                                                        }
+                                                                    }.getOrThrow()
+                                                            } else when {
+                                                                selectedAdbConnected -> adbRemote.sendText(keyboardText)
                                                                 selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
                                                                 selectedWifiConnected -> remote.sendText(keyboardText)
                                                                 hidConnected -> bluetoothHid.sendText(keyboardText)
