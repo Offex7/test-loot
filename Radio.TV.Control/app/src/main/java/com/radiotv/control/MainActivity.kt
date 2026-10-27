@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -934,9 +935,10 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                             selectedOtherConnected -> selectedDeviceName.ifBlank { "Телевизор" }
                                             selectedWifiConnected -> selectedDeviceName.ifBlank { "Android TV" }
                                             hidConnected -> selectedDeviceName.ifBlank { "Bluetooth HID" }
-                                            else -> "Нет подключения"
+                                            else -> "Начать поиск"
                                         },
-                                        onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
+                                        onStartSearch = { refreshDevices(); selectedTab = RadioTvTab.SETTINGS },
+                                         onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
                                         onBack = { dispatchRemoteKey(RemoteKey.BACK) }
                                     )
                                 }
