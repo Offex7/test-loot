@@ -716,12 +716,11 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     LaunchedEffect(Unit) {
         if (connected || otherConnected) return@LaunchedEffect
         val remembered = context.radioTvLastDevice.first()
-        if (remembered.type == "COMPANION") {
-            val foundCompanion = kotlinx.coroutines.withTimeoutOrNull(1800L) {
-                companionClient.status.first { it is CompanionConnectionStatus.Connected }
-            }
-            if (foundCompanion != null) return@LaunchedEffect
+        // Prefer the Companion channel when one is installed; only then fall back to saved legacy protocols.
+        val foundCompanion = kotlinx.coroutines.withTimeoutOrNull(2800L) {
+            companionClient.status.first { it is CompanionConnectionStatus.Connected }
         }
+        if (foundCompanion != null) return@LaunchedEffect
         when {
             remembered.host.isNotBlank() && remembered.type == RemoteDeviceType.ANDROID_TV.name -> {
                 host = remembered.host
