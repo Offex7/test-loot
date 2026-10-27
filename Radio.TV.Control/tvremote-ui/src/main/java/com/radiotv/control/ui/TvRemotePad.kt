@@ -382,9 +382,10 @@ fun TvRemotePad(
                             Text(
                                 "MENU",
                                 color = padIconColor,
-                                fontSize = if (tight) 14.sp else 18.sp,
+                                fontSize = if (tight) 10.sp else if (compact) 14.sp else 18.sp,
                                 fontWeight = FontWeight.Normal,
-                                maxLines = 1
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
