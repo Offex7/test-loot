@@ -13,11 +13,16 @@ private val Context.radioTvControlSettingsStore by preferencesDataStore(name = "
 internal data class RadioTvFeedbackSettings(
     val vibrationEnabled: Boolean = true,
     val clickSoundEnabled: Boolean = false,
+    val notificationsEnabled: Boolean = true,
+    val connectionMethod: String = CONNECTION_AUTO,
     val soundType: String = SOUND_TYPE_CLICK
 )
 
 internal const val SOUND_TYPE_CLICK = "click"
 internal const val SOUND_TYPE_VOICE = "voice"
+internal const val CONNECTION_AUTO = "auto"
+internal const val CONNECTION_MANUAL = "manual"
+internal const val CONNECTION_BLUETOOTH = "bluetooth"
 
 internal data class RadioTvLastDevice(
     val host: String = "",
@@ -28,6 +33,8 @@ internal data class RadioTvLastDevice(
 private object FeedbackKeys {
     val vibrationEnabled = booleanPreferencesKey("vibration_enabled")
     val clickSoundEnabled = booleanPreferencesKey("click_sound_enabled")
+    val notificationsEnabled = booleanPreferencesKey("notifications_enabled")
+    val connectionMethod = stringPreferencesKey("connection_method")
     val soundType = stringPreferencesKey("click_sound_type")
     val lastDeviceHost = stringPreferencesKey("last_device_host")
     val lastDeviceName = stringPreferencesKey("last_device_name")
@@ -39,6 +46,8 @@ internal val Context.radioTvFeedbackSettings: Flow<RadioTvFeedbackSettings>
         RadioTvFeedbackSettings(
             vibrationEnabled = values[FeedbackKeys.vibrationEnabled] ?: true,
             clickSoundEnabled = values[FeedbackKeys.clickSoundEnabled] ?: false,
+            notificationsEnabled = values[FeedbackKeys.notificationsEnabled] ?: true,
+            connectionMethod = values[FeedbackKeys.connectionMethod] ?: CONNECTION_AUTO,
             soundType = values[FeedbackKeys.soundType] ?: SOUND_TYPE_CLICK
         )
     }
@@ -74,4 +83,17 @@ internal suspend fun Context.setClickSoundType(type: String) {
     radioTvControlSettingsStore.edit {
         it[FeedbackKeys.soundType] = if (type == SOUND_TYPE_VOICE) SOUND_TYPE_VOICE else SOUND_TYPE_CLICK
     }
+}
+
+internal suspend fun Context.setNotificationsEnabled(enabled: Boolean) {
+    radioTvControlSettingsStore.edit { it[FeedbackKeys.notificationsEnabled] = enabled }
+}
+
+internal suspend fun Context.setConnectionMethod(method: String) {
+    val normalized = when (method) {
+        CONNECTION_MANUAL -> CONNECTION_MANUAL
+        CONNECTION_BLUETOOTH -> CONNECTION_BLUETOOTH
+        else -> CONNECTION_AUTO
+    }
+    radioTvControlSettingsStore.edit { it[FeedbackKeys.connectionMethod] = normalized }
 }
