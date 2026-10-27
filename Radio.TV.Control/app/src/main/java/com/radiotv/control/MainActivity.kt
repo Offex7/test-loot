@@ -339,9 +339,13 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         mutableStateOf(when (initialUiScreen) {
             "pairing" -> RadioTvTab.SETTINGS
             "settings" -> RadioTvTab.SETTINGS
-            "digital", "cast" -> RadioTvTab.CONTROL
+            "digital" -> RadioTvTab.REMOTE
+            "cast" -> RadioTvTab.CONTROL
             else -> RadioTvTab.REMOTE
         })
+    }
+    LaunchedEffect(initialUiScreen) {
+        if (initialUiScreen == "digital") showDigitPad = true
     }
     BackHandler(enabled = showKeyboard || showTouchpad || showDigitPad || selectedTab != RadioTvTab.REMOTE) {
         when {
@@ -1104,7 +1108,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                             if (devices.isNotEmpty()) Text("Найдено устройств: ${devices.size}", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                             if (pairedHost.isNotBlank()) {
                                                 Text("Сохранённый телевизор доступен для повторного подключения.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                OutlinedButton(onClick = { connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) { Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ") }
+                                                OutlinedButton(onClick = { sendUiFeedback("Подключить сохранённый ТВ"); connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) { Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ") }
                                             }
                                             if (manualEntry || feedbackSettings.connectionMethod == CONNECTION_MANUAL) {
                                                 OutlinedTextField(
@@ -1116,7 +1120,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                     singleLine = true,
                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
                                                 )
-                                                Button(onClick = { connectManualHost() }, modifier = Modifier.fillMaxWidth(), enabled = host.isNotBlank()) {
+                                                Button(onClick = { sendUiFeedback("Подключить по IP"); connectManualHost() }, modifier = Modifier.fillMaxWidth(), enabled = host.isNotBlank()) {
                                                     Text("ПОДКЛЮЧИТЬ ПО IP")
                                                 }
                                             }
@@ -1170,7 +1174,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                         ) {
                                             Text("BLUETOOTH HID", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
                                             Text(bluetoothStatus.asUserLabel(), color = if (hidConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                            Button(onClick = { beginBluetoothSession() }, modifier = Modifier.fillMaxWidth()) {
+                                            Button(onClick = { sendUiFeedback("Bluetooth HID"); beginBluetoothSession() }, modifier = Modifier.fillMaxWidth()) {
                                                 Text(if (hidConnected) "HID ПОДКЛЮЧЁН" else "ПОДКЛЮЧИТЬ BLUETOOTH HID")
                                             }
                                             Text("На телевизоре выберите Radio.TV.Control в списке Bluetooth-устройств.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
@@ -1189,6 +1193,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                     Text("Короткий тактильный отклик", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled ->
+                                                    sendUiFeedback("Вибрация")
                                                     scope.launch { context.setVibrationEnabled(enabled) }
                                                 })
                                             }
@@ -1198,6 +1203,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                     Text(if (feedbackSettings.clickSoundEnabled) "Включён" else "Выключен", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled ->
+                                                    sendUiFeedback("Звук")
                                                     scope.launch { context.setClickSoundEnabled(enabled) }
                                                 })
                                             }
@@ -1216,6 +1222,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                     Text("Всплывают сверху и скрываются через 3 секунды.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 Switch(checked = feedbackSettings.notificationsEnabled, onCheckedChange = { enabled ->
+                                                    sendUiFeedback("Уведомления")
                                                     scope.launch { context.setNotificationsEnabled(enabled) }
                                                 })
                                             }
