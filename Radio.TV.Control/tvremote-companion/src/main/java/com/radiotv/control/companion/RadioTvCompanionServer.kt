@@ -14,6 +14,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -30,6 +31,7 @@ class RadioTvCompanionServer(
     private val nsd = appContext.getSystemService(NsdManager::class.java)
     private val running = AtomicBoolean(false)
     private val workers: ExecutorService = Executors.newCachedThreadPool()
+    private val clients = ConcurrentHashMap.newKeySet<Socket>()
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile private var registrationListener: NsdManager.RegistrationListener? = null
 
@@ -50,7 +52,10 @@ class RadioTvCompanionServer(
                 try {
                     val peer = socket.accept()
                     peer.tcpNoDelay = true
-                    workers.execute { servePeer(peer) }
+                    clients.add(peer)
+                    workers.execute {
+                        try { servePeer(peer) } finally { clients.remove(peer) }
+                    }
                 } catch (error: Exception) {
                     if (running.get()) Log.w(TAG, "Companion accept failed", error)
                 }
@@ -200,6 +205,8 @@ class RadioTvCompanionServer(
         if (!running.compareAndSet(true, false)) return
         runCatching { serverSocket?.close() }
         serverSocket = null
+        clients.forEach { peer -> runCatching { peer.close() } }
+        clients.clear()
         val listener = registrationListener
         registrationListener = null
         if (listener != null) runCatching { nsd?.unregisterService(listener) }
