@@ -187,15 +187,16 @@ fun TvRemotePad(
         val mediaButtonSize = if (tight) (maxWidth * 0.17f).coerceIn(48.dp, 64.dp) else (maxWidth * 0.215f).coerceIn(64.dp, 82.dp)
         val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
         val dpadHeight = when {
-            tight -> (maxHeight * 0.31f).coerceIn(150.dp, 160.dp)
-            compact -> (maxHeight * 0.42f).coerceIn(210.dp, 245.dp)
+            tight -> (maxHeight * 0.31f).coerceIn(170.dp, 175.dp)
+            compact -> (maxHeight * 0.42f).coerceIn(230.dp, 245.dp)
             else -> (maxHeight * 0.34f).coerceIn(230.dp, 300.dp)
         }
         val footerButtonSize = if (tight) 36.dp else if (compact) 44.dp else 54.dp
-        val arrowSize = if (tight) 36.dp else if (compact) 54.dp else 70.dp
+        val arrowSize = if (tight) 44.dp else if (compact) 63.dp else 75.dp
         val okSize = if (tight) 58.dp else if (compact) 72.dp else 98.dp
         val lowerButtonSize = if (tight) 38.dp else if (compact) 46.dp else 56.dp
         val sideInset = if (tight) 6.dp else 13.dp
+        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -245,7 +246,7 @@ fun TvRemotePad(
                 .fillMaxSize()
                 .background(Color(0xFF000000))
                 .padding(horizontal = 8.dp, vertical = 4.dp)
-                .then(if (maxHeight < 400.dp) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+                .then(if (requiredContentHeight > maxHeight) Modifier.verticalScroll(rememberScrollState()) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -479,7 +480,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.UP) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Влево",
