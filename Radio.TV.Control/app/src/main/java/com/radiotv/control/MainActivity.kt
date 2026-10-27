@@ -307,6 +307,9 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    LaunchedEffect(feedbackSettings.notificationsEnabled) {
+        if (!feedbackSettings.notificationsEnabled) snackbarHostState.currentSnackbarData?.dismiss()
+    }
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
     var pairedHost by rememberSaveable { mutableStateOf(remote.pairedHost().orEmpty()) }
@@ -861,13 +864,17 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         statusMessage = feedbackMessage
         if (feedbackSettings.notificationsEnabled) {
             scope.launch {
-                withTimeoutOrNull(3_000L) {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val snackbarJob = launch {
                     snackbarHostState.showSnackbar(
                         message = feedbackMessage,
                         withDismissAction = true,
                         duration = androidx.compose.material3.SnackbarDuration.Indefinite
                     )
                 }
+                delay(3_000L)
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarJob.cancel()
             }
         }
     }
