@@ -108,47 +108,41 @@ private fun SettingsPreviewContent() {
             ) { Box(contentAlignment = Alignment.Center) { Text("‹", color = Color.White, style = MaterialTheme.typography.headlineMedium) } }
             Text("Настройки", color = Color.White, style = MaterialTheme.typography.titleLarge)
         }
-        Text("НАСТРОЙКИ УСТРОЙСТВ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleMedium)
-        Text("Телефон и телевизор должны быть в одной Wi-Fi сети.", color = RadioTvPalette.Muted)
         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    SettingsChoice("Автопоиск", selected = true, modifier = Modifier.weight(1f))
-                    SettingsChoice("Ручной IP", selected = false, modifier = Modifier.weight(1f))
-                    SettingsChoice("Bluetooth HID", selected = false, modifier = Modifier.weight(1f))
+                    SettingsChoice("Авто", selected = true, modifier = Modifier.weight(1f))
+                    SettingsChoice("Ручное", selected = false, modifier = Modifier.weight(1f))
+                    SettingsChoice("Bluetooth", selected = false, modifier = Modifier.weight(1f))
                 }
-                Text("Автопоиск Companion и телевизоров в локальной сети.", color = Color.White)
                 Text("Подключение к Radio.TV приложению — если оно установлено на ТВ.", color = RadioTvPalette.Muted)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ПОИСК УСТРОЙСТВ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                Text("Автопоиск Companion и телевизоров в локальной сети.", color = Color.White)
+                Text("IP-адрес телевизора: 192.168.1.100", color = RadioTvPalette.Muted)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("BLUETOOTH HID", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                Text("Выберите Radio.TV.Control в списке Bluetooth-устройств телевизора.", color = RadioTvPalette.Muted)
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
-                SettingsSwitchRow("Вибрация при нажатии", "Короткий тактильный отклик", true)
-                SettingsSwitchRow("Звук при нажатии", "Выключен по умолчанию", false)
-                Text("Тип звука", color = Color.White)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    SettingsChoice("Клик", selected = true, modifier = Modifier.weight(1f))
-                    SettingsChoice("Голос", selected = false, modifier = Modifier.weight(1f))
-                }
+                SettingsSwitchRow("Вибрация", "Короткий тактильный отклик", true)
+                SettingsSwitchRow("Звук", "Выключен по умолчанию", false)
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
-                Text("Поиск устройств · Ручной IP · Bluetooth HID", color = Color.White)
-                Text("Аэромышь · Трансляция · Дублирование", color = RadioTvPalette.Muted)
-            }
-        }
-        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("В разработке", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Проверка Samsung Tizen, LG webOS, Roku, Bluetooth HID и DLNA требует физических телевизоров. Иконки приложений доступны только там, где устройство отдаёт их через API.",
-                    color = RadioTvPalette.Muted,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text("УВЕДОМЛЕНИЯ", color = RadioTvPalette.Red, style = MaterialTheme.typography.titleSmall)
+                SettingsSwitchRow("Показывать уведомления", "Скрываются через 3 секунды", true)
             }
         }
     }
