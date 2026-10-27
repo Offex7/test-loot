@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
@@ -187,18 +188,16 @@ fun TvRemotePad(
         val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
         val secondRowButtonSize = (maxWidth * 0.18f).coerceIn(if (tight) 50.dp else 62.dp, if (tight) 62.dp else 74.dp)
-        val dpadHeight = when {
-            tight -> (maxHeight * 0.34f).coerceIn(220.dp, 260.dp)
-            compact -> (maxHeight * 0.35f).coerceIn(255.dp, 295.dp)
-            else -> (maxHeight * 0.35f).coerceIn(300.dp, 335.dp)
-        }
         val footerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
         val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
+        val arrowVerticalInset = if (tight) 7.dp else if (compact) 8.dp else 10.dp
+        // Fit the four directional keys snugly around OK: the center-to-edge gap is ~4 dp.
+        val dpadHeight = okSize + (arrowSize + arrowVerticalInset + 4.dp) * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (maxWidth * (if (tight) 0.12f else 0.135f)).coerceIn(36.dp, 58.dp)
-        val dpadLift = (maxHeight * 0.09f).coerceIn(60.dp, 86.dp)
+        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSize - 6.dp).coerceIn(8.dp, 82.dp)
+        val dpadLift = (maxHeight * 0.045f).coerceIn(35.dp, 45.dp)
         val lowerRowLift = (maxHeight * 0.20f).coerceIn(150.dp, 180.dp)
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
         val padButtonColor = Color(0xFFF8F8F5)
@@ -345,7 +344,7 @@ fun TvRemotePad(
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(if (tight) 10.dp else 14.dp)
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -438,31 +437,34 @@ fun TvRemotePad(
                     .drawBehind {
                         val w = size.width
                         val h = size.height
+                        // Organic four-lobed cross: each quadrant pinches inward between adjacent keys.
                         val path = Path().apply {
-                            moveTo(w * 0.34f, h * 0.05f)
-                            cubicTo(w * 0.34f, h * 0.025f, w * 0.39f, h * 0.02f, w * 0.44f, h * 0.02f)
-                            lineTo(w * 0.56f, h * 0.02f)
-                            cubicTo(w * 0.61f, h * 0.02f, w * 0.66f, h * 0.025f, w * 0.66f, h * 0.08f)
-                            cubicTo(w * 0.66f, h * 0.23f, w * 0.72f, h * 0.29f, w * 0.83f, h * 0.30f)
-                            cubicTo(w * 0.92f, h * 0.31f, w * 0.94f, h * 0.36f, w * 0.94f, h * 0.44f)
-                            lineTo(w * 0.94f, h * 0.56f)
-                            cubicTo(w * 0.94f, h * 0.64f, w * 0.92f, h * 0.69f, w * 0.83f, h * 0.70f)
-                            cubicTo(w * 0.72f, h * 0.71f, w * 0.66f, h * 0.77f, w * 0.66f, h * 0.92f)
-                            cubicTo(w * 0.66f, h * 0.975f, w * 0.61f, h * 0.98f, w * 0.56f, h * 0.98f)
-                            lineTo(w * 0.44f, h * 0.98f)
-                            cubicTo(w * 0.39f, h * 0.98f, w * 0.34f, h * 0.975f, w * 0.34f, h * 0.92f)
-                            cubicTo(w * 0.34f, h * 0.77f, w * 0.28f, h * 0.71f, w * 0.17f, h * 0.70f)
-                            cubicTo(w * 0.08f, h * 0.69f, w * 0.06f, h * 0.64f, w * 0.06f, h * 0.56f)
-                            lineTo(w * 0.06f, h * 0.44f)
-                            cubicTo(w * 0.06f, h * 0.36f, w * 0.08f, h * 0.31f, w * 0.17f, h * 0.30f)
-                            cubicTo(w * 0.28f, h * 0.29f, w * 0.34f, h * 0.23f, w * 0.34f, h * 0.08f)
+                            moveTo(w * 0.34f, h * 0.035f)
+                            cubicTo(w * 0.31f, h * 0.035f, w * 0.29f, h * 0.06f, w * 0.29f, h * 0.12f)
+                            cubicTo(w * 0.29f, h * 0.20f, w * 0.29f, h * 0.245f, w * 0.335f, h * 0.285f)
+                            cubicTo(w * 0.37f, h * 0.315f, w * 0.28f, h * 0.315f, w * 0.19f, h * 0.315f)
+                            cubicTo(w * 0.10f, h * 0.325f, w * 0.06f, h * 0.36f, w * 0.06f, h * 0.43f)
+                            lineTo(w * 0.06f, h * 0.57f)
+                            cubicTo(w * 0.06f, h * 0.64f, w * 0.10f, h * 0.675f, w * 0.19f, h * 0.685f)
+                            cubicTo(w * 0.28f, h * 0.685f, w * 0.37f, h * 0.685f, w * 0.335f, h * 0.715f)
+                            cubicTo(w * 0.29f, h * 0.755f, w * 0.29f, h * 0.80f, w * 0.29f, h * 0.88f)
+                            cubicTo(w * 0.29f, h * 0.94f, w * 0.31f, h * 0.965f, w * 0.34f, h * 0.965f)
+                            lineTo(w * 0.66f, h * 0.965f)
+                            cubicTo(w * 0.69f, h * 0.965f, w * 0.71f, h * 0.94f, w * 0.71f, h * 0.88f)
+                            cubicTo(w * 0.71f, h * 0.80f, w * 0.71f, h * 0.755f, w * 0.665f, h * 0.715f)
+                            cubicTo(w * 0.63f, h * 0.685f, w * 0.72f, h * 0.685f, w * 0.81f, h * 0.685f)
+                            cubicTo(w * 0.90f, h * 0.675f, w * 0.94f, h * 0.64f, w * 0.94f, h * 0.57f)
+                            lineTo(w * 0.94f, h * 0.43f)
+                            cubicTo(w * 0.94f, h * 0.36f, w * 0.90f, h * 0.325f, w * 0.81f, h * 0.315f)
+                            cubicTo(w * 0.72f, h * 0.315f, w * 0.63f, h * 0.315f, w * 0.665f, h * 0.285f)
+                            cubicTo(w * 0.71f, h * 0.245f, w * 0.71f, h * 0.20f, w * 0.71f, h * 0.12f)
+                            cubicTo(w * 0.71f, h * 0.06f, w * 0.69f, h * 0.035f, w * 0.66f, h * 0.035f)
                             close()
                         }
-                        val center = Offset(w / 2f, h / 2f)
                         drawPath(
                             path,
-                            color = Color(0xFF191919),
-                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                            color = Color(0xFF111111),
+                            style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
                         val gradientTravel = w * rainbowOffset
                         drawPath(
@@ -472,16 +474,16 @@ fun TvRemotePad(
                                 start = Offset(-w + gradientTravel, 0f),
                                 end = Offset(w + gradientTravel, h)
                             ),
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
                     }
             ) {
                 RemoteSurfaceButton(
                     description = "Вверх",
                     modifier = Modifier.align(Alignment.TopCenter)
-                        .padding(top = if (tight) 7.dp else 13.dp)
+                        .padding(top = arrowVerticalInset)
                         .size(arrowSize),
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.UP) }
                 ) {
@@ -492,7 +494,7 @@ fun TvRemotePad(
                     modifier = Modifier.align(Alignment.CenterStart)
                         .padding(start = arrowInset)
                         .size(arrowSize),
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.LEFT) }
                 ) {
@@ -503,7 +505,7 @@ fun TvRemotePad(
                     modifier = Modifier.align(Alignment.CenterEnd)
                         .padding(end = arrowInset)
                         .size(arrowSize),
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.RIGHT) }
                 ) {
@@ -512,9 +514,9 @@ fun TvRemotePad(
                 RemoteSurfaceButton(
                     description = "Вниз",
                     modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(bottom = if (tight) 7.dp else 13.dp)
+                        .padding(bottom = arrowVerticalInset)
                         .size(arrowSize),
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.DOWN) }
                 ) {
