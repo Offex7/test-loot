@@ -20,8 +20,6 @@ import android.os.VibrationEffect
 import android.os.VibratorManager
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.speech.tts.TextToSpeech
-import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -949,7 +947,15 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                         },
                                         onStartSearch = { refreshDevices(); selectedTab = RadioTvTab.SETTINGS },
                                          onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
-                                        onBack = { dispatchRemoteKey(RemoteKey.BACK) }
+                                        onBack = {
+                                             when {
+                                                 showKeyboard -> { showKeyboard = false; keyboardController?.hide() }
+                                                 showDigitPad -> showDigitPad = false
+                                                 showTouchpad -> showTouchpad = false
+                                                 selectedTab != RadioTvTab.REMOTE -> selectedTab = RadioTvTab.REMOTE
+                                                 else -> dispatchRemoteKey(RemoteKey.BACK)
+                                             }
+                                         }
                                     )
                                 }
                             }
