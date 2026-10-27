@@ -34,7 +34,10 @@ class RadioTvCompanionServer(
 
     @Synchronized
     fun start() {
-        if (running.get()) return
+        if (running.get()) {
+            if (registrationListener == null) registerService()
+            return
+        }
         val socket = ServerSocket()
         socket.reuseAddress = true
         socket.bind(InetSocketAddress(PORT))
@@ -66,6 +69,7 @@ class RadioTvCompanionServer(
                 Log.i(TAG, "Companion service registered")
             }
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                registrationListener = null
                 Log.w(TAG, "Companion mDNS registration failed: " + errorCode)
             }
             override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) = Unit
@@ -75,7 +79,10 @@ class RadioTvCompanionServer(
         }
         registrationListener = listener
         runCatching { manager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener) }
-            .onFailure { Log.w(TAG, "Unable to register Companion mDNS service", it) }
+            .onFailure {
+                registrationListener = null
+                Log.w(TAG, "Unable to register Companion mDNS service", it)
+            }
     }
 
     private fun servePeer(peer: Socket) {
