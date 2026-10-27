@@ -468,6 +468,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         val pendingAction = pendingLocalNetworkAction
         pendingLocalNetworkAction = null
         if (granted) {
+            companionClient.start()
             (pendingAction ?: runDiscovery).invoke()
         } else {
             statusMessage = "Для поиска и трансляции в локальной сети разрешите доступ или введите IP вручную."
