@@ -15,6 +15,8 @@ import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.VibratorManager
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import java.util.Locale
@@ -251,6 +253,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         if (active != null) context.setLastConnectedDevice(active.host, "Radio.TV приложение", "COMPANION")
     }
     val hapticFeedback = LocalHapticFeedback.current
+    val vibrator = remember(context) { context.getSystemService(VibratorManager::class.java)?.defaultVibrator }
     val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
     val speechReady = remember { mutableStateOf(false) }
     val speechEngine = remember(context) {
@@ -261,7 +264,14 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         if (speechReady.value) speechEngine.language = Locale("ru")
     }
     val sendUiFeedback: (String) -> Unit = { label ->
-        if (feedbackSettings.vibrationEnabled) hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (feedbackSettings.vibrationEnabled) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+            runCatching {
+                if (vibrator?.hasVibrator() == true) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(18L, VibrationEffect.DEFAULT_AMPLITUDE))
+                }
+            }
+        }
         if (feedbackSettings.clickSoundEnabled) {
             if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
                 speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click")
