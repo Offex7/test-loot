@@ -469,6 +469,12 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         pendingLocalNetworkAction = null
         if (granted) {
             companionClient.start()
+            val uiMode = context.getSystemService(UiModeManager::class.java)
+            val isTv = uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+            if (isTv) runCatching {
+                context.startService(Intent(context, RadioTvCompanionService::class.java).setAction(RadioTvCompanionService.ACTION_RETRY_MDNS))
+            }
             (pendingAction ?: runDiscovery).invoke()
         } else {
             statusMessage = "Для поиска и трансляции в локальной сети разрешите доступ или введите IP вручную."
