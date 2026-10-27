@@ -264,7 +264,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     DisposableEffect(clickTone) { onDispose { clickTone.release() } }
     DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
     LaunchedEffect(speechEngine, speechReady.value) {
-        if (speechReady.value) speechEngine.language = Locale("ru")
+        if (speechReady.value && speechEngine.setLanguage(Locale("ru")) < 0) speechReady.value = false
     }
     val sendUiFeedback: (String) -> Unit = { label ->
         if (feedbackSettings.vibrationEnabled) {
@@ -277,7 +277,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         }
         if (feedbackSettings.clickSoundEnabled) {
             if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
-                speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click")
+                if (speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click") == TextToSpeech.ERROR) clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
             } else {
                 val audioManager = context.getSystemService(AudioManager::class.java)
                 if (audioManager?.areSoundEffectsEnabled() == true) {
