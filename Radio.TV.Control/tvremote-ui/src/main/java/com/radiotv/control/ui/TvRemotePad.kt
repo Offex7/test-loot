@@ -201,7 +201,7 @@ fun TvRemotePad(
         val transition = rememberInfiniteTransition(label = "remote-animations")
         val okPulse by transition.animateFloat(
             initialValue = 1f,
-            targetValue = 1.03f,
+            targetValue = 1.05f,
             animationSpec = infiniteRepeatable(
                 animation = tween(1000, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
