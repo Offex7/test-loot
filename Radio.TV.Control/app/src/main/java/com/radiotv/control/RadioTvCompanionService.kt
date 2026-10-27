@@ -18,6 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 
 /**
@@ -27,6 +30,8 @@ import org.json.JSONObject
 class RadioTvCompanionService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var adb: AdbRemoteDevice
+    private val adbCommandMutex = Mutex()
+    private val adbSetupPrompted = AtomicBoolean(false)
     private var companionServer: RadioTvCompanionServer? = null
 
     override fun onCreate() {
@@ -36,13 +41,12 @@ class RadioTvCompanionService : Service() {
         adb = AdbRemoteDevice(applicationContext)
         companionServer = runCatching {
             RadioTvCompanionServer(applicationContext) { json ->
-                serviceScope.launch { executeCommand(json) }
+                serviceScope.launch { adbCommandMutex.withLock { executeCommand(json) } }
             }.also { it.start() }
         }.onFailure {
             Log.e(TAG, "Unable to start Companion WebSocket server", it)
-            requestAdbSetup("Не удалось запустить сервер связи Radio.TV.")
         }.getOrNull()
-        serviceScope.launch { ensureLoopbackAdb() }
+        serviceScope.launch { adbCommandMutex.withLock { ensureLoopbackAdb() } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -75,8 +79,12 @@ class RadioTvCompanionService : Service() {
     }
 
     private suspend fun ensureLoopbackAdb(): Boolean = withContext(Dispatchers.IO) {
-        if (adb.status.value is AdbRemoteStatus.Connected) return@withContext true
+        if (adb.status.value is AdbRemoteStatus.Connected) {
+            adbSetupPrompted.set(false)
+            return@withContext true
+        }
         runCatching { adb.connect("127.0.0.1", ADB_PORT) }
+            .onSuccess { adbSetupPrompted.set(false) }
             .onFailure { error ->
                 Log.i(TAG, "TV loopback ADB is unavailable", error)
                 requestAdbSetup(error.message.orEmpty())
@@ -85,6 +93,7 @@ class RadioTvCompanionService : Service() {
     }
 
     private fun requestAdbSetup(reason: String) {
+        if (!adbSetupPrompted.compareAndSet(false, true)) return
         sendBroadcast(
             Intent(ACTION_ADB_REQUIRED)
                 .setPackage(packageName)
