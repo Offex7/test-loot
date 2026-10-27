@@ -157,6 +157,7 @@ fun TvRemotePad(
     onFeatureAction: (RemoteFeatureAction) -> Unit = {},
     touchpadActive: Boolean = false,
     airMouseActive: Boolean = false,
+    muteActive: Boolean = false,
     voiceActive: Boolean = false,
     keyboardActive: Boolean = false,
     featureMessage: String? = null,
@@ -188,7 +189,7 @@ fun TvRemotePad(
             (maxHeight * 0.34f).coerceIn(if (compact) 132.dp else 155.dp, if (compact) 220.dp else 268.dp)
         }
         val footerButtonSize = if (tight) 36.dp else if (compact) 48.dp else 54.dp
-        val arrowSize = if (tight) 29.dp else if (compact) 42.dp else 50.dp
+        val arrowSize = if (tight) 40.dp else if (compact) 58.dp else 70.dp
         val okSize = if (tight) 64.dp else if (compact) 84.dp else 98.dp
         val lowerButtonSize = if (tight) 38.dp else if (compact) 50.dp else 56.dp
         val sideInset = if (tight) 6.dp else 13.dp
@@ -208,14 +209,14 @@ fun TvRemotePad(
             ),
             label = "ok-pulse"
         )
-        val rainbowRotation by transition.animateFloat(
+        val rainbowOffset by transition.animateFloat(
             initialValue = 0f,
-            targetValue = 360f,
+            targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(5000, easing = LinearEasing),
+                animation = tween(3600, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
-            label = "rainbow-gradient-rotation"
+            label = "rainbow-gradient-offset"
         )
         val rainbowColors = listOf(
             Color(0xFFFF3B30),
@@ -362,13 +363,13 @@ fun TvRemotePad(
                             description = "Без звука",
                             modifier = Modifier.size(secondRowButtonSize),
                             shape = CircleShape,
-                            background = padButtonColor,
+                            background = if (muteActive) RadioTvPalette.Red else padButtonColor,
                             onClick = { onKey(RemoteKey.MUTE) }
                         ) {
                             Icon(
                                 Icons.Filled.VolumeOff,
                                 contentDescription = null,
-                                tint = padIconColor,
+                                tint = if (muteActive) Color.White else padIconColor,
                                 modifier = Modifier.size(if (tight) 25.dp else 30.dp)
                             )
                         }
@@ -402,7 +403,7 @@ fun TvRemotePad(
                 )
             }
 
-            // D-pad outline stays fixed while its rainbow gradient rotates around the cross.
+            // Keep the outline geometry fixed; animate only the gradient travelling along it.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -437,13 +438,16 @@ fun TvRemotePad(
                             color = Color(0xFF191919),
                             style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round)
                         )
-                        rotate(rainbowRotation, pivot = center) {
-                            drawPath(
-                                path,
-                                brush = Brush.sweepGradient(colors = rainbowColors, center = center),
-                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                            )
-                        }
+                        val gradientTravel = w * rainbowOffset
+                        drawPath(
+                            path,
+                            brush = Brush.linearGradient(
+                                colors = rainbowColors,
+                                start = Offset(-w + gradientTravel, 0f),
+                                end = Offset(w + gradientTravel, h)
+                            ),
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        )
                     }
             ) {
                 RemoteSurfaceButton(
@@ -455,7 +459,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.UP) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 28.dp else 34.dp))
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 34.dp else if (compact) 44.dp else 52.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Влево",
@@ -556,10 +560,10 @@ fun TvRemotePad(
                     description = if (touchpadActive || airMouseActive) "Тачпад, активен" else "Тачпад",
                     modifier = Modifier.size(footerButtonSize),
                     shape = CircleShape,
-                    background = padButtonColor,
+                    background = if (touchpadActive || airMouseActive) RadioTvPalette.Red else padButtonColor,
                     onClick = { onFeatureAction(RemoteFeatureAction.TOUCHPAD) }
                 ) {
-                    Icon(Icons.Filled.TouchApp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 24.dp else 28.dp))
+                    Icon(Icons.Filled.TouchApp, contentDescription = null, tint = if (touchpadActive || airMouseActive) Color.White else padIconColor, modifier = Modifier.size(if (tight) 24.dp else 28.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Домой",
