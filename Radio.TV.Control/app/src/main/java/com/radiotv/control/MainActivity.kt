@@ -1002,12 +1002,12 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                             RadioTvTab.SETTINGS -> {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                                    contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     item {
                                         Row(
-                                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
@@ -1022,395 +1022,181 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                         }
                                     }
                                     item {
-                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                             Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                                OutlinedButton(onClick = { sendUiFeedback("Автопоиск"); manualEntry = false; refreshDevices() }, modifier = Modifier.weight(1f)) { Text("Автопоиск", maxLines = 1) }
-                                                OutlinedButton(onClick = { sendUiFeedback("Ручной IP"); manualEntry = true }, modifier = Modifier.weight(1f)) { Text("Ручной IP", maxLines = 1) }
-                                                OutlinedButton(onClick = { sendUiFeedback("Bluetooth HID"); beginBluetoothSession() }, modifier = Modifier.weight(1f)) { Text("Bluetooth HID", maxLines = 1) }
-                                            }
-                                            Text(if (companionConnected) "Подключено к Radio.TV приложению" else if (companionStatus is CompanionConnectionStatus.Unavailable) "Companion не найден — используется поиск по обычным протоколам." else "Автопоиск Companion и телевизоров выполняется в локальной сети.", color = if (companionConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        }
-                                    }
-                                    item {
-                                        Text("НАСТРОЙКИ УСТРОЙСТВ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                                        Text("Телефон и телевизор должны быть в одной Wi‑Fi сети.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    item {
-                                        Card(colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)) {
-                                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Column(Modifier.weight(1f)) { Text("Вибрация при нажатии", fontWeight = FontWeight.SemiBold); Text("Короткий тактильный отклик", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
-                                                    Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled -> sendUiFeedback("Вибрация"); scope.launch { context.setVibrationEnabled(enabled) } })
-                                                }
-                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Column(Modifier.weight(1f)) { Text("Звук при нажатии", fontWeight = FontWeight.SemiBold); Text(if (feedbackSettings.clickSoundEnabled) "Звук включён" else "Выключен по умолчанию", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall) }
-                                                    Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled -> sendUiFeedback("Звук"); scope.launch { context.setClickSoundEnabled(enabled) } })
-                                                }
-                                                Text("Тип звука", fontWeight = FontWeight.SemiBold)
-                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                                    listOf(SOUND_TYPE_CLICK to "Клик", SOUND_TYPE_VOICE to "Голос").forEach { choice ->
-                                                        Box(Modifier.weight(1f).background(if (feedbackSettings.soundType == choice.first) RadioTvPalette.Red else RadioTvPalette.Black, RoundedCornerShape(10.dp)).clickable { sendUiFeedback(choice.second); scope.launch { context.setClickSoundType(choice.first) } }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(choice.second, color = Color.White, fontWeight = FontWeight.SemiBold) }
-                                                    }
-                                                }
-                                                if (feedbackSettings.clickSoundEnabled && feedbackSettings.soundType == SOUND_TYPE_VOICE) Text("Озвучивание действия на русском языке (если установлен TTS).", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                            }
-                                        }
-                                    }
-                                    item {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Bluetooth HID", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                            OutlinedButton(onClick = { sendUiFeedback("Подключить Bluetooth HID"); beginBluetoothSession() }) { Text("ПОДКЛЮЧИТЬ") }
-                                        }
-                                        Text(bluetoothStatus.asUserLabel(), color = if (hidConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text(airMouseStatus.asUserLabel(), color = if (airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text(voiceStatus.asUserLabel(), color = if (voiceStatus is VoiceInputStatus.Recording) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    item {
-                                        if (installedApps.isNotEmpty()) {
-                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text("ПРИЛОЖЕНИЯ НА ТЕЛЕВИЗОРЕ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                                                installedApps.take(12).forEach { app ->
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth()
+                                                listOf(
+                                                    CONNECTION_AUTO to "Авто",
+                                                    CONNECTION_MANUAL to "Ручное",
+                                                    CONNECTION_BLUETOOTH to "Bluetooth"
+                                                ).forEach { (method, title) ->
+                                                    val selected = feedbackSettings.connectionMethod == method
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f).height(42.dp)
                                                             .clip(RoundedCornerShape(10.dp))
-                                                            .background(RadioTvPalette.Raised)
-                                                            .padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(app.name, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.Medium)
-                                                        OutlinedButton(onClick = {
-                                                            sendUiFeedback(app.name)
-                                                            scope.launch {
-                                                                runCatching { otherTvRemote.launchInstalledApp(app) }
-                                                                    .onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
-                                                            }
-                                                        }) { Text("ОТКРЫТЬ") }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    item {
-                                        Text("ВОЗМОЖНОСТИ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("Микрофон", voiceStatus is VoiceInputStatus.Recording, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.VOICE_INPUT) }
-                                            ControlActionButton("Аэромышь", airMouseStatus is AirMouseStatus.Active, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.AIR_MOUSE) }
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            ControlActionButton("Клавиатура", showKeyboard, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.KEYBOARD) }
-                                            ControlActionButton("Тачпад", showTouchpad, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.TOUCHPAD) }
-                                            ControlActionButton("Трансляция", false, Modifier.weight(1f)) { handleFeatureAction(RemoteFeatureAction.CAST) }
-                                        }
-                                        Card(
-                                            shape = RoundedCornerShape(14.dp),
-                                            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth()
-                                                        .clip(RoundedCornerShape(10.dp))
-                                                        .clickable {
-                                                            sendUiFeedback("Дублирование")
-                                                            duplicationExpanded = !duplicationExpanded
-                                                            if (duplicationExpanded) refreshCastDevices()
-                                                        }
-                                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text("Дублирование / трансляция", fontWeight = FontWeight.SemiBold)
-                                                        Text(
-                                                            if (duplicationExpanded) "Панель развёрнута" else "Фото, видео, аудио и DLNA · нажмите, чтобы открыть",
-                                                            color = RadioTvPalette.Muted,
-                                                            style = MaterialTheme.typography.bodySmall
-                                                        )
-                                                    }
-                                                    Text(if (duplicationExpanded) "−" else "+", color = RadioTvPalette.Red, fontSize = 22.sp)
-                                                }
-                                                if (duplicationExpanded) {
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                                        OutlinedButton(
-                                                            onClick = { sendUiFeedback("Фото и видео"); launchMediaPicker(arrayOf("image/*", "video/*")) },
-                                                            modifier = Modifier.weight(1f)
-                                                        ) { Text("Фото / видео") }
-                                                        OutlinedButton(
-                                                            onClick = { sendUiFeedback("Музыка и аудио"); launchAudioPicker() },
-                                                            modifier = Modifier.weight(1f)
-                                                        ) { Text("Музыка / аудио") }
-                                                    }
-                                                    OutlinedButton(
-                                                        onClick = { sendUiFeedback("Выбрать файл"); launchMediaPicker(arrayOf("*/*")) },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) { Text("ВЫБРАТЬ ЛЮБОЙ ФАЙЛ") }
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Text("DLNA-приёмники", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                                        OutlinedButton(
-                                                            onClick = { sendUiFeedback("Обновить DLNA"); refreshCastDevices() },
-                                                            enabled = !castScanning
-                                                        ) { Text(if (castScanning) "ПОИСК…" else "ОБНОВИТЬ") }
-                                                    }
-                                                    if (castDevices.isEmpty() && !castScanning) {
-                                                        Text("Нажмите «Обновить» или выберите файл: поиск DLNA начнётся автоматически.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    castDevices.take(6).forEach { renderer ->
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                                                                .background(RadioTvPalette.Black).padding(8.dp),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                        ) {
-                                                            Text(
-                                                                renderer.friendlyName?.takeIf { it.isNotBlank() } ?: "DLNA-устройство",
-                                                                modifier = Modifier.weight(1f),
-                                                                maxLines = 2,
-                                                                fontWeight = FontWeight.Medium
-                                                            )
-                                                            OutlinedButton(
-                                                                onClick = {
-                                                                    sendUiFeedback("Выбрать DLNA")
-                                                                    selectedCastRenderer = renderer
-                                                                    val media = castMedia
-                                                                    if (media != null) scope.launch {
-                                                                        runCatching { dlnaCast.play(renderer, media) }
-                                                                            .onSuccess { castPlaybackStatus = "Воспроизведение"; castMessage = "Передаём медиа на выбранное устройство." }
-                                                                            .onFailure { castPlaybackStatus = "Ошибка"; castMessage = it.message ?: "Не удалось запустить медиа." }
-                                                                    } else {
-                                                                        castMessage = "Телевизор выбран. Теперь выберите фото, видео, аудио или файл."
-                                                                    }
-                                                                }
-                                                            ) { Text(if (selectedCastRenderer?.location == renderer.location) "ВЫБРАНО" else "ВЫБРАТЬ") }
-                                                        }
-                                                    }
-                                                    Text(castMedia?.let { "Медиа: ${it.title}" } ?: "Медиа ещё не выбрано.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                    Text("Состояние: $castPlaybackStatus", color = if (castPlaybackStatus == "Воспроизведение") RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                    Text(castMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                                        Button(
-                                                            onClick = {
-                                                                val renderer = selectedCastRenderer
-                                                                val media = castMedia
-                                                                if (renderer != null && media != null) scope.launch {
-                                                                    runCatching { dlnaCast.play(renderer, media) }
-                                                                        .onSuccess { castPlaybackStatus = "Воспроизведение"; castMessage = "Команда Play отправлена." }
-                                                                        .onFailure { castPlaybackStatus = "Ошибка"; castMessage = it.message ?: "Не удалось начать воспроизведение." }
+                                                            .clickable {
+                                                                sendUiFeedback(title)
+                                                                scope.launch { context.setConnectionMethod(method) }
+                                                                when (method) {
+                                                                    CONNECTION_AUTO -> { manualEntry = false; refreshDevices() }
+                                                                    CONNECTION_MANUAL -> { manualEntry = true }
+                                                                    CONNECTION_BLUETOOTH -> { manualEntry = false; beginBluetoothSession() }
                                                                 }
                                                             },
-                                                            enabled = selectedCastRenderer != null && castMedia != null,
-                                                            modifier = Modifier.weight(1f)
-                                                        ) { Text("▶ Play") }
-                                                        OutlinedButton(
-                                                            onClick = { selectedCastRenderer?.let { renderer -> scope.launch {
-                                                                runCatching { dlnaCast.pause(renderer) }
-                                                                    .onSuccess { castPlaybackStatus = "Пауза"; castMessage = "Команда Pause отправлена." }
-                                                                    .onFailure { castMessage = it.message ?: "Pause не поддерживается." }
-                                                            } } },
-                                                            enabled = selectedCastRenderer != null,
-                                                            modifier = Modifier.weight(1f)
-                                                        ) { Text("Ⅱ Pause") }
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = if (selected) RadioTvPalette.Red else RadioTvPalette.Raised
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                        Text("Состояние: $statusMessage", color = if (voiceStatus is VoiceInputStatus.Recording || airMouseStatus is AirMouseStatus.Active) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                        Text("Разрешение микрофона запрашивается после соединения с Android TV. Аэромышь требует гироскоп и Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
-
-                                    item {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Поиск устройств", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                            OutlinedButton(onClick = { sendUiFeedback("Поиск устройств"); refreshDevices() }, enabled = !scanning) { Text(if (scanning) "ПОИСК…" else "ОБНОВИТЬ") }
-                                        }
-                                        if (pairedHost.isNotBlank()) {
-                                            OutlinedButton(onClick = { sendUiFeedback("Подключить сохранённый телевизор"); connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) {
-                                                Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ · $pairedHost")
-                                            }
-                                        }
-                                        if (scanning) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(4.dp))
-                                                Text("Ищем устройства в локальной сети…", color = RadioTvPalette.Muted)
-                                            }
-                                            repeat(3) { DiscoverySkeletonCard() }
-                                        } else if (devices.isEmpty()) {
-                                            Text("Устройства не найдены", color = RadioTvPalette.Muted)
-                                        }
-                                    }
-                                    items(devices, key = { it.ip }) { device ->
-                                        Card(
-                                            shape = RoundedCornerShape(14.dp),
-                                            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Raised)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                Text(deviceIcon(device.type), fontSize = 11.sp, color = RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
-                                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                    Text(friendlyDeviceName(device), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                                    Text(device.ip,
-                                                        color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                                }
-                                                OutlinedButton(onClick = { sendUiFeedback("Подключить устройство"); chooseDevice(device) }) { Text("Подключить") }
-                                            }
-                                        }
-                                    }
-                                    item {
-                                        OutlinedButton(onClick = { sendUiFeedback("Ввести IP"); manualEntry = !manualEntry }, modifier = Modifier.fillMaxWidth()) {
-                                            Text(if (manualEntry) "СКРЫТЬ РУЧНОЙ ВВОД" else "ВВЕСТИ IP ВРУЧНУЮ")
-                                        }
-                                        if (manualEntry) {
-                                            OutlinedTextField(
-                                                value = host,
-                                                onValueChange = { host = it },
-                                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                                                label = { Text("IP-адрес телевизора") },
-                                                placeholder = { Text("192.168.1.100") },
-                                                singleLine = true,
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                                            )
-                                            Button(onClick = { sendUiFeedback("Подключение по IP"); connectManualHost() }, modifier = Modifier.fillMaxWidth(), enabled = host.isNotBlank()) {
-                                                Text("НАЧАТЬ СОПРЯЖЕНИЕ ПО IP")
-                                            }
-                                        }
-                                    }
-                                    item {
-                                        Text(
-                                            when (val current = status) {
-                                                RemoteStatus.Disconnected -> "Android TV: не подключено"
-                                                is RemoteStatus.Connecting -> "Подключение: ${current.host}"
-                                                is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения"
-                                                is RemoteStatus.Connected -> "Android TV: подключено · ${current.host}"
-                                                is RemoteStatus.Error -> "Не удалось подключиться. Попробуйте ещё раз."
-                                            },
-                                            color = if (wifiConnected) RadioTvPalette.Red else RadioTvPalette.Muted
-                                        )
-                                        if (otherRemoteStatus !is OtherTvRemoteStatus.Disconnected) {
-                                            Text(otherRemoteStatus.asUserLabel(), color = if (otherConnected) RadioTvPalette.Red else RadioTvPalette.Muted)
-                                        }
-                                        if (adbStatus !is AdbRemoteStatus.Disconnected) {
-                                            Text(adbStatus.asUserLabel(), color = if (adbConnected) RadioTvPalette.Red else RadioTvPalette.Muted)
-                                        }
-                                        Text(statusMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    if (codeRequested) {
-                                        item {
-                                            OutlinedTextField(
-                                                value = pairingCode,
-                                                onValueChange = { pairingCode = it.uppercase().filter { c -> c in "0123456789ABCDEF" }.take(6) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                label = { Text("Код с экрана телевизора") },
-                                                placeholder = { Text("A1B2C3") },
-                                                singleLine = true,
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
-                                            )
-                                            Button(
-                                                onClick = {
-                                                    sendUiFeedback("Подтвердить код")
-                                                    scope.launch {
-                                                        statusMessage = "Проверяем код и сохраняем сопряжение…"
-                                                        runCatching { remote.completePairing(pairingCode) }
-                                                            .onSuccess {
-                                                                pairedHost = remote.pairedHost().orEmpty()
-                                                                statusMessage = "Телевизор подключён."
-                                                                selectedTab = RadioTvTab.REMOTE
-                                                            }
-                                                            .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
-                                                    }
+                                            Text(
+                                                when {
+                                                    companionConnected -> "Подключено к Radio.TV приложению"
+                                                    connected -> selectedDeviceName.ifBlank { "Телевизор сопряжён" }
+                                                    else -> "Для управления телефоном и ТВ используйте одну локальную сеть."
                                                 },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                enabled = pairingCode.length == 6
-                                            ) { Text("ПОДТВЕРДИТЬ КОД") }
-                                        }
-                                    }
-                                    if (showKeyboard) {
-                                        item {
-                                            OutlinedTextField(
-                                                value = keyboardText, onValueChange = { keyboardText = it },
-                                                modifier = Modifier.fillMaxWidth(), label = { Text("Текст для телевизора") },
-                                                placeholder = { Text("Введите текст…") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
-                                            )
-                                            Button(
-                                                onClick = {
-                                                    sendUiFeedback("Отправить текст")
-                                                    scope.launch {
-                                                        runCatching {
-                                                            if (companionConnected) {
-                                                                runCatching { companionClient.sendText(keyboardText) }
-                                                                    .recoverCatching {
-                                                                        when {
-                                                                            selectedAdbConnected -> adbRemote.sendText(keyboardText)
-                                                                            selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
-                                                                            selectedWifiConnected -> remote.sendText(keyboardText)
-                                                                            hidConnected -> bluetoothHid.sendText(keyboardText)
-                                                                            else -> throw it
-                                                                        }
-                                                                    }.getOrThrow()
-                                                            } else when {
-                                                                selectedAdbConnected -> adbRemote.sendText(keyboardText)
-                                                                selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
-                                                                selectedWifiConnected -> remote.sendText(keyboardText)
-                                                                hidConnected -> bluetoothHid.sendText(keyboardText)
-                                                                else -> error("Выбранный телевизор не подключён. Выберите устройство в настройках.")
-                                                            }
-                                                        }.onSuccess { statusMessage = "Текст отправлен."; keyboardText = "" }
-                                                            .onFailure { statusMessage = it.message ?: "Не удалось отправить текст." }
-                                                    }
-                                                },
-                                                enabled = keyboardText.isNotEmpty() && (companionConnected || selectedAdbConnected || selectedWifiConnected || selectedOtherConnected || hidConnected),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) { Text("ОТПРАВИТЬ ТЕКСТ НА ТВ") }
-                                        }
-                                    }
-                                    if (showTouchpad) {
-                                        item {
-                                            TouchpadSurface(
-                                                enabled = hidConnected,
-                                                onMove = { dx, dy -> scope.launch { runCatching { bluetoothHid.moveMouse(dx, dy) }.onFailure { statusMessage = it.message ?: "Не удалось переместить Bluetooth-курсор." } } },
-                                                onTap = { sendUiFeedback("Клик тачпада"); scope.launch { runCatching { bluetoothHid.clickMouse(1) }.onFailure { statusMessage = it.message ?: "Не удалось нажать Bluetooth-мышь." } } },
-                                                onLongPress = { sendUiFeedback("Контекстный клик"); scope.launch { runCatching { bluetoothHid.clickMouse(2) }.onFailure { statusMessage = it.message ?: "Не удалось отправить контекстный клик." } } }
+                                                color = if (connected || companionConnected) RadioTvPalette.Red else RadioTvPalette.Muted,
+                                                style = MaterialTheme.typography.bodySmall
                                             )
                                         }
                                     }
                                     item {
                                         Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(RadioTvPalette.Raised)
-                                                .padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                                .background(RadioTvPalette.Raised).padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Text("В разработке", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                            Text(
-                                                "Аппаратная проверка Samsung Tizen, LG webOS, Roku, Bluetooth HID, DLNA и аэромыши ещё не подтверждена на реальных телевизорах. План: проверить подключение, команды, повторное соединение и передачу медиа на устройствах каждого семейства.",
-                                                color = RadioTvPalette.Muted,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                            Text(
-                                                "Голосовой ввод PCM 16-bit mono не подтверждён на физическом Android TV. План: проверить запись, передачу аудиокадров и остановку голосовой сессии на совместимом телевизоре.",
-                                                color = RadioTvPalette.Muted,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                            Text(
-                                                "Реальные иконки приложений доступны не для всех протоколов; при отсутствии URL используется запасное обозначение. План: загружать и кешировать иконки там, где ТВ предоставляет их в API.",
-                                                color = RadioTvPalette.Muted,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("ПОИСК УСТРОЙСТВ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                                OutlinedButton(onClick = { sendUiFeedback("Поиск устройств"); refreshDevices() }, enabled = !scanning) {
+                                                    Text(if (scanning) "ПОИСК…" else "ИСКАТЬ")
+                                                }
+                                            }
+                                            if (scanning) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                                                    Text("Ищем Companion и телевизоры…", color = RadioTvPalette.Muted)
+                                                }
+                                            } else if (devices.isEmpty()) {
+                                                Text("Устройства не найдены. Запустите поиск ещё раз или введите IP вручную.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            items(devices, key = { it.ip }) { device ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                        Text(friendlyDeviceName(device), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                                        Text(device.ip, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    OutlinedButton(onClick = { sendUiFeedback("Подключить ТВ"); chooseDevice(device) }) { Text("Подключить") }
+                                                }
+                                            }
+                                            if (pairedHost.isNotBlank()) {
+                                                Text("Сохранённый телевизор доступен для повторного подключения.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                OutlinedButton(onClick = { connectPairedHost(pairedHost) }, modifier = Modifier.fillMaxWidth()) { Text("ПОДКЛЮЧИТЬ СОХРАНЁННЫЙ ТВ") }
+                                            }
+                                            if (manualEntry || feedbackSettings.connectionMethod == CONNECTION_MANUAL) {
+                                                OutlinedTextField(
+                                                    value = host,
+                                                    onValueChange = { host = it },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    label = { Text("IP-адрес телевизора") },
+                                                    placeholder = { Text("192.168.1.100") },
+                                                    singleLine = true,
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                                                )
+                                                Button(onClick = { connectManualHost() }, modifier = Modifier.fillMaxWidth(), enabled = host.isNotBlank()) {
+                                                    Text("ПОДКЛЮЧИТЬ ПО IP")
+                                                }
+                                            }
+                                            if (codeRequested) {
+                                                OutlinedTextField(
+                                                    value = pairingCode,
+                                                    onValueChange = { pairingCode = it.uppercase().filter { ch -> ch in "0123456789ABCDEF" }.take(6) },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    label = { Text("Код сопряжения с экрана ТВ") },
+                                                    placeholder = { Text("A1B2C3") },
+                                                    singleLine = true
+                                                )
+                                                Button(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            runCatching { remote.completePairing(pairingCode) }
+                                                                .onSuccess { pairedHost = remote.pairedHost().orEmpty(); selectedTab = RadioTvTab.REMOTE }
+                                                                .onFailure { statusMessage = it.message ?: "Не удалось завершить сопряжение." }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    enabled = pairingCode.length == 6
+                                                ) { Text("ПОДТВЕРДИТЬ КОД") }
+                                            }
+                                            if (statusMessage.isNotBlank()) Text(statusMessage, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
-
-
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                                .background(RadioTvPalette.Raised).padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text("BLUETOOTH HID", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
+                                            Text(bluetoothStatus.asUserLabel(), color = if (hidConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                            Button(onClick = { beginBluetoothSession() }, modifier = Modifier.fillMaxWidth()) {
+                                                Text(if (hidConnected) "HID ПОДКЛЮЧЁН" else "ПОДКЛЮЧИТЬ BLUETOOTH HID")
+                                            }
+                                            Text("На телевизоре выберите Radio.TV.Control в списке Bluetooth-устройств.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                                .background(RadioTvPalette.Raised).padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text("Вибрация", fontWeight = FontWeight.SemiBold)
+                                                    Text("Короткий тактильный отклик", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                Switch(checked = feedbackSettings.vibrationEnabled, onCheckedChange = { enabled ->
+                                                    scope.launch { context.setVibrationEnabled(enabled) }
+                                                })
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text("Звук", fontWeight = FontWeight.SemiBold)
+                                                    Text(if (feedbackSettings.clickSoundEnabled) "Включён" else "Выключен", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                Switch(checked = feedbackSettings.clickSoundEnabled, onCheckedChange = { enabled ->
+                                                    scope.launch { context.setClickSoundEnabled(enabled) }
+                                                })
+                                            }
+                                        }
+                                    }
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                                .background(RadioTvPalette.Raised).padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text("УВЕДОМЛЕНИЯ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text("Показывать уведомления", fontWeight = FontWeight.SemiBold)
+                                                    Text("Всплывают сверху и скрываются через 3 секунды.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                Switch(checked = feedbackSettings.notificationsEnabled, onCheckedChange = { enabled ->
+                                                    scope.launch { context.setNotificationsEnabled(enabled) }
+                                                })
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
