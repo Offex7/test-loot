@@ -178,24 +178,27 @@ fun TvRemotePad(
         val headerButtonSize = if (tight) 34.dp else if (compact) 40.dp else 44.dp
         val powerSize = if (tight) 40.dp else if (compact) 46.dp else 52.dp
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
+        // Button diameters follow width; vertical groups grow moderately on taller phones.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.30f).coerceAtLeast(72.dp)
-            compact -> (maxHeight * 0.30f).coerceIn(155.dp, 205.dp)
-            else -> (maxHeight * 0.36f).coerceIn(225.dp, 280.dp)
+            tight -> (maxHeight * 0.31f).coerceIn(190.dp, 230.dp)
+            compact -> (maxHeight * 0.31f).coerceIn(220.dp, 260.dp)
+            else -> (maxHeight * 0.31f).coerceIn(255.dp, 300.dp)
         }
-        val volumePillWidth = if (tight) (maxWidth * 0.16f).coerceIn(46.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(60.dp, 78.dp)
-        val mediaButtonSize = if (tight) (maxWidth * 0.17f).coerceIn(48.dp, 64.dp) else (maxWidth * 0.215f).coerceIn(64.dp, 82.dp)
-        val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
+        val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
+        val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
+        val secondRowButtonSize = (maxWidth * 0.18f).coerceIn(if (tight) 50.dp else 62.dp, if (tight) 62.dp else 74.dp)
         val dpadHeight = when {
-            tight -> (maxHeight * 0.31f).coerceIn(170.dp, 175.dp)
-            compact -> (maxHeight * 0.42f).coerceIn(230.dp, 245.dp)
-            else -> (maxHeight * 0.34f).coerceIn(230.dp, 300.dp)
+            tight -> (maxHeight * 0.34f).coerceIn(220.dp, 260.dp)
+            compact -> (maxHeight * 0.35f).coerceIn(255.dp, 295.dp)
+            else -> (maxHeight * 0.35f).coerceIn(300.dp, 335.dp)
         }
-        val footerButtonSize = if (tight) 36.dp else if (compact) 44.dp else 54.dp
-        val arrowSize = if (tight) 44.dp else if (compact) 63.dp else 75.dp
-        val okSize = if (tight) 58.dp else if (compact) 72.dp else 98.dp
-        val lowerButtonSize = if (tight) 38.dp else if (compact) 46.dp else 56.dp
-        val sideInset = if (tight) 6.dp else 13.dp
+        val footerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
+        val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
+        val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
+        val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
+        val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
+        val arrowInset = (maxWidth * (if (tight) 0.12f else 0.135f)).coerceIn(36.dp, 58.dp)
+        val dpadLift = (maxHeight * 0.112f).coerceIn(68.dp, 104.dp)
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
@@ -341,7 +344,7 @@ fun TvRemotePad(
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly
+                    verticalArrangement = Arrangement.spacedBy(if (tight) 10.dp else 14.dp)
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -429,35 +432,36 @@ fun TvRemotePad(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(dpadHeight)
+                    .offset(y = -dpadLift)
                     .padding(horizontal = 1.dp)
                     .drawBehind {
                         val w = size.width
                         val h = size.height
                         val path = Path().apply {
-                            moveTo(w * 0.36f, h * 0.05f)
-                            cubicTo(w * 0.36f, h * 0.025f, w * 0.40f, h * 0.02f, w * 0.44f, h * 0.02f)
-                            lineTo(w * 0.56f, h * 0.02f)
-                            cubicTo(w * 0.60f, h * 0.02f, w * 0.64f, h * 0.025f, w * 0.64f, h * 0.08f)
-                            cubicTo(w * 0.64f, h * 0.23f, w * 0.70f, h * 0.29f, w * 0.82f, h * 0.30f)
-                            cubicTo(w * 0.94f, h * 0.31f, w * 0.97f, h * 0.36f, w * 0.97f, h * 0.44f)
-                            lineTo(w * 0.97f, h * 0.56f)
-                            cubicTo(w * 0.97f, h * 0.64f, w * 0.94f, h * 0.69f, w * 0.82f, h * 0.70f)
-                            cubicTo(w * 0.70f, h * 0.71f, w * 0.64f, h * 0.77f, w * 0.64f, h * 0.92f)
-                            cubicTo(w * 0.64f, h * 0.975f, w * 0.60f, h * 0.98f, w * 0.56f, h * 0.98f)
-                            lineTo(w * 0.44f, h * 0.98f)
-                            cubicTo(w * 0.40f, h * 0.98f, w * 0.36f, h * 0.975f, w * 0.36f, h * 0.92f)
-                            cubicTo(w * 0.36f, h * 0.77f, w * 0.30f, h * 0.71f, w * 0.18f, h * 0.70f)
-                            cubicTo(w * 0.06f, h * 0.69f, w * 0.03f, h * 0.64f, w * 0.03f, h * 0.56f)
-                            lineTo(w * 0.03f, h * 0.44f)
-                            cubicTo(w * 0.03f, h * 0.36f, w * 0.06f, h * 0.31f, w * 0.18f, h * 0.30f)
-                            cubicTo(w * 0.30f, h * 0.29f, w * 0.36f, h * 0.23f, w * 0.36f, h * 0.08f)
+                            moveTo(w * 0.38f, h * 0.05f)
+                            cubicTo(w * 0.38f, h * 0.025f, w * 0.42f, h * 0.02f, w * 0.45f, h * 0.02f)
+                            lineTo(w * 0.55f, h * 0.02f)
+                            cubicTo(w * 0.58f, h * 0.02f, w * 0.62f, h * 0.025f, w * 0.62f, h * 0.08f)
+                            cubicTo(w * 0.62f, h * 0.23f, w * 0.67f, h * 0.29f, w * 0.77f, h * 0.30f)
+                            cubicTo(w * 0.87f, h * 0.31f, w * 0.90f, h * 0.36f, w * 0.90f, h * 0.44f)
+                            lineTo(w * 0.90f, h * 0.56f)
+                            cubicTo(w * 0.90f, h * 0.64f, w * 0.87f, h * 0.69f, w * 0.77f, h * 0.70f)
+                            cubicTo(w * 0.67f, h * 0.71f, w * 0.62f, h * 0.77f, w * 0.62f, h * 0.92f)
+                            cubicTo(w * 0.62f, h * 0.975f, w * 0.58f, h * 0.98f, w * 0.55f, h * 0.98f)
+                            lineTo(w * 0.45f, h * 0.98f)
+                            cubicTo(w * 0.42f, h * 0.98f, w * 0.38f, h * 0.975f, w * 0.38f, h * 0.92f)
+                            cubicTo(w * 0.38f, h * 0.77f, w * 0.33f, h * 0.71f, w * 0.23f, h * 0.70f)
+                            cubicTo(w * 0.13f, h * 0.69f, w * 0.10f, h * 0.64f, w * 0.10f, h * 0.56f)
+                            lineTo(w * 0.10f, h * 0.44f)
+                            cubicTo(w * 0.10f, h * 0.36f, w * 0.13f, h * 0.31f, w * 0.23f, h * 0.30f)
+                            cubicTo(w * 0.33f, h * 0.29f, w * 0.38f, h * 0.23f, w * 0.38f, h * 0.08f)
                             close()
                         }
                         val center = Offset(w / 2f, h / 2f)
                         drawPath(
                             path,
                             color = Color(0xFF191919),
-                            style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                         )
                         val gradientTravel = w * rainbowOffset
                         drawPath(
@@ -485,7 +489,7 @@ fun TvRemotePad(
                 RemoteSurfaceButton(
                     description = "Влево",
                     modifier = Modifier.align(Alignment.CenterStart)
-                        .padding(start = if (tight) 7.dp else 13.dp)
+                        .padding(start = arrowInset)
                         .size(arrowSize),
                     shape = RoundedCornerShape(17.dp),
                     background = padButtonColor,
@@ -496,7 +500,7 @@ fun TvRemotePad(
                 RemoteSurfaceButton(
                     description = "Вправо",
                     modifier = Modifier.align(Alignment.CenterEnd)
-                        .padding(end = if (tight) 7.dp else 13.dp)
+                        .padding(end = arrowInset)
                         .size(arrowSize),
                     shape = RoundedCornerShape(17.dp),
                     background = padButtonColor,
@@ -529,7 +533,7 @@ fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).offset(y = -dpadLift).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -555,7 +559,7 @@ fun TvRemotePad(
 
             // The four lower quick actions match the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(footerButtonSize).offset(y = -dpadLift).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -679,15 +683,15 @@ private fun WhiteVolumePill(
             onClick = onTop
         ) {
             if (title == "VOL") {
-                Text(topLabel, color = ink, fontSize = 28.sp, fontWeight = FontWeight.Normal)
+                Text(topLabel, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Normal)
             } else {
-                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = ink, modifier = Modifier.size(29.dp))
+                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = ink, modifier = Modifier.size(34.dp))
             }
         }
         Text(
             title,
             color = ink,
-            fontSize = if (title == "VOL") 17.sp else 18.sp,
+            fontSize = if (title == "VOL") 20.sp else 21.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1
         )
@@ -699,7 +703,7 @@ private fun WhiteVolumePill(
             onClick = onBottom
         ) {
             if (title == "VOL") {
-                Text(bottomLabel, color = ink, fontSize = 27.sp, fontWeight = FontWeight.Normal)
+                Text(bottomLabel, color = ink, fontSize = 31.sp, fontWeight = FontWeight.Normal)
             } else {
                 Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = ink, modifier = Modifier.size(29.dp))
             }
