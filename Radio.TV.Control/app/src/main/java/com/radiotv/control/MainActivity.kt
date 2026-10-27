@@ -29,7 +29,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
@@ -914,7 +916,15 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                     Box(
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     ) {
-                        when (selectedTab) {
+                        AnimatedContent(
+                            targetState = selectedTab,
+                            transitionSpec = {
+                                (fadeIn(tween(220)) + slideInVertically(tween(240)) { it / 7 }) togetherWith
+                                    (fadeOut(tween(120)) + slideOutVertically(tween(180)) { -it / 10 })
+                            },
+                            label = "main-screen-slide-up"
+                        ) { screen ->
+                            when (screen) {
                             RadioTvTab.REMOTE -> {
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     TvRemotePad(
@@ -1207,6 +1217,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }
