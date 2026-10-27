@@ -194,7 +194,7 @@ fun TvRemotePad(
         val sideInset = if (tight) 6.dp else 13.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
-        val headerColor = Color(0xFF1A1A1A)
+        val headerColor = Color(0xFF151515)
         val headerButtonColor = Color(0xFF2A2A2A)
         val headerIconColor = Color(0xFFE8E8E8)
 
