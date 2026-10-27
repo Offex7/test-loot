@@ -314,6 +314,25 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
+    val showNotification: (String) -> Unit = { message ->
+        if (feedbackSettings.notificationsEnabled && message.isNotBlank()) {
+            snackbarRequestId += 1
+            val requestId = snackbarRequestId
+            scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val snackbarJob = launch {
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        withDismissAction = true,
+                        duration = androidx.compose.material3.SnackbarDuration.Indefinite
+                    )
+                }
+                delay(3_000L)
+                if (snackbarRequestId == requestId) snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarJob.cancel()
+            }
+        }
+    }
     val discovery = remember(context) { LocalNetworkDeviceDiscovery(context) }
     var host by rememberSaveable { mutableStateOf("") }
     var pairedHost by rememberSaveable { mutableStateOf(remote.pairedHost().orEmpty()) }
@@ -356,7 +375,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     }
     BackHandler(enabled = showKeyboard || showTouchpad || showDigitPad || selectedTab != RadioTvTab.REMOTE) {
         when {
-            showKeyboard -> showKeyboard = false
+            showKeyboard -> { showKeyboard = false; keyboardController?.hide() }
             showDigitPad -> showDigitPad = false
             showTouchpad -> showTouchpad = false
             else -> selectedTab = RadioTvTab.REMOTE
@@ -866,23 +885,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             RemoteFeatureAction.APP_NETFLIX -> "Netflix"
         })
         statusMessage = feedbackMessage
-        if (feedbackSettings.notificationsEnabled) {
-            snackbarRequestId += 1
-            val requestId = snackbarRequestId
-            scope.launch {
-                snackbarHostState.currentSnackbarData?.dismiss()
-                val snackbarJob = launch {
-                    snackbarHostState.showSnackbar(
-                        message = feedbackMessage,
-                        withDismissAction = true,
-                        duration = androidx.compose.material3.SnackbarDuration.Indefinite
-                    )
-                }
-                delay(3_000L)
-                if (snackbarRequestId == requestId) snackbarHostState.currentSnackbarData?.dismiss()
-                snackbarJob.cancel()
-            }
-        }
+        showNotification(feedbackMessage)
     }
 
     val dispatchRemoteKey: (RemoteKey) -> Unit = { key ->
@@ -908,7 +911,11 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                     else -> error("Выбранный телевизор не подключён. Выберите устройство в настройках.")
                 }
             }.onSuccess { if (key == RemoteKey.MUTE) muteActive = !muteActive }
-                .onFailure { statusMessage = it.message ?: "Не удалось отправить команду." }
+                .onFailure {
+                    val message = it.message ?: "Не удалось отправить команду."
+                    statusMessage = message
+                    showNotification(message)
+                }
         }
     }
 
@@ -1300,7 +1307,9 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                                     keyboardController?.hide()
                                                     statusMessage = "Текст отправлен."
                                                 }.onFailure {
-                                                    statusMessage = it.message ?: "Не удалось отправить текст на телевизор."
+                                                    val message = it.message ?: "Не удалось отправить текст на телевизор."
+                                                    statusMessage = message
+                                                    showNotification(message)
                                                 }
                                             }
                                         },
@@ -1325,9 +1334,9 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                 TouchpadSurface(
                                     enabled = hidConnected,
                                     modifier = Modifier.fillMaxWidth().height(236.dp),
-                                    onMove = { dx, dy -> scope.launch { runCatching { bluetoothHid.moveMouse(dx, dy) }.onFailure { statusMessage = it.message ?: "Не удалось переместить курсор." } } },
-                                    onTap = { sendUiFeedback("Клик тачпада"); scope.launch { runCatching { bluetoothHid.clickMouse(1) }.onFailure { statusMessage = it.message ?: "Не удалось нажать мышь." } } },
-                                    onLongPress = { sendUiFeedback("Контекстный клик"); scope.launch { runCatching { bluetoothHid.clickMouse(2) }.onFailure { statusMessage = it.message ?: "Не удалось отправить контекстный клик." } } }
+                                    onMove = { dx, dy -> scope.launch { runCatching { bluetoothHid.moveMouse(dx, dy) }.onFailure { val message = it.message ?: "Не удалось переместить курсор."; statusMessage = message; showNotification(message) } } },
+                                    onTap = { sendUiFeedback("Клик тачпада"); scope.launch { runCatching { bluetoothHid.clickMouse(1) }.onFailure { val message = it.message ?: "Не удалось нажать мышь."; statusMessage = message; showNotification(message) } } },
+                                    onLongPress = { sendUiFeedback("Контекстный клик"); scope.launch { runCatching { bluetoothHid.clickMouse(2) }.onFailure { val message = it.message ?: "Не удалось отправить контекстный клик."; statusMessage = message; showNotification(message) } } }
                                 )
                                 Button(
                                     onClick = {
