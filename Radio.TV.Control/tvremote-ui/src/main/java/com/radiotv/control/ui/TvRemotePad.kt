@@ -498,7 +498,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.RIGHT) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 28.dp else 34.dp))
+                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 42.dp else if (compact) 52.dp else 58.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Вниз",
@@ -509,7 +509,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.DOWN) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 28.dp else 34.dp))
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 42.dp else if (compact) 52.dp else 58.dp))
                 }
                 RemoteSurfaceButton(
                     description = "ОК",
