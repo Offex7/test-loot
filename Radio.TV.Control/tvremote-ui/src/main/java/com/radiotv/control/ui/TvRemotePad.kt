@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -171,28 +173,28 @@ fun TvRemotePad(
         modifier = modifier.fillMaxSize().background(Color(0xFF000000))
     ) {
         val tight = maxHeight < 520.dp
-        val compact = maxHeight < 650.dp
-        val headerHeight = if (tight) 42.dp else 56.dp
-        val headerButtonSize = if (tight) 34.dp else 44.dp
-        val powerSize = if (tight) 40.dp else 52.dp
+        val compact = maxHeight < 840.dp
+        val headerHeight = if (tight) 42.dp else if (compact) 50.dp else 56.dp
+        val headerButtonSize = if (tight) 34.dp else if (compact) 40.dp else 44.dp
+        val powerSize = if (tight) 40.dp else if (compact) 46.dp else 52.dp
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
-        val topClusterHeight = if (tight) {
-            (maxHeight * 0.30f).coerceAtLeast(72.dp)
-        } else {
-            (maxHeight * 0.39f).coerceIn(if (compact) 190.dp else 225.dp, if (compact) 250.dp else 300.dp)
+        val topClusterHeight = when {
+            tight -> (maxHeight * 0.30f).coerceAtLeast(72.dp)
+            compact -> (maxHeight * 0.30f).coerceIn(155.dp, 205.dp)
+            else -> (maxHeight * 0.36f).coerceIn(225.dp, 280.dp)
         }
         val volumePillWidth = if (tight) (maxWidth * 0.16f).coerceIn(46.dp, 60.dp) else (maxWidth * 0.205f).coerceIn(60.dp, 78.dp)
         val mediaButtonSize = if (tight) (maxWidth * 0.17f).coerceIn(48.dp, 64.dp) else (maxWidth * 0.215f).coerceIn(64.dp, 82.dp)
         val secondRowButtonSize = if (tight) 38.dp else if (compact) 54.dp else 64.dp
-        val dpadHeight = if (tight) {
-            (maxHeight * 0.22f).coerceAtLeast(62.dp)
-        } else {
-            (maxHeight * 0.34f).coerceIn(if (compact) 132.dp else 155.dp, if (compact) 220.dp else 268.dp)
+        val dpadHeight = when {
+            tight -> (maxHeight * 0.31f).coerceIn(150.dp, 160.dp)
+            compact -> (maxHeight * 0.42f).coerceIn(210.dp, 245.dp)
+            else -> (maxHeight * 0.34f).coerceIn(230.dp, 300.dp)
         }
-        val footerButtonSize = if (tight) 36.dp else if (compact) 48.dp else 54.dp
-        val arrowSize = if (tight) 44.dp else if (compact) 64.dp else 76.dp
-        val okSize = if (tight) 64.dp else if (compact) 84.dp else 98.dp
-        val lowerButtonSize = if (tight) 38.dp else if (compact) 50.dp else 56.dp
+        val footerButtonSize = if (tight) 36.dp else if (compact) 44.dp else 54.dp
+        val arrowSize = if (tight) 36.dp else if (compact) 54.dp else 70.dp
+        val okSize = if (tight) 58.dp else if (compact) 72.dp else 98.dp
+        val lowerButtonSize = if (tight) 38.dp else if (compact) 46.dp else 56.dp
         val sideInset = if (tight) 6.dp else 13.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
@@ -242,7 +244,8 @@ fun TvRemotePad(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF000000))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .then(if (maxHeight < 400.dp) Modifier.verticalScroll(rememberScrollState()) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -476,7 +479,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.UP) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 42.dp else if (compact) 52.dp else 58.dp))
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Влево",
@@ -487,7 +490,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.LEFT) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 42.dp else if (compact) 52.dp else 58.dp))
+                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Вправо",
