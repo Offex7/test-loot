@@ -188,7 +188,9 @@ class AdbRemoteDevice(context: Context) : RemoteDevice, Closeable {
         RemoteKey.CHANNEL_UP -> 166
         RemoteKey.CHANNEL_DOWN -> 167
         RemoteKey.SOURCE -> 178
-        RemoteKey.PLAY_PAUSE, RemoteKey.PLAY, RemoteKey.PAUSE -> 85
+        RemoteKey.PLAY_PAUSE -> 85
+        RemoteKey.PLAY -> 126
+        RemoteKey.PAUSE -> 127
         RemoteKey.STOP -> 86
         RemoteKey.REWIND -> 89
         RemoteKey.FAST_FORWARD -> 90
