@@ -164,7 +164,8 @@ fun TvRemotePad(
     showFeatureActions: Boolean = false,
     deviceName: String = "Телевизор не подключён",
     onSettings: () -> Unit = {},
-    onBack: () -> Unit = { onKey(RemoteKey.BACK) }
+    onBack: () -> Unit = { onKey(RemoteKey.BACK) },
+    onStartSearch: () -> Unit = {}
 ) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize().background(Color(0xFF000000))
@@ -208,6 +209,15 @@ fun TvRemotePad(
                 repeatMode = RepeatMode.Reverse
             ),
             label = "ok-pulse"
+        )
+        val searchPulse by transition.animateFloat(
+            initialValue = 0.97f,
+            targetValue = 1.03f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "search-pulse"
         )
         val rainbowOffset by transition.animateFloat(
             initialValue = 0f,
@@ -277,8 +287,15 @@ fun TvRemotePad(
                 }
                 Text(
                     text = deviceName.ifBlank { "Нет подключения" },
-                    modifier = Modifier.weight(1f).padding(horizontal = 3.dp),
-                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                        .padding(horizontal = 3.dp)
+                        .graphicsLayer {
+                            val scale = if (deviceName == "Начать поиск") searchPulse else 1f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clickable(enabled = deviceName == "Начать поиск", onClick = onStartSearch),
+                    color = if (deviceName == "Начать поиск") RadioTvPalette.Red else Color.White,
                     fontSize = if (tight) 16.sp else 19.sp,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
