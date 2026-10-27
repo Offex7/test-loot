@@ -39,6 +39,23 @@ class RadioTvCompanionService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         adb = AdbRemoteDevice(applicationContext)
+        startCompanionServerIfNeeded()
+        serviceScope.launch { adbCommandMutex.withLock { ensureLoopbackAdb() } }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RETRY_MDNS) startCompanionServerIfNeeded()
+        return START_STICKY
+    }
+
+    @Synchronized
+    private fun startCompanionServerIfNeeded() {
+        val current = companionServer
+        if (current != null) {
+            runCatching { current.start() }
+                .onFailure { Log.e(TAG, "Unable to restart Companion WebSocket server", it) }
+            return
+        }
         companionServer = runCatching {
             RadioTvCompanionServer(applicationContext) { json ->
                 serviceScope.launch { adbCommandMutex.withLock { executeCommand(json) } }
@@ -46,12 +63,6 @@ class RadioTvCompanionService : Service() {
         }.onFailure {
             Log.e(TAG, "Unable to start Companion WebSocket server", it)
         }.getOrNull()
-        serviceScope.launch { adbCommandMutex.withLock { ensureLoopbackAdb() } }
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_RETRY_MDNS) runCatching { companionServer?.start() }
-        return START_STICKY
     }
 
     private suspend fun executeCommand(command: JSONObject) {
