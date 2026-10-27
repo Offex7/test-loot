@@ -78,6 +78,7 @@ class RadioTvCompanionClient(context: Context) : Closeable {
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
                 if (stateMutable.value is CompanionConnectionStatus.Connected) {
                     stateMutable.value = CompanionConnectionStatus.Searching
+                    runCatching { socket?.close() }
                 }
             }
             override fun onDiscoveryStopped(serviceType: String) = Unit
