@@ -280,12 +280,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
                 if (speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click") == TextToSpeech.ERROR) clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
             } else {
-                val audioManager = context.getSystemService(AudioManager::class.java)
-                if (audioManager?.areSoundEffectsEnabled() == true) {
-                    audioManager.playSoundEffect(AudioManager.FX_KEY_CLICK)
-                } else {
-                    clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
-                }
+                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
             }
         }
     }
