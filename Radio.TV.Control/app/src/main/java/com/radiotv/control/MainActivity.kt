@@ -18,6 +18,7 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.VibratorManager
 import android.media.AudioManager
+import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 import androidx.activity.ComponentActivity
@@ -259,6 +260,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     val speechEngine = remember(context) {
         TextToSpeech(context) { result -> speechReady.value = result == TextToSpeech.SUCCESS }
     }
+    val clickTone = remember(context) { ToneGenerator(AudioManager.STREAM_MUSIC, 35) }
+    DisposableEffect(clickTone) { onDispose { clickTone.release() } }
     DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
     LaunchedEffect(speechEngine, speechReady.value) {
         if (speechReady.value) speechEngine.language = Locale("ru")
@@ -276,7 +279,12 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             if (feedbackSettings.soundType == SOUND_TYPE_VOICE && speechReady.value) {
                 speechEngine.speak(label, TextToSpeech.QUEUE_FLUSH, null, "radio-tv-click")
             } else {
-                context.getSystemService(AudioManager::class.java)?.playSoundEffect(AudioManager.FX_KEY_CLICK)
+                val audioManager = context.getSystemService(AudioManager::class.java)
+                if (audioManager?.areSoundEffectsEnabled() == true) {
+                    audioManager.playSoundEffect(AudioManager.FX_KEY_CLICK)
+                } else {
+                    clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 22)
+                }
             }
         }
     }
