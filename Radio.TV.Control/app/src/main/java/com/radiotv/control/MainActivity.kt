@@ -2,8 +2,15 @@ package com.radiotv.control
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.app.UiModeManager
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.content.res.Configuration
+import android.provider.Settings
 import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
@@ -102,6 +109,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.radiotv.control.companion.CompanionConnectionStatus
+import com.radiotv.control.companion.RadioTvCompanionClient
 import com.radiotv.control.cast.CastMedia
 import com.radiotv.control.cast.DlnaCastController
 import com.radiotv.control.cast.DlnaDevice
@@ -134,6 +143,9 @@ import org.koin.android.ext.android.inject
 private const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
 
 class MainActivity : ComponentActivity() {
+    private var adbSetupReceiver: BroadcastReceiver? = null
+    private var adbSetupDialog: AlertDialog? = null
+    private var promptAfterDeviceInfo = false
     private val remote: AndroidTvRemoteV2Transport by inject()
     private val adbRemote: AdbRemoteDevice by inject()
     private val bluetoothHid: BluetoothHidController by inject()
@@ -147,9 +159,73 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val initialUiScreen = intent.getStringExtra("ui-screen") ?: "remote"
         setContent { RadioTvControlScreen(remote, adbRemote, bluetoothHid, airMouse, voiceInput, otherTvRemote, dlnaCast, initialUiScreen) }
+        startTvCompanionIfNeeded()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (promptAfterDeviceInfo && isDeveloperOptionsEnabled()) {
+            promptAfterDeviceInfo = false
+            window.decorView.post { showAdbSetupDialog("Отладка ADB нужна для отправки команд телевизору.") }
+        }
+    }
+
+    private fun startTvCompanionIfNeeded() {
+        if (!isTelevision()) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                showAdbSetupDialog(intent?.getStringExtra(RadioTvCompanionService.EXTRA_REASON).orEmpty())
+            }
+        }
+        adbSetupReceiver = receiver
+        val filter = IntentFilter(RadioTvCompanionService.ACTION_ADB_REQUIRED)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(receiver, filter)
+        runCatching { startForegroundService(Intent(this, RadioTvCompanionService::class.java)) }
+            .onFailure { showAdbSetupDialog(it.message.orEmpty()) }
+    }
+
+    private fun isTelevision(): Boolean {
+        val uiMode = getSystemService(UiModeManager::class.java)
+        return uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+
+    private fun isDeveloperOptionsEnabled(): Boolean =
+        runCatching { Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1 }
+            .getOrDefault(false)
+
+    private fun showAdbSetupDialog(reason: String) {
+        if (isFinishing || isDestroyed || adbSetupDialog?.isShowing == true) return
+        val developerOptionsEnabled = isDeveloperOptionsEnabled()
+        val message = buildString {
+            append("Для управления телевизором без пульта необходимо включить отладку. Это безопасно и не требует Root-прав.")
+            if (!developerOptionsEnabled) append("\n\nСначала включите режим разработчика: откройте сведения об устройстве и нажмите 7 раз на «Номер сборки».")
+            else append("\n\nВ параметрах разработчика включите доступную на вашем телевизоре отладку ADB.")
+            if (reason.isNotBlank()) append("\n\nПодробности: ").append(reason.take(180))
+        }
+        adbSetupDialog = AlertDialog.Builder(this)
+            .setTitle("Настройка ADB")
+            .setMessage(message)
+            .setNegativeButton("Позже", null)
+            .setPositiveButton("Перейти в настройки") { _, _ ->
+                if (developerOptionsEnabled) {
+                    runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+                        .onFailure { startActivity(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)) }
+                } else {
+                    promptAfterDeviceInfo = true
+                    runCatching { startActivity(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)) }
+                }
+            }
+            .create()
+        adbSetupDialog?.show()
     }
 
     override fun onDestroy() {
+        adbSetupReceiver?.let { receiver -> runCatching { unregisterReceiver(receiver) } }
+        adbSetupReceiver = null
+        adbSetupDialog?.dismiss()
+        adbSetupDialog = null
         if (isFinishing) {
             remote.close()
             adbRemote.close()
@@ -165,6 +241,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote: AdbRemoteDevice, bluetoothHid: BluetoothHidController, airMouse: GyroAirMouseController, voiceInput: AndroidTvVoiceInputController, otherTvRemote: OtherTvRemoteController, dlnaCast: DlnaCastController, initialUiScreen: String) {
     val context = LocalContext.current
+    val companionClient = remember(context) { RadioTvCompanionClient(context) }
+    val companionStatus by companionClient.status.collectAsStateWithLifecycle(initialValue = CompanionConnectionStatus.Searching)
+    val companionConnected = companionStatus is CompanionConnectionStatus.Connected
+    LaunchedEffect(companionClient) { companionClient.start() }
+    DisposableEffect(companionClient) { onDispose { companionClient.close() } }
+    LaunchedEffect(companionStatus) {
+        val active = companionStatus as? CompanionConnectionStatus.Connected
+        if (active != null) context.setLastConnectedDevice(active.host, "Radio.TV приложение", "COMPANION")
+    }
     val hapticFeedback = LocalHapticFeedback.current
     val feedbackSettings by context.radioTvFeedbackSettings.collectAsStateWithLifecycle(initialValue = RadioTvFeedbackSettings())
     val speechReady = remember { mutableStateOf(false) }
@@ -316,7 +401,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     val wifiConnected = status is RemoteStatus.Connected
     val otherConnected = otherRemoteStatus is OtherTvRemoteStatus.Connected
     val adbConnected = adbStatus is AdbRemoteStatus.Connected
-    val connected = wifiConnected || otherConnected || adbConnected
+    val connected = wifiConnected || otherConnected || adbConnected || companionConnected
     val hidConnected = bluetoothStatus is BluetoothHidStatus.Connected
     // Two protocol sessions may remain connected at once. Route commands to the device selected
     // in Settings instead of accidentally sending keys to an older Android TV session.
@@ -624,6 +709,12 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
     LaunchedEffect(Unit) {
         if (connected || otherConnected) return@LaunchedEffect
         val remembered = context.radioTvLastDevice.first()
+        if (remembered.type == "COMPANION") {
+            val foundCompanion = kotlinx.coroutines.withTimeoutOrNull(1800L) {
+                companionClient.status.first { it is CompanionConnectionStatus.Connected }
+            }
+            if (foundCompanion != null) return@LaunchedEffect
+        }
         when {
             remembered.host.isNotBlank() && remembered.type == RemoteDeviceType.ANDROID_TV.name -> {
                 host = remembered.host
@@ -749,7 +840,18 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         sendUiFeedback(remoteKeyFeedbackLabel(key))
         scope.launch {
             runCatching {
-                when {
+                if (companionConnected) {
+                    runCatching { companionClient.sendKeyCode(remoteKeyToAndroidKeyCode(key)) }
+                        .recoverCatching {
+                            when {
+                                selectedAdbConnected -> adbRemote.sendKey(key)
+                                selectedOtherConnected -> otherTvRemote.sendKey(key)
+                                selectedWifiConnected -> remote.sendKey(key)
+                                hidConnected -> bluetoothHid.sendRemoteKey(key)
+                                else -> throw it
+                            }
+                        }.getOrThrow()
+                } else when {
                     selectedAdbConnected -> adbRemote.sendKey(key)
                     selectedOtherConnected -> otherTvRemote.sendKey(key)
                     selectedWifiConnected -> remote.sendKey(key)
@@ -777,20 +879,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxWidth().pointerInput(selectedTab) {
-                            var horizontalDrag = 0f
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
-                                onDragEnd = {
-                                    if (horizontalDrag < -100f && selectedTab == RadioTvTab.REMOTE) {
-                                        selectedTab = RadioTvTab.CONTROL
-                                    } else if (horizontalDrag > 100f && selectedTab != RadioTvTab.REMOTE) {
-                                        selectedTab = RadioTvTab.REMOTE
-                                    }
-                                    horizontalDrag = 0f
-                                }
-                            )
-                        }
+                        modifier = Modifier.weight(1f).fillMaxWidth()
                     ) {
                         when (selectedTab) {
                             RadioTvTab.REMOTE -> {
@@ -807,6 +896,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         featureMessage = null,
                                         showFeatureActions = false,
                                         deviceName = when {
+                                            companionConnected -> "Подключено к Radio.TV приложению"
                                             selectedAdbConnected -> "Kivi TV (ADB)"
                                             selectedOtherConnected -> selectedDeviceName.ifBlank { "Телевизор" }
                                             selectedWifiConnected -> selectedDeviceName.ifBlank { "Android TV" }
@@ -814,7 +904,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                             else -> "Нет подключения"
                                         },
                                         onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
-                                        onBack = { sendUiFeedback("Контроль"); selectedTab = RadioTvTab.CONTROL }
+                                        onBack = { dispatchRemoteKey(RemoteKey.BACK) }
                                     )
                                 }
                             }
@@ -825,7 +915,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         sendUiFeedback(app.name)
                                         scope.launch {
                                             runCatching {
-                                                if (selectedAdbConnected) adbRemote.launchApp(app.id)
+                                                if (companionConnected) companionClient.launchApp(app.id)
+                                                else if (selectedAdbConnected) adbRemote.launchApp(app.id)
                                                 else otherTvRemote.launchInstalledApp(app)
                                             }.onFailure { statusMessage = it.message ?: "Не удалось запустить приложение на телевизоре." }
                                         }
@@ -893,11 +984,11 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                                OutlinedButton(onClick = { sendUiFeedback("Поиск по Wi-Fi"); manualEntry = false; refreshDevices() }, modifier = Modifier.weight(1f)) { Text("Wi‑Fi", maxLines = 1) }
-                                                OutlinedButton(onClick = { sendUiFeedback("Ручной IP"); manualEntry = true }, modifier = Modifier.weight(1f)) { Text("IP / ИК-мост", maxLines = 1) }
-                                                OutlinedButton(onClick = { sendUiFeedback("Bluetooth HID"); beginBluetoothSession() }, modifier = Modifier.weight(1f)) { Text("Bluetooth", maxLines = 1) }
+                                                OutlinedButton(onClick = { sendUiFeedback("Автопоиск"); manualEntry = false; refreshDevices() }, modifier = Modifier.weight(1f)) { Text("Автопоиск", maxLines = 1) }
+                                                OutlinedButton(onClick = { sendUiFeedback("Ручной IP"); manualEntry = true }, modifier = Modifier.weight(1f)) { Text("Ручной IP", maxLines = 1) }
+                                                OutlinedButton(onClick = { sendUiFeedback("Bluetooth HID"); beginBluetoothSession() }, modifier = Modifier.weight(1f)) { Text("Bluetooth HID", maxLines = 1) }
                                             }
-                                            Text("ИК-пульт поддерживается через совместимый сетевой ИК-мост. Для прямого Bluetooth-управления подключите Bluetooth HID.", color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text(if (companionConnected) "Подключено к Radio.TV приложению" else if (companionStatus is CompanionConnectionStatus.Unavailable) "Companion не найден — используется поиск по обычным протоколам." else "Автопоиск Companion и телевизоров выполняется в локальной сети.", color = if (companionConnected) RadioTvPalette.Red else RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                     item {
@@ -1214,7 +1305,8 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                                     scope.launch {
                                                         runCatching {
                                                             when {
-                                                                selectedAdbConnected -> adbRemote.sendText(keyboardText)
+                                                                companionConnected -> companionClient.sendText(keyboardText)
+                                                            selectedAdbConnected -> adbRemote.sendText(keyboardText)
                                                                 selectedOtherConnected -> otherTvRemote.sendText(keyboardText)
                                                                 selectedWifiConnected -> remote.sendText(keyboardText)
                                                                 hidConnected -> bluetoothHid.sendText(keyboardText)
@@ -1224,7 +1316,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                                                             .onFailure { statusMessage = it.message ?: "Не удалось отправить текст." }
                                                     }
                                                 },
-                                                enabled = keyboardText.isNotEmpty() && (selectedWifiConnected || selectedOtherConnected || hidConnected),
+                                                enabled = keyboardText.isNotEmpty() && (companionConnected || selectedAdbConnected || selectedWifiConnected || selectedOtherConnected || hidConnected),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text("ОТПРАВИТЬ ТЕКСТ НА ТВ") }
                                         }
@@ -1283,6 +1375,39 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
             }
         }
     }
+}
+
+private fun remoteKeyToAndroidKeyCode(key: RemoteKey): Int = when (key) {
+    RemoteKey.UP -> 19
+    RemoteKey.DOWN -> 20
+    RemoteKey.LEFT -> 21
+    RemoteKey.RIGHT -> 22
+    RemoteKey.OK -> 23
+    RemoteKey.BACK -> 4
+    RemoteKey.EXIT -> 111
+    RemoteKey.HOME -> 3
+    RemoteKey.MENU -> 82
+    RemoteKey.POWER -> 26
+    RemoteKey.MUTE -> 164
+    RemoteKey.VOLUME_UP -> 24
+    RemoteKey.VOLUME_DOWN -> 25
+    RemoteKey.CHANNEL_UP -> 166
+    RemoteKey.CHANNEL_DOWN -> 167
+    RemoteKey.SOURCE -> 178
+    RemoteKey.PLAY_PAUSE, RemoteKey.PLAY, RemoteKey.PAUSE -> 85
+    RemoteKey.STOP -> 86
+    RemoteKey.REWIND -> 89
+    RemoteKey.FAST_FORWARD -> 90
+    RemoteKey.NUMBER_0 -> 7
+    RemoteKey.NUMBER_1 -> 8
+    RemoteKey.NUMBER_2 -> 9
+    RemoteKey.NUMBER_3 -> 10
+    RemoteKey.NUMBER_4 -> 11
+    RemoteKey.NUMBER_5 -> 12
+    RemoteKey.NUMBER_6 -> 13
+    RemoteKey.NUMBER_7 -> 14
+    RemoteKey.NUMBER_8 -> 15
+    RemoteKey.NUMBER_9 -> 16
 }
 
 private fun friendlyDeviceName(device: DiscoveredRemoteDevice): String {
