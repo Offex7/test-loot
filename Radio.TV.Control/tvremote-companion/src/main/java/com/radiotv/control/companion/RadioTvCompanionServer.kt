@@ -3,6 +3,7 @@ package com.radiotv.control.companion
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import android.util.Log
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -60,7 +61,7 @@ class RadioTvCompanionServer(
     private fun registerService() {
         val manager = nsd ?: return
         val info = NsdServiceInfo().apply {
-            serviceName = SERVICE_NAME
+            serviceName = (SERVICE_NAME + " - " + Build.MODEL.trim()).take(63)
             serviceType = SERVICE_TYPE
             port = PORT
         }
