@@ -17,6 +17,7 @@ import java.io.BufferedInputStream
 import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -119,12 +120,22 @@ class RadioTvCompanionClient(context: Context) : Closeable {
                 val response = readLine(input)
                 if (!response.startsWith("HTTP/1.1 101")) throw IllegalStateException("Сервер Companion отклонил соединение.")
                 var totalHeaders = response.length
+                var acceptHeader: String? = null
                 while (true) {
                     val line = readLine(input)
                     totalHeaders += line.length
                     if (totalHeaders > MAX_HEADER_BYTES) throw IllegalStateException("Некорректный ответ Companion.")
-                    if (line.isEmpty() || line == "\r") break
+                    if (line.isEmpty()) break
+                    val divider = line.indexOf(':')
+                    if (divider > 0 && line.substring(0, divider).trim().equals("Sec-WebSocket-Accept", ignoreCase = true)) {
+                        acceptHeader = line.substring(divider + 1).trim()
+                    }
                 }
+                val expectedAccept = Base64.encodeToString(
+                    MessageDigest.getInstance("SHA-1").digest((key + WEBSOCKET_GUID).toByteArray(Charsets.US_ASCII)),
+                    Base64.NO_WRAP
+                )
+                if (acceptHeader != expectedAccept) throw IllegalStateException("Не удалось подтвердить сервер Companion.")
                 socket = candidate
                 stateMutable.value = CompanionConnectionStatus.Connected(host, serviceName.ifBlank { "Radio.TV.Control" })
                 while (!closed.get() && !candidate.isClosed) {
@@ -245,6 +256,7 @@ class RadioTvCompanionClient(context: Context) : Closeable {
 
     companion object {
         private const val TAG = "RadioTvCompanion"
+        private const val WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         private const val MAX_HEADER_BYTES = 8192
         private const val MAX_FRAME_BYTES = 1024 * 1024
         private const val RETRY_DELAY_MS = 1200L
