@@ -6,6 +6,30 @@
 )
 package com.offex7.streamhub
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import com.radiotv.control.companion.CompanionConnectionStatus
+import com.radiotv.control.companion.RadioTvCompanionClient
+import com.radiotv.control.core.AdbRemoteDevice
+import com.radiotv.control.core.AdbRemoteStatus
+import com.radiotv.control.core.AndroidTvRemoteV2Transport
+import com.radiotv.control.core.AndroidTvVoiceInputController
+import com.radiotv.control.core.BluetoothHidController
+import com.radiotv.control.core.BluetoothHidStatus
+import com.radiotv.control.core.RemoteKey
+import com.radiotv.control.core.RemoteStatus
+import com.radiotv.control.core.VoiceInputStatus
+import com.radiotv.control.core.toAndroidKeyCode
+import com.radiotv.control.ui.RemoteFeatureAction
+import com.radiotv.control.ui.TvRemotePadScreen
+import kotlinx.coroutines.flow.MutableStateFlow
+
 import android.app.PictureInPictureParams
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -301,6 +325,11 @@ private val SleepOptions = listOf(
 
 class MainActivity : FragmentActivity() {
     internal var requestedSection by mutableStateOf<Section?>(null)
+    internal var companionClient by mutableStateOf<RadioTvCompanionClient?>(null)
+    internal lateinit var remoteV2: AndroidTvRemoteV2Transport
+    internal lateinit var adbRemote: AdbRemoteDevice
+    internal lateinit var bluetoothHid: BluetoothHidController
+    internal lateinit var voiceInput: AndroidTvVoiceInputController
 
     companion object {
         const val EXTRA_WIDGET_SECTION = "widget_section"
@@ -327,6 +356,10 @@ class MainActivity : FragmentActivity() {
         }
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
+        remoteV2 = AndroidTvRemoteV2Transport(applicationContext)
+        adbRemote = AdbRemoteDevice(applicationContext)
+        bluetoothHid = BluetoothHidController(applicationContext)
+        voiceInput = AndroidTvVoiceInputController(applicationContext, remoteV2)
         setContent { AppTheme(store) { App(store, tv, radio, this) } }
     }
 
@@ -340,7 +373,27 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (isTelevisionDevice()) {
+            ContextCompat.startForegroundService(this, Intent(this, RadioTvCompanionService::class.java))
+        } else if (companionClient == null) {
+            RadioTvCompanionClient(applicationContext).also { client ->
+                companionClient = client
+                client.start()
+            }
+        }
+    }
+
+    private fun isTelevisionDevice(): Boolean =
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
+
     override fun onStop() {
+        if (!isTelevisionDevice()) {
+            companionClient?.close()
+            companionClient = null
+        }
         lifecycleScope.launch { store.setLastExitTime(System.currentTimeMillis()) }
         super.onStop()
     }
@@ -363,6 +416,12 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        companionClient?.close()
+        companionClient = null
+        if (::voiceInput.isInitialized) voiceInput.close()
+        if (::bluetoothHid.isInitialized) bluetoothHid.close()
+        if (::adbRemote.isInitialized) adbRemote.close()
+        if (::remoteV2.isInitialized) remoteV2.close()
         tv.release()
         radio.release()
         super.onDestroy()
@@ -400,6 +459,33 @@ private fun App(
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val energySaving = LocalEnergySaving.current
+    val fallbackCompanionFlow = remember { MutableStateFlow<CompanionConnectionStatus>(CompanionConnectionStatus.Searching) }
+    val companionFlow = activity.companionClient?.status ?: fallbackCompanionFlow
+    val companionStatus by companionFlow.collectAsState(initial = CompanionConnectionStatus.Searching)
+    val remoteV2Status by activity.remoteV2.status.collectAsState(initial = RemoteStatus.Disconnected)
+    val adbStatus by activity.adbRemote.status.collectAsState(initial = AdbRemoteStatus.Disconnected)
+    val bluetoothStatus by activity.bluetoothHid.status.collectAsState(initial = BluetoothHidStatus.Idle)
+    val voiceStatus by activity.voiceInput.status.collectAsState(initial = VoiceInputStatus.Off)
+    var remoteScreen by rememberSaveable { mutableStateOf(false) }
+    var showRemoteConnectionDialog by rememberSaveable { mutableStateOf(false) }
+    var remoteHost by rememberSaveable { mutableStateOf(activity.remoteV2.pairedHost().orEmpty()) }
+    var remotePairingCode by rememberSaveable { mutableStateOf("") }
+    var remoteConnectionMessage by rememberSaveable { mutableStateOf("") }
+    var showRemoteTextDialog by rememberSaveable { mutableStateOf(false) }
+    var remoteText by rememberSaveable { mutableStateOf("") }
+    var remoteMuteActive by rememberSaveable { mutableStateOf(false) }
+    val remoteConnected = companionStatus is CompanionConnectionStatus.Connected ||
+        remoteV2Status is RemoteStatus.Connected ||
+        adbStatus is AdbRemoteStatus.Connected ||
+        bluetoothStatus is BluetoothHidStatus.Connected
+    val remoteDeviceName = when {
+        companionStatus is CompanionConnectionStatus.Connected ->
+            (companionStatus as CompanionConnectionStatus.Connected).serviceName.substringAfter(" - ").ifBlank { "Radio.TV" }
+        remoteV2Status is RemoteStatus.Connected -> "Android TV · ${(remoteV2Status as RemoteStatus.Connected).host}"
+        adbStatus is AdbRemoteStatus.Connected -> "ADB · ${(adbStatus as AdbRemoteStatus.Connected).host}"
+        bluetoothStatus is BluetoothHidStatus.Connected -> "Bluetooth · ${(bluetoothStatus as BluetoothHidStatus.Connected).deviceName}"
+        else -> "Начать поиск"
+    }
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
     val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
     val autoStartEnabled by store.autoStartFlow().collectAsState(true)
@@ -678,10 +764,120 @@ private fun App(
         scope.launch { store.clearSection(); radioTimerStore.reset() }
     }
 
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.all { it }) {
+            runCatching { activity.bluetoothHid.start() }
+                .onSuccess { remoteConnectionMessage = "Bluetooth HID запущен. На телевизоре откройте Bluetooth и выберите Radio.TV." }
+                .onFailure { remoteConnectionMessage = it.message ?: "Не удалось запустить Bluetooth HID." }
+        } else {
+            remoteConnectionMessage = "Для Bluetooth HID нужны разрешения Bluetooth на телефоне."
+        }
+    }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scope.launch {
+                runCatching { activity.voiceInput.start() }
+                    .onSuccess { remoteConnectionMessage = it }
+                    .onFailure { remoteConnectionMessage = it.message ?: "Не удалось включить голосовой ввод." }
+            }
+        } else {
+            remoteConnectionMessage = "Разрешите доступ к микрофону для голосового ввода."
+        }
+    }
+    fun startRemoteBluetoothHid() {
+        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+                .filter { ContextCompat.checkSelfPermission(appContext, it) != PackageManager.PERMISSION_GRANTED }
+        } else emptyList()
+        if (required.isNotEmpty()) {
+            bluetoothPermissionLauncher.launch(required.toTypedArray())
+        } else {
+            runCatching { activity.bluetoothHid.start() }
+                .onSuccess { remoteConnectionMessage = "Bluetooth HID запущен. На телевизоре откройте Bluetooth и выберите Radio.TV." }
+                .onFailure { remoteConnectionMessage = it.message ?: "Не удалось запустить Bluetooth HID." }
+        }
+    }
+    fun toggleRemoteVoiceInput() {
+        if (voiceStatus is VoiceInputStatus.Recording || voiceStatus is VoiceInputStatus.Starting) {
+            scope.launch {
+                runCatching { activity.voiceInput.stop() }
+                    .onSuccess { remoteConnectionMessage = it }
+                    .onFailure { remoteConnectionMessage = it.message ?: "Не удалось остановить голосовой ввод." }
+            }
+            return
+        }
+        if (remoteV2Status !is RemoteStatus.Connected) {
+            remoteConnectionMessage = "Для голосового ввода сначала подключитесь к Android TV по Wi‑Fi."
+            showRemoteConnectionDialog = true
+            return
+        }
+        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            scope.launch {
+                runCatching { activity.voiceInput.start() }
+                    .onSuccess { remoteConnectionMessage = it }
+                    .onFailure { remoteConnectionMessage = it.message ?: "Не удалось включить голосовой ввод." }
+            }
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    fun dispatchRemoteKey(key: RemoteKey) {
+        scope.launch {
+            runCatching {
+                val client = activity.companionClient
+                when {
+                    client != null && client.status.value is CompanionConnectionStatus.Connected ->
+                        client.sendKeyCode(key.toAndroidKeyCode())
+                    activity.remoteV2.status.value is RemoteStatus.Connected -> activity.remoteV2.sendKey(key)
+                    activity.adbRemote.status.value is AdbRemoteStatus.Connected -> activity.adbRemote.sendKey(key)
+                    activity.bluetoothHid.status.value is BluetoothHidStatus.Connected -> activity.bluetoothHid.sendRemoteKey(key)
+                    else -> error("Подключите телевизор через Companion, Android TV Remote v2, ADB или Bluetooth.")
+                }
+            }.onSuccess {
+                remoteConnectionMessage = ""
+                if (key == RemoteKey.MUTE) remoteMuteActive = !remoteMuteActive
+            }.onFailure {
+                remoteConnectionMessage = it.message ?: "Не удалось отправить команду."
+                if (!remoteConnected) showRemoteConnectionDialog = true
+            }
+        }
+    }
+    fun sendRemoteText() {
+        val value = remoteText
+        if (value.isBlank()) return
+        scope.launch {
+            runCatching {
+                val client = activity.companionClient
+                when {
+                    client != null && client.status.value is CompanionConnectionStatus.Connected -> client.sendText(value)
+                    activity.remoteV2.status.value is RemoteStatus.Connected -> activity.remoteV2.sendText(value)
+                    activity.adbRemote.status.value is AdbRemoteStatus.Connected -> activity.adbRemote.sendText(value)
+                    activity.bluetoothHid.status.value is BluetoothHidStatus.Connected -> activity.bluetoothHid.sendText(value)
+                    else -> error("Подключите телевизор перед отправкой текста.")
+                }
+            }.onSuccess {
+                showRemoteTextDialog = false
+                remoteText = ""
+                remoteConnectionMessage = ""
+            }.onFailure {
+                remoteConnectionMessage = it.message ?: "Не удалось отправить текст."
+                showRemoteConnectionDialog = true
+            }
+        }
+    }
     BackHandler {
         when {
             disclaimer -> disclaimer = false
             settings -> settings = false
+            remoteScreen -> {
+                remoteScreen = false
+                showRemoteConnectionDialog = false
+                showRemoteTextDialog = false
+            }
             section != null -> leaveSection()
             else -> exit = true
         }
@@ -755,7 +951,65 @@ private fun App(
                         }
                     }
                 )
-                section == null -> Home(
+                section == null -> AnimatedContent(
+                    targetState = remoteScreen,
+                    transitionSpec = {
+                        if (targetState) {
+                            (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 18 }) togetherWith
+                                (fadeOut(tween(150)) + slideOutHorizontally(tween(150)) { -it / 24 })
+                        } else {
+                            (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { -it / 20 }) togetherWith
+                                (fadeOut(tween(140)) + slideOutHorizontally(tween(140)) { it / 24 })
+                        }
+                    },
+                    label = "home-remote-navigation"
+                ) { showRemote ->
+                    if (showRemote) {
+                        TvRemotePadScreen(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp),
+                            enabled = remoteConnected,
+                            onKey = ::dispatchRemoteKey,
+                            onBack = { dispatchRemoteKey(RemoteKey.BACK) },
+                            onFeatureAction = { action ->
+                                when (action) {
+                                    RemoteFeatureAction.KEYBOARD -> {
+                                        if (remoteConnected) {
+                                            remoteText = ""
+                                            showRemoteTextDialog = true
+                                        } else {
+                                            remoteConnectionMessage = "Сначала подключитесь к телевизору."
+                                            showRemoteConnectionDialog = true
+                                        }
+                                    }
+                                    RemoteFeatureAction.VOICE_INPUT -> toggleRemoteVoiceInput()
+                                    RemoteFeatureAction.AIR_MOUSE, RemoteFeatureAction.TOUCHPAD -> {
+                                        startRemoteBluetoothHid()
+                                        showRemoteConnectionDialog = true
+                                        if (remoteConnectionMessage.isBlank()) {
+                                            remoteConnectionMessage = "Разрешите Bluetooth и выберите Radio.TV в Bluetooth-настройках телевизора. Совместимость зависит от модели ТВ."
+                                        }
+                                    }
+                                    RemoteFeatureAction.CAST -> {
+                                        remoteConnectionMessage = "Трансляция файлов не включена в интегрированный экран пульта."
+                                        showRemoteConnectionDialog = true
+                                    }
+                                    RemoteFeatureAction.APP_YOUTUBE, RemoteFeatureAction.APP_NETFLIX -> {
+                                        remoteConnectionMessage = "Прямой запуск приложений зависит от протокола и пока не включён."
+                                        showRemoteConnectionDialog = true
+                                    }
+                                }
+                            },
+                            touchpadActive = bluetoothStatus is BluetoothHidStatus.Connected,
+                            airMouseActive = false,
+                            muteActive = remoteMuteActive,
+                            voiceActive = voiceStatus is VoiceInputStatus.Recording,
+                            keyboardActive = showRemoteTextDialog,
+                            deviceName = remoteDeviceName,
+                            onSettings = { showRemoteConnectionDialog = true },
+                            onStartSearch = { showRemoteConnectionDialog = true },
+                            showFeatureActions = true
+                        )
+                    } else Home(
                     activity = activity,
                     hapticsEnabled = hapticsEnabled,
                     onHaptic = { InteractionFeedback.click(appContext,hapticsEnabled,soundEnabled,false) },
@@ -764,8 +1018,14 @@ private fun App(
                         scope.launch { store.setSection(it) }
                     },
                     settings = { settings = true },
+                    openRemote = {
+                        remoteConnectionMessage = ""
+                        showRemoteConnectionDialog = false
+                        remoteScreen = true
+                    },
                     onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } }
-                )
+                    )
+                }
                 section == Section.TV -> TvV8Screen(
                     player = tv,
                     store = store,
@@ -812,6 +1072,140 @@ private fun App(
                 )
             }
 
+            if (showRemoteConnectionDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRemoteConnectionDialog = false },
+                    title = { Text("Подключение пульта") },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                when (val c = companionStatus) {
+                                    is CompanionConnectionStatus.Connected -> "Companion: подключено к ${c.serviceName}."
+                                    is CompanionConnectionStatus.Unavailable -> "Companion: ${c.message}"
+                                    else -> "Companion: поиск телевизора в локальной сети…"
+                                },
+                                color = Color.LightGray,
+                                fontSize = 12.sp
+                            )
+                            OutlinedTextField(
+                                value = remoteHost,
+                                onValueChange = { remoteHost = it },
+                                label = { Text("IP-адрес телевизора") },
+                                placeholder = { Text("192.168.1.25") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (remoteV2Status is RemoteStatus.AwaitingCode) {
+                                Text("Введите шестизначный HEX-код, показанный на экране телевизора.", color = Color.LightGray, fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = remotePairingCode,
+                                    onValueChange = { remotePairingCode = it.take(6).uppercase() },
+                                    label = { Text("Код сопряжения") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            Text(
+                                when {
+                                    remoteV2Status is RemoteStatus.Connected -> "Wi‑Fi Remote v2: подключено."
+                                    remoteV2Status is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения."
+                                    remoteV2Status is RemoteStatus.Connecting -> "Wi‑Fi Remote v2: подключение…"
+                                    adbStatus is AdbRemoteStatus.Connected -> "ADB: подключено."
+                                    bluetoothStatus is BluetoothHidStatus.Connected ->
+                                        "Bluetooth HID: ${(bluetoothStatus as BluetoothHidStatus.Connected).deviceName}."
+                                    else -> "Можно использовать Companion, Android TV Remote v2, ADB или Bluetooth HID."
+                                },
+                                color = Color.LightGray,
+                                fontSize = 12.sp
+                            )
+                            if (remoteConnectionMessage.isNotBlank()) {
+                                Text(remoteConnectionMessage, color = Red, fontSize = 12.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val host = remoteHost.trim()
+                                scope.launch {
+                                    runCatching {
+                                        when {
+                                            activity.remoteV2.status.value is RemoteStatus.AwaitingCode ->
+                                                activity.remoteV2.completePairing(remotePairingCode)
+                                            activity.remoteV2.pairedHost()?.equals(host, ignoreCase = true) == true -> {
+                                                require(host.isNotBlank()) { "Введите IP-адрес телевизора." }
+                                                activity.remoteV2.connect(host)
+                                            }
+                                            else -> {
+                                                require(host.isNotBlank()) { "Введите IP-адрес телевизора." }
+                                                activity.remoteV2.beginPairing(host)
+                                            }
+                                        }
+                                    }.onSuccess {
+                                        remoteConnectionMessage = if (activity.remoteV2.status.value is RemoteStatus.AwaitingCode) {
+                                            "Проверьте код на телевизоре и подтвердите сопряжение."
+                                        } else ""
+                                        if (activity.remoteV2.status.value is RemoteStatus.Connected) {
+                                            showRemoteConnectionDialog = false
+                                            remotePairingCode = ""
+                                        }
+                                    }.onFailure {
+                                        remoteConnectionMessage = it.message ?: "Не удалось подключить Android TV Remote v2."
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(if (remoteV2Status is RemoteStatus.AwaitingCode) "Подтвердить код" else "Wi‑Fi / сопряжение")
+                        }
+                    },
+                    dismissButton = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            TextButton(
+                                onClick = {
+                                    val host = remoteHost.trim()
+                                    if (host.isBlank()) {
+                                        remoteConnectionMessage = "Введите IP-адрес телевизора."
+                                    } else {
+                                        scope.launch {
+                                            runCatching { activity.adbRemote.connect(host, 5555) }
+                                                .onSuccess {
+                                                    remoteConnectionMessage = ""
+                                                    showRemoteConnectionDialog = false
+                                                }
+                                                .onFailure {
+                                                    remoteConnectionMessage = it.message ?: "ADB не подключился. Включите ADB по TCP на телевизоре."
+                                                }
+                                        }
+                                    }
+                                }
+                            ) { Text("ADB / Kivi") }
+                            TextButton(onClick = { startRemoteBluetoothHid() }) { Text("Bluetooth") }
+                            TextButton(onClick = { showRemoteConnectionDialog = false }) { Text("Закрыть") }
+                        }
+                    }
+                )
+            }
+            if (showRemoteTextDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRemoteTextDialog = false },
+                    title = { Text("Ввод текста на телевизор") },
+                    text = {
+                        OutlinedTextField(
+                            value = remoteText,
+                            onValueChange = { remoteText = it },
+                            label = { Text("Текст") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = false,
+                            maxLines = 5
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { sendRemoteText() }) { Text("Отправить") } },
+                    dismissButton = { TextButton(onClick = { showRemoteTextDialog = false }) { Text("Отмена") } }
+                )
+            }
             UpdateBannerV38(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 info = updateInfo,
@@ -917,6 +1311,7 @@ private fun Home(
     onHaptic: () -> Unit,
     open: (Section) -> Unit,
     settings: () -> Unit,
+    openRemote: () -> Unit,
     onCheckUpdate: () -> Unit
 ) {
     val context = LocalContext.current
@@ -971,6 +1366,22 @@ private fun Home(
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        onHaptic()
+                        openRemote()
+                    },
+                    modifier = Modifier.height(36.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Red),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                ) {
+                    Text("Пульт", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
                 Spacer(Modifier.weight(1f))
                 Text(
                     buildAnnotatedString {
@@ -3653,16 +4064,19 @@ private fun LogoImage(
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
-    val pulse by pulseTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "radio-logo-pulse-value"
-    )
+    val pulse = if (activeRadio && radioPlaying && !energySaving) {
+        val pulseTransition = rememberInfiniteTransition(label = "active-radio-logo-pulse")
+        val animatedPulse by pulseTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1100),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "active-radio-logo-pulse-value"
+        )
+        animatedPulse
+    } else 0f
 
     var bumping by remember(item.name) { mutableStateOf(false) }
     LaunchedEffect(radioBump) {
@@ -3788,7 +4202,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.2")
+                            .header("User-Agent", "Radio.TV/4.3")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE

@@ -1,5 +1,8 @@
 package com.radiotv.control.ui
 
+import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.focus.onFocusChanged
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -639,6 +642,7 @@ private fun RemoteSurfaceButton(
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
+    var focused by remember { mutableStateOf(false) }
     val pressScale by animateFloatAsState(
         targetValue = if (pressed) 0.91f else 1f,
         animationSpec = tween(140, easing = FastOutSlowInEasing),
@@ -653,6 +657,9 @@ private fun RemoteSurfaceButton(
             }
             .clip(shape)
             .background(background)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .border(width = if (focused) 2.dp else 0.dp, color = RadioTvPalette.Red, shape = shape)
             .semantics { contentDescription = description }
             .clickable(
                 interactionSource = interactions,
