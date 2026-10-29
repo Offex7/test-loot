@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.radiotv.control.core"
-    compileSdk = 37
+    compileSdk = 34
     defaultConfig { minSdk = 29 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
