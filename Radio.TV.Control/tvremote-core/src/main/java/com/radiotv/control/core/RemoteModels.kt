@@ -36,6 +36,46 @@ enum class RemoteKey(val wireCode: RemoteMessageProto.RemoteKeyCode) {
     NUMBER_8(RemoteMessageProto.RemoteKeyCode.KEYCODE_8),
     NUMBER_9(RemoteMessageProto.RemoteKeyCode.KEYCODE_9)
 }
+
+/**
+ * Converts the shared remote-key model to Android's input keycode.
+ * Useful for Companion JSON commands and other transports that accept Android key events.
+ */
+fun RemoteKey.toAndroidKeyCode(): Int = when (this) {
+    RemoteKey.UP -> 19
+    RemoteKey.DOWN -> 20
+    RemoteKey.LEFT -> 21
+    RemoteKey.RIGHT -> 22
+    RemoteKey.OK -> 23
+    RemoteKey.BACK -> 4
+    RemoteKey.EXIT -> 111
+    RemoteKey.HOME -> 3
+    RemoteKey.MENU -> 82
+    RemoteKey.POWER -> 26
+    RemoteKey.MUTE -> 164
+    RemoteKey.VOLUME_UP -> 24
+    RemoteKey.VOLUME_DOWN -> 25
+    RemoteKey.CHANNEL_UP -> 166
+    RemoteKey.CHANNEL_DOWN -> 167
+    RemoteKey.SOURCE -> 178
+    RemoteKey.PLAY_PAUSE -> 85
+    RemoteKey.PLAY -> 126
+    RemoteKey.PAUSE -> 127
+    RemoteKey.STOP -> 86
+    RemoteKey.REWIND -> 89
+    RemoteKey.FAST_FORWARD -> 90
+    RemoteKey.NUMBER_0 -> 7
+    RemoteKey.NUMBER_1 -> 8
+    RemoteKey.NUMBER_2 -> 9
+    RemoteKey.NUMBER_3 -> 10
+    RemoteKey.NUMBER_4 -> 11
+    RemoteKey.NUMBER_5 -> 12
+    RemoteKey.NUMBER_6 -> 13
+    RemoteKey.NUMBER_7 -> 14
+    RemoteKey.NUMBER_8 -> 15
+    RemoteKey.NUMBER_9 -> 16
+}
+
 sealed interface RemoteStatus {
     data object Disconnected : RemoteStatus
     data class Connecting(val host: String) : RemoteStatus
