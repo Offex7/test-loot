@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +42,7 @@ import com.radiotv.control.ui.radioTvColorScheme
 fun remoteScreenPreview() {
     MaterialTheme(colorScheme = radioTvColorScheme()) {
         TvRemotePad(
+            modifier = Modifier.fillMaxWidth().requiredHeight(891.dp),
             enabled = true,
             onKey = { _: RemoteKey -> },
             deviceName = "Xiaomi TV A",
