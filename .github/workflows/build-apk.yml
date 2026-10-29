@@ -72,6 +72,8 @@ jobs:
           media = (root / "src/main/java/com/offex7/streamhub/RadioPlaybackService.kt").read_text(encoding="utf-8")
           player = (root / "src/main/java/com/offex7/streamhub/PlayerController.kt").read_text(encoding="utf-8")
           tv = (root / "src/main/java/com/offex7/streamhub/TvV8Screen.kt").read_text(encoding="utf-8")
+          tv_playlist = (root / "src/main/java/com/offex7/streamhub/TvPlaylistRepositoryV8.kt").read_text(encoding="utf-8")
+          playlist = (root / "src/main/java/com/offex7/streamhub/PlaylistRepository.kt").read_text(encoding="utf-8")
           radio_controller = (root / "src/main/java/com/offex7/streamhub/RadioMediaController.kt").read_text(encoding="utf-8")
           shortcuts = (root / "src/main/res/xml/shortcuts.xml").read_text(encoding="utf-8")
           logo_assets = (root / "src/main/java/com/offex7/streamhub/RadioLogoAssetsV38.kt").read_text(encoding="utf-8")
@@ -113,6 +115,8 @@ jobs:
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
               "UA_v4_3": '"Radio.TV/4.3"' in main and '"Radio.TV/4.2"' not in main and '"Radio.TV/4.1"' not in main,
+              "UA_tv_playlist_repository": tv_playlist.count('"Radio.TV/4.3"') >= 2 and '"Radio.TV/9.0"' not in tv_playlist,
+              "UA_radio_playlist_repository": '"Radio.TV/4.3"' in playlist and "TV-Radio-Online/7.0" not in playlist,
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
               "scroll_arrow_timing_and_programmatic_guard": "delay(3000L)" in arrows and "delay(5000L)" in arrows and "ignoreProgrammaticScroll" in arrows,
               "updater_endpoint_preserved": "https://api.github.com/repos/RadioTV-apk/R/releases/latest" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
