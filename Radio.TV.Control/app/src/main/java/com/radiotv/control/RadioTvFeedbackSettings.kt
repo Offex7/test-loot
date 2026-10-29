@@ -15,11 +15,8 @@ internal data class RadioTvFeedbackSettings(
     val clickSoundEnabled: Boolean = false,
     val notificationsEnabled: Boolean = true,
     val connectionMethod: String = CONNECTION_AUTO,
-    val soundType: String = SOUND_TYPE_CLICK
 )
 
-internal const val SOUND_TYPE_CLICK = "click"
-internal const val SOUND_TYPE_VOICE = "voice"
 internal const val CONNECTION_AUTO = "auto"
 internal const val CONNECTION_MANUAL = "manual"
 internal const val CONNECTION_BLUETOOTH = "bluetooth"
@@ -35,7 +32,6 @@ private object FeedbackKeys {
     val clickSoundEnabled = booleanPreferencesKey("click_sound_enabled")
     val notificationsEnabled = booleanPreferencesKey("notifications_enabled")
     val connectionMethod = stringPreferencesKey("connection_method")
-    val soundType = stringPreferencesKey("click_sound_type")
     val lastDeviceHost = stringPreferencesKey("last_device_host")
     val lastDeviceName = stringPreferencesKey("last_device_name")
     val lastDeviceType = stringPreferencesKey("last_device_type")
@@ -48,7 +44,6 @@ internal val Context.radioTvFeedbackSettings: Flow<RadioTvFeedbackSettings>
             clickSoundEnabled = values[FeedbackKeys.clickSoundEnabled] ?: false,
             notificationsEnabled = values[FeedbackKeys.notificationsEnabled] ?: true,
             connectionMethod = values[FeedbackKeys.connectionMethod] ?: CONNECTION_AUTO,
-            soundType = values[FeedbackKeys.soundType] ?: SOUND_TYPE_CLICK
         )
     }
 
@@ -77,12 +72,6 @@ internal suspend fun Context.setVibrationEnabled(enabled: Boolean) {
 
 internal suspend fun Context.setClickSoundEnabled(enabled: Boolean) {
     radioTvControlSettingsStore.edit { it[FeedbackKeys.clickSoundEnabled] = enabled }
-}
-
-internal suspend fun Context.setClickSoundType(type: String) {
-    radioTvControlSettingsStore.edit {
-        it[FeedbackKeys.soundType] = if (type == SOUND_TYPE_VOICE) SOUND_TYPE_VOICE else SOUND_TYPE_CLICK
-    }
 }
 
 internal suspend fun Context.setNotificationsEnabled(enabled: Boolean) {
