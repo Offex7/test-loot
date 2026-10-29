@@ -969,7 +969,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                             hidConnected -> selectedDeviceName.ifBlank { "Bluetooth HID" }
                                             else -> "Начать поиск"
                                         },
-                                        onStartSearch = { refreshDevices(); selectedTab = RadioTvTab.SETTINGS },
+                                        onStartSearch = { sendUiFeedback("Поиск устройств"); refreshDevices(); selectedTab = RadioTvTab.SETTINGS },
                                          onSettings = { sendUiFeedback("Настройки"); selectedTab = RadioTvTab.SETTINGS; refreshDevices() },
                                         onBack = {
                                              when {
