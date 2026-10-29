@@ -108,7 +108,7 @@ jobs:
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
               "UA_v4_3": '"Radio.TV/4.3"' in main and '"Radio.TV/4.1"' not in main,
-              "remote_modules_included": all(Path(p).is_file() for p in ["tvremote-ui/build.gradle.kts", "tvremote-core/build.gradle.kts", "tvremote-companion/build.gradle.kts"]) and all(f'include(":{m}")' in Path("settings.gradle.kts").read_text(encoding="utf-8") for m in ["tvremote-ui", "tvremote-core", "tvremote-companion"]),
+              "remote_modules_included": all(Path(p).is_file() for p in ["tvremote-ui/build.gradle.kts", "tvremote-core/build.gradle.kts", "tvremote-companion/build.gradle.kts"]) and all(f'":{m}"' in Path("settings.gradle.kts").read_text(encoding="utf-8") for m in ["tvremote-ui", "tvremote-core", "tvremote-companion"]),
               "remote_entry_and_navigation": "TvRemotePadScreen(" in main and 'Text("Пульт"' in main and "home-remote-navigation" in main,
               "logo_animation_only_for_active_station": 'if (activeRadio && radioPlaying && !energySaving)' in main and 'rememberInfiniteTransition(label = "active-radio-logo-pulse")' in main,
               "removed_non_source_files": not Path("app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz").exists() and not Path("app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.b64.part1").exists(),
@@ -212,6 +212,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish downloadable v4.3 release assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v4.3
