@@ -1,0 +1,34 @@
+plugins {
+    id("com.android.library")
+    id("com.google.protobuf")
+}
+android {
+    namespace = "com.radiotv.control.core"
+    compileSdk = 34
+    defaultConfig { minSdk = 29 }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:4.31.1" }
+    generateProtoTasks {
+        all().configureEach {
+            builtins { create("java") { option("lite") } }
+        }
+    }
+}
+dependencies {
+    implementation("com.google.protobuf:protobuf-javalite:4.31.1")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.80")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.tananaev:adblib:1.3")
+    testImplementation("junit:junit:4.13.2")
+}

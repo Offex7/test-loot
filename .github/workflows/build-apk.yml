@@ -42,11 +42,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.2 source version
+      - name: Verify committed v4.3 source version
         run: |
           set -e
-          grep -q 'versionCode = 15' app/build.gradle.kts
-          grep -q 'versionName = "4.2"' app/build.gradle.kts
+          grep -q 'versionCode = 16' app/build.gradle.kts
+          grep -q 'versionName = "4.3"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -56,11 +56,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.2): install verified local Unistar logo"
+            git commit -m "fix(v4.3): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.2 sources
+      - name: Validate Radio.TV v4.3 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -82,7 +82,7 @@ jobs:
           manifest = (root / "src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           storage = (root / "src/main/java/com/offex7/streamhub/Storage.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 15" in gradle and 'versionName = "4.2"' in gradle,
+              "version": "versionCode = 16" in gradle and 'versionName = "4.3"' in gradle,
               "version_label": 'append("v$APP_VERSION")' in main,
               "application_id": 'applicationId = "com.offex7.streamhub"' in gradle,
               "R8": "isMinifyEnabled = true" in gradle and "isShrinkResources = true" in gradle,
@@ -107,7 +107,13 @@ jobs:
               "widget_receivers": ".RadioWidgetProvider" in manifest and ".TvWidgetProvider" in manifest,
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
-              "UA_v4_2": '"Radio.TV/4.2"' in main and '"Radio.TV/4.1"' not in main,
+              "UA_v4_3": '"Radio.TV/4.3"' in main and '"Radio.TV/4.1"' not in main,
+              "remote_modules_included": all(Path(p).is_file() for p in ["tvremote-ui/build.gradle.kts", "tvremote-core/build.gradle.kts", "tvremote-companion/build.gradle.kts"]) and all(f'":{m}"' in Path("settings.gradle.kts").read_text(encoding="utf-8") for m in ["tvremote-ui", "tvremote-core", "tvremote-companion"]),
+              "remote_entry_and_navigation": "TvRemotePadScreen(" in main and 'Text("Пульт"' in main and "home-remote-navigation" in main,
+              "logo_animation_only_for_active_station": 'if (activeRadio && radioPlaying && !energySaving)' in main and 'rememberInfiniteTransition(label = "active-radio-logo-pulse")' in main,
+              "removed_non_source_files": not Path("app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.gz").exists() and not Path("app/src/main/java/com/offex7/streamhub/MainActivity_v4.kt.b64.part1").exists(),
+              "remote_permissions": all(p in manifest for p in ["android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_MULTICAST_STATE", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE", "android.permission.BLUETOOTH_SCAN", "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"]),
+
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
               "scroll_arrow_timing_and_programmatic_guard": "delay(3000L)" in arrows and "delay(5000L)" in arrows and "ignoreProgrammaticScroll" in arrows,
               "updater_endpoint_preserved": "https://api.github.com/repos/RadioTV-apk/R/releases/latest" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
@@ -139,8 +145,8 @@ jobs:
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.2 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.2 source checks passed.")
+              raise SystemExit("v4.3 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.3 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -162,7 +168,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.2-debug-build-log
+          name: Radio-TV-v4.3-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -174,33 +180,50 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.2.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.2.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.2.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.3.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.3.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.3.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.2.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.3.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='15'"
-          echo "$BADGING" | grep -q "versionName='4.2'"
-          sha256sum Radio-TV-v4.2.apk
-          ls -lh Radio-TV-v4.2.apk
+          echo "$BADGING" | grep -q "versionCode='16'"
+          echo "$BADGING" | grep -q "versionName='4.3'"
+          sha256sum Radio-TV-v4.3.apk
+          ls -lh Radio-TV-v4.3.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.2-APK
-          path: Radio-TV-v4.2.apk
+          name: Radio-TV-v4.3-APK
+          path: Radio-TV-v4.3.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.2-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.3-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.2-Source
-          path: Radio-TV-v4.2-source.zip
+          name: Radio-TV-v4.3-Source
+          path: Radio-TV-v4.3-source.zip
           if-no-files-found: error
+
+      - name: Publish downloadable v4.3 release assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.3
+          name: Radio.TV v4.3
+          body: |
+            Radio.TV v4.3 — интегрированный пульт, обновлённые проверки и оптимизация анимации логотипа.
+            Package: com.offex7.streamhub
+            Version code: 16
+          files: |
+            Radio-TV-v4.3.apk
+            Radio-TV-v4.3-source.zip
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
