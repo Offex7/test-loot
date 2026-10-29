@@ -33,7 +33,7 @@ import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.RemoteKey
 import com.radiotv.control.ui.RadioTvPalette
 import com.radiotv.control.ui.RemoteFeatureAction
-import com.radiotv.control.ui.TvRemotePad
+import com.radiotv.control.ui.TvRemotePadScreen
 import com.radiotv.control.ui.radioTvColorScheme
 
 @PreviewTest
@@ -41,10 +41,11 @@ import com.radiotv.control.ui.radioTvColorScheme
 @Composable
 fun remoteScreenPreview() {
     MaterialTheme(colorScheme = radioTvColorScheme()) {
-        TvRemotePad(
+        TvRemotePadScreen(
             modifier = Modifier.fillMaxWidth().requiredHeight(891.dp),
             enabled = true,
             onKey = { _: RemoteKey -> },
+            onBack = {},
             deviceName = "Xiaomi TV A",
             onFeatureAction = { _: RemoteFeatureAction -> },
             onSettings = {}
