@@ -33,7 +33,7 @@ import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.RemoteKey
 import com.radiotv.control.ui.RadioTvPalette
 import com.radiotv.control.ui.RemoteFeatureAction
-import com.radiotv.control.ui.TvRemotePad
+import com.radiotv.control.ui.TvRemotePadScreen
 import com.radiotv.control.ui.radioTvColorScheme
 import java.io.File
 import java.io.FileOutputStream
@@ -51,9 +51,10 @@ class ManualScreenshotTest {
     @Test
     fun remote() = capture("remote.png") {
         MaterialTheme(colorScheme = radioTvColorScheme()) {
-            TvRemotePad(
+            TvRemotePadScreen(
                 enabled = true,
                 onKey = { _: RemoteKey -> },
+            onBack = {},
                 deviceName = "Xiaomi",
                 onFeatureAction = { _: RemoteFeatureAction -> },
                 onSettings = {}
