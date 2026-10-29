@@ -437,26 +437,26 @@ fun TvRemotePad(
                         // Compact organic clover contour. The narrow top/bottom lobes hug
                         // the arrow keys; the side lobes bulge only far enough to frame them.
                         val path = Path().apply {
-                            moveTo(w * 0.38f, h * 0.025f)
-                            cubicTo(w * 0.35f, h * 0.025f, w * 0.34f, h * 0.045f, w * 0.34f, h * 0.10f)
-                            cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.39f, h * 0.285f)
-                            cubicTo(w * 0.425f, h * 0.32f, w * 0.36f, h * 0.325f, w * 0.28f, h * 0.325f)
+                            moveTo(w * 0.38f, h * 0.01f)
+                            cubicTo(w * 0.35f, h * 0.01f, w * 0.34f, h * 0.04f, w * 0.34f, h * 0.10f)
+                            cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.35f, h * 0.285f)
+                            cubicTo(w * 0.39f, h * 0.32f, w * 0.34f, h * 0.325f, w * 0.28f, h * 0.325f)
                             cubicTo(w * 0.18f, h * 0.325f, w * 0.12f, h * 0.36f, w * 0.12f, h * 0.43f)
                             lineTo(w * 0.12f, h * 0.57f)
                             cubicTo(w * 0.12f, h * 0.64f, w * 0.18f, h * 0.675f, w * 0.28f, h * 0.675f)
-                            cubicTo(w * 0.36f, h * 0.675f, w * 0.425f, h * 0.68f, w * 0.39f, h * 0.715f)
+                            cubicTo(w * 0.36f, h * 0.675f, w * 0.39f, h * 0.68f, w * 0.35f, h * 0.715f)
                             cubicTo(w * 0.34f, h * 0.765f, w * 0.34f, h * 0.83f, w * 0.34f, h * 0.90f)
-                            cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.975f, w * 0.38f, h * 0.975f)
-                            lineTo(w * 0.62f, h * 0.975f)
-                            cubicTo(w * 0.65f, h * 0.975f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
-                            cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.61f, h * 0.715f)
-                            cubicTo(w * 0.575f, h * 0.68f, w * 0.64f, h * 0.675f, w * 0.72f, h * 0.675f)
+                            cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.99f, w * 0.38f, h * 0.99f)
+                            lineTo(w * 0.62f, h * 0.99f)
+                            cubicTo(w * 0.65f, h * 0.99f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
+                            cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.65f, h * 0.715f)
+                            cubicTo(w * 0.61f, h * 0.68f, w * 0.66f, h * 0.675f, w * 0.72f, h * 0.675f)
                             cubicTo(w * 0.82f, h * 0.675f, w * 0.88f, h * 0.64f, w * 0.88f, h * 0.57f)
                             lineTo(w * 0.88f, h * 0.43f)
                             cubicTo(w * 0.88f, h * 0.36f, w * 0.82f, h * 0.325f, w * 0.72f, h * 0.325f)
                             cubicTo(w * 0.64f, h * 0.325f, w * 0.575f, h * 0.32f, w * 0.61f, h * 0.285f)
                             cubicTo(w * 0.66f, h * 0.235f, w * 0.66f, h * 0.17f, w * 0.66f, h * 0.10f)
-                            cubicTo(w * 0.66f, h * 0.045f, w * 0.65f, h * 0.025f, w * 0.62f, h * 0.025f)
+                            cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
                             close()
                         }
                         drawPath(
@@ -496,7 +496,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.LEFT) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
+                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Вправо",
@@ -507,7 +507,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.RIGHT) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
+                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Вниз",
@@ -518,7 +518,7 @@ fun TvRemotePad(
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.DOWN) }
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 30.dp else if (compact) 42.dp else 54.dp))
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
                 RemoteSurfaceButton(
                     description = "ОК",
