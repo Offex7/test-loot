@@ -150,7 +150,7 @@ fun radioTvColorScheme() = darkColorScheme(
  * The content intentionally caps its width; landscape large screens therefore keep a centered portrait column.
  */
 @Composable
-fun TvRemotePad(
+internal fun TvRemotePad(
     enabled: Boolean,
     onKey: (RemoteKey) -> Unit,
     modifier: Modifier = Modifier,
