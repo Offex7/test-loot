@@ -43,6 +43,10 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    implementation(project(":tvremote-ui"))
+    implementation(project(":tvremote-core"))
+    implementation(project(":tvremote-companion"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
     implementation("androidx.core:core-ktx:1.13.1")
