@@ -149,7 +149,6 @@ fun radioTvColorScheme() = darkColorScheme(
  * Vertical red/black remote layout. The host app owns connection state and dispatches key events.
  * The content intentionally caps its width; landscape large screens therefore keep a centered portrait column.
  */
-@Suppress("UNUSED_PARAMETER")
 @Composable
 fun TvRemotePad(
     enabled: Boolean,
@@ -169,7 +168,15 @@ fun TvRemotePad(
     onStartSearch: () -> Unit = {}
 ) {
     BoxWithConstraints(
-        modifier = modifier.fillMaxSize().background(Color(0xFF000000))
+        modifier = modifier.fillMaxSize()
+            .background(Color(0xFF000000))
+            .semantics {
+                contentDescription = if (enabled) {
+                    "Пульт управления телевизором"
+                } else {
+                    "Пульт управления телевизором. Нет подключения; нажмите «Начать поиск»."
+                }
+            }
     ) {
         val tight = maxHeight < 520.dp
         val compact = maxHeight < 840.dp
