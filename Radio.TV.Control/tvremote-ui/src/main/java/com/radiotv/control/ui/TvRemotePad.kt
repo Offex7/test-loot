@@ -179,9 +179,9 @@ fun TvRemotePad(
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
         // Button diameters follow width; vertical groups grow moderately on taller phones.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.30f).coerceIn(180.dp, 215.dp)
-            compact -> (maxHeight * 0.30f).coerceIn(205.dp, 250.dp)
-            else -> (maxHeight * 0.30f).coerceIn(245.dp, 280.dp)
+            tight -> (maxHeight * 0.30f).coerceIn(172.dp, 195.dp)
+            compact -> (maxHeight * 0.30f).coerceIn(205.dp, 235.dp)
+            else -> (maxHeight * 0.30f).coerceIn(235.dp, 265.dp)
         }
         val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
@@ -194,10 +194,10 @@ fun TvRemotePad(
         val dpadHeight = okSize + (arrowSize + arrowVerticalInset + 4.dp) * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (((maxWidth - okSize) / 2) - arrowSize - 4.dp).coerceIn(8.dp, 82.dp)
-        val dpadLift = (maxHeight * 0.045f).coerceIn(35.dp, 45.dp)
-        val lowerRowLift = (maxHeight * 0.20f).coerceIn(138.dp, 160.dp)
-        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + 8.dp
+        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSize - 4.dp).coerceIn(8.dp, 82.dp)
+        val rowSpacing = if (tight) 5.dp else 7.dp
+        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 8.dp +
+            if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -249,7 +249,7 @@ fun TvRemotePad(
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .then(if (requiredContentHeight > maxHeight) Modifier.verticalScroll(rememberScrollState()) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(rowSpacing)
         ) {
             // Device bar: Back, Settings, the live connection name, then Power.
             Row(
@@ -342,7 +342,7 @@ fun TvRemotePad(
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly
+                    verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 10.dp, Alignment.CenterVertically)
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -430,7 +430,6 @@ fun TvRemotePad(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(dpadHeight)
-                    .offset(y = -dpadLift)
                     .padding(horizontal = 1.dp)
                     .drawBehind {
                         val w = size.width
@@ -535,7 +534,7 @@ fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).offset(y = -lowerRowLift).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -561,7 +560,7 @@ fun TvRemotePad(
 
             // The four lower quick actions match the reference image.
             Row(
-                modifier = Modifier.fillMaxWidth().height(footerButtonSize).offset(y = -lowerRowLift).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
