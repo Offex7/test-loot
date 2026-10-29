@@ -205,6 +205,7 @@ fun TvRemotePad(
         val rowSpacing = if (tight) 5.dp else 7.dp
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 8.dp +
             if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
+        val adaptiveLowerRowGap = ((maxHeight - requiredContentHeight).coerceAtLeast(0.dp)) / 2
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -565,9 +566,9 @@ fun TvRemotePad(
                 }
             }
 
-            // Keep the main D-pad and EXIT/Source compact; push only the final four actions
-            // to the bottom edge on tall phones. Under scroll constraints, weight collapses.
-            Spacer(modifier = Modifier.weight(1f))
+            // Use only half of spare height here: balance the gap below EXIT/Source with
+            // bottom breathing room instead of creating a large empty band between button rows.
+            Spacer(modifier = Modifier.height(adaptiveLowerRowGap))
             // The four lower quick actions match the reference image.
             Row(
                 modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
