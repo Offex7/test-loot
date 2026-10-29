@@ -1275,11 +1275,13 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                     OutlinedButton(onClick = {
+                                        sendUiFeedback("Закрыть клавиатуру")
                                         showKeyboard = false
                                         keyboardController?.hide()
                                     }, modifier = Modifier.weight(1f)) { Text("Закрыть") }
                                     Button(
                                         onClick = {
+                                            sendUiFeedback("Отправить текст")
                                             val textToSend = keyboardText
                                             if (textToSend.isNotBlank()) scope.launch {
                                                 runCatching {
@@ -1340,6 +1342,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                 )
                                 Button(
                                     onClick = {
+                                        sendUiFeedback("Аэромышь")
                                         when {
                                             airMouseStatus is AirMouseStatus.Active -> airMouse.toggle()
                                             !airMouse.hasGyroscope -> airMouse.toggle()
@@ -1357,7 +1360,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                     color = RadioTvPalette.Muted,
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                                OutlinedButton(onClick = { showTouchpad = false }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                                OutlinedButton(onClick = { sendUiFeedback("Закрыть тачпад"); showTouchpad = false }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
                             }
                         }
                     }
@@ -1379,7 +1382,7 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
                                     Button(onClick = { dispatchRemoteKey(RemoteKey.NUMBER_0) }, modifier = Modifier.weight(1f)) { Text("0") }
                                     Spacer(Modifier.weight(1f))
                                 }
-                                OutlinedButton(onClick = { showDigitPad = false }, modifier = Modifier.fillMaxWidth()) { Text("Назад / Закрыть") }
+                                OutlinedButton(onClick = { sendUiFeedback("Закрыть цифры"); showDigitPad = false }, modifier = Modifier.fillMaxWidth()) { Text("Назад / Закрыть") }
                             }
                         }
                     }
