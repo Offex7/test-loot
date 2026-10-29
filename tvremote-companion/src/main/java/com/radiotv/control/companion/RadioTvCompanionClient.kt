@@ -40,6 +40,7 @@ class RadioTvCompanionClient(context: Context) : Closeable {
     private val resolving = AtomicBoolean(false)
     private val sendMutex = Mutex()
     @Volatile private var socket: Socket? = null
+    @Volatile private var connectingSocket: Socket? = null
     @Volatile private var discoveryListener: NsdManager.DiscoveryListener? = null
 
     @Synchronized
@@ -103,6 +104,7 @@ class RadioTvCompanionClient(context: Context) : Closeable {
             var candidate: Socket? = null
             try {
                 candidate = Socket()
+                connectingSocket = candidate
                 candidate.tcpNoDelay = true
                 candidate.connect(InetSocketAddress(host, port), 3500)
                 val input = BufferedInputStream(candidate.getInputStream())
@@ -151,6 +153,7 @@ class RadioTvCompanionClient(context: Context) : Closeable {
                 }
             } finally {
                 if (socket === candidate) socket = null
+                if (connectingSocket === candidate) connectingSocket = null
                 runCatching { candidate?.close() }
                 resolving.set(false)
                 if (!closed.get()) {
@@ -251,6 +254,8 @@ class RadioTvCompanionClient(context: Context) : Closeable {
         if (!closed.compareAndSet(false, true)) return
         runCatching { discoveryListener?.let { nsd?.stopServiceDiscovery(it) } }
         discoveryListener = null
+        runCatching { connectingSocket?.close() }
+        connectingSocket = null
         runCatching { socket?.close() }
         socket = null
     }
