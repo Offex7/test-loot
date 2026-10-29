@@ -9,6 +9,23 @@ class RemoteKeyTest {
         assertEquals(RemoteKey.entries.size, RemoteKey.entries.map { it.wireCode }.toSet().size)
     }
 
+    @Test fun androidKeycodeMappingIsSharedWithCompanionIntegrations() {
+        assertEquals(19, RemoteKey.UP.toAndroidKeyCode())
+        assertEquals(20, RemoteKey.DOWN.toAndroidKeyCode())
+        assertEquals(21, RemoteKey.LEFT.toAndroidKeyCode())
+        assertEquals(22, RemoteKey.RIGHT.toAndroidKeyCode())
+        assertEquals(23, RemoteKey.OK.toAndroidKeyCode())
+        assertEquals(4, RemoteKey.BACK.toAndroidKeyCode())
+        assertEquals(26, RemoteKey.POWER.toAndroidKeyCode())
+        assertEquals(24, RemoteKey.VOLUME_UP.toAndroidKeyCode())
+        assertEquals(25, RemoteKey.VOLUME_DOWN.toAndroidKeyCode())
+        assertEquals(166, RemoteKey.CHANNEL_UP.toAndroidKeyCode())
+        assertEquals(167, RemoteKey.CHANNEL_DOWN.toAndroidKeyCode())
+        assertEquals(85, RemoteKey.PLAY_PAUSE.toAndroidKeyCode())
+        assertEquals(7, RemoteKey.NUMBER_0.toAndroidKeyCode())
+        assertEquals(16, RemoteKey.NUMBER_9.toAndroidKeyCode())
+    }
+
     @Test fun basicControlAndMediaKeysExist() {
         assertTrue(RemoteKey.UP in RemoteKey.entries)
         assertTrue(RemoteKey.OK in RemoteKey.entries)
