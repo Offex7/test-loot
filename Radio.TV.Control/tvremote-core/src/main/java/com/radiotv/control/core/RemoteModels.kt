@@ -2,7 +2,7 @@ package com.radiotv.control.core
 
 import com.radiotv.control.core.proto.RemoteMessageProto
 
-enum class RemoteKey(val wireCode: RemoteMessageProto.RemoteKeyCode) {
+enum class RemoteKey(internal val wireCode: RemoteMessageProto.RemoteKeyCode) {
     UP(RemoteMessageProto.RemoteKeyCode.KEYCODE_DPAD_UP),
     DOWN(RemoteMessageProto.RemoteKeyCode.KEYCODE_DPAD_DOWN),
     LEFT(RemoteMessageProto.RemoteKeyCode.KEYCODE_DPAD_LEFT),
