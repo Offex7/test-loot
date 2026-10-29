@@ -14,6 +14,8 @@
 
 Все перечисленные Gradle-модули — Android library-модули, кроме `:app`. Граф зависимостей направленный: `:tvremote-ui → tvremote-core`, `:tvremote-cast → tvremote-core`, а приложение соединяет модули. Циклических зависимостей между этими модулями в Gradle-файлах нет.
 
+Публичные сигнатуры имеют прозрачные Gradle-зависимости: `:tvremote-ui` экспортирует Compose Runtime/UI и core; `:tvremote-core`, `:tvremote-companion` и `:tvremote-cast` экспортируют Coroutines, так как их public API использует suspend-функции/Flow. Protobuf-деталь `RemoteKey.wireCode` не является частью публичного API модели клавиш.
+
 **Важное уточнение по TV-серверу:** reusable-классы `RadioTvCompanionClient` и `RadioTvCompanionServer` находятся в `:tvremote-companion`. Текущий foreground-service `RadioTvCompanionService`, который связывает сервер с ADB loopback, уведомлением и действиями оболочки, пока находится в `:app`. При переносе в Radio.TV перенесите этот service/glue в приложение-хост и настройте его уведомление и обработку события ADB под собственную навигацию; не копируйте его как часть `:tvremote-ui`.
 
 ## 2. Подключение модулей к Radio.TV
@@ -59,6 +61,8 @@ dependencies {
     implementation(project(":tvremote-core"))
 }
 ```
+
+UI-модуль сам экспортирует `androidx.compose.runtime:runtime`, `androidx.compose.ui:ui` и свою зависимость на core через `api`; версии Compose управляются его BOM. Основному приложению не нужно вручную подключать эти типы ради одного только вызова `TvRemotePadScreen`, но если Radio.TV уже использует Compose, оставьте его текущий BOM и плагины Compose без дублирования.
 
 Если приложение использует соответствующие функции, добавьте также:
 
