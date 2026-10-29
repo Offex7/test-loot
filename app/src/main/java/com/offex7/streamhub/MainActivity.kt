@@ -30,6 +30,7 @@ import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateColorAsState
@@ -209,6 +210,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.random.Random
+import com.radiotv.control.companion.CompanionConnectionStatus
+import com.radiotv.control.companion.RadioTvCompanionClient
+import com.radiotv.control.core.toAndroidKeyCode
+import com.radiotv.control.ui.RemoteFeatureAction
+import com.radiotv.control.ui.TvRemotePadScreen
 
 private val Red = Color(0xFFE53935)
 private val Orange = Color(0xFFFF9800)
@@ -300,6 +306,9 @@ private val SleepOptions = listOf(
 )
 
 class MainActivity : FragmentActivity() {
+    internal lateinit var companionClient: RadioTvCompanionClient
+        private set
+    private var televisionDevice = false
     internal var requestedSection by mutableStateOf<Section?>(null)
 
     companion object {
@@ -315,6 +324,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        televisionDevice = (getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager)
+            ?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        companionClient = RadioTvCompanionClient(applicationContext)
+        if (televisionDevice) {
+            ContextCompat.startForegroundService(this, Intent(this, RadioTvCompanionService::class.java))
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = AColor.TRANSPARENT
         window.navigationBarColor = AColor.TRANSPARENT
@@ -340,7 +355,13 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (::companionClient.isInitialized && !televisionDevice) companionClient.resume()
+    }
+
     override fun onStop() {
+        if (::companionClient.isInitialized && !televisionDevice) companionClient.pause()
         lifecycleScope.launch { store.setLastExitTime(System.currentTimeMillis()) }
         super.onStop()
     }
@@ -363,6 +384,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        if (::companionClient.isInitialized) companionClient.close()
         tv.release()
         radio.release()
         super.onDestroy()
@@ -398,6 +420,7 @@ private fun App(
     activity: MainActivity
 ) {
     val scope = rememberCoroutineScope()
+    val companionStatus by activity.companionClient.status.collectAsState()
     val appContext = LocalContext.current.applicationContext
     val energySaving = LocalEnergySaving.current
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
@@ -464,6 +487,9 @@ private fun App(
     var notificationDuration by remember { mutableLongStateOf(5000L) }
     var notificationToken by remember { mutableLongStateOf(0L) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
+    var remoteTab by rememberSaveable { mutableStateOf(false) }
+    var remoteKeyboardVisible by rememberSaveable { mutableStateOf(false) }
+    var remoteTextInput by rememberSaveable { mutableStateOf("") }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
@@ -490,6 +516,33 @@ private fun App(
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
         notificationToken += 1L
+    }
+
+    fun sendRemoteText(text: String) {
+        val normalized = text.trim()
+        if (normalized.isEmpty()) { notify("Введите текст"); return }
+        if (companionStatus !is CompanionConnectionStatus.Connected) {
+            notify("Телевизор не подключён", 2000L); return
+        }
+        scope.launch {
+            runCatching { activity.companionClient.sendText(normalized) }
+                .onSuccess {
+                    remoteKeyboardVisible = false
+                    remoteTextInput = ""
+                    notify("Текст отправлен", 2000L)
+                }
+                .onFailure { notify("Не удалось отправить текст", 2000L) }
+        }
+    }
+
+    fun sendRemoteLaunch(packageName: String) {
+        if (companionStatus !is CompanionConnectionStatus.Connected) {
+            notify("Телевизор не подключён", 2000L); return
+        }
+        scope.launch {
+            runCatching { activity.companionClient.launchApp(packageName) }
+                .onFailure { notify("Не удалось запустить приложение на ТВ", 2000L) }
+        }
     }
 
     LaunchedEffect(notificationToken) {
@@ -669,6 +722,7 @@ private fun App(
 
     fun leaveSection() {
         section = null
+        remoteTab = false
         settings = false
         disclaimer = false
         restore = null
@@ -682,6 +736,8 @@ private fun App(
         when {
             disclaimer -> disclaimer = false
             settings -> settings = false
+            remoteKeyboardVisible -> remoteKeyboardVisible = false
+            remoteTab -> remoteTab = false
             section != null -> leaveSection()
             else -> exit = true
         }
@@ -755,17 +811,62 @@ private fun App(
                         }
                     }
                 )
-                section == null -> Home(
-                    activity = activity,
-                    hapticsEnabled = hapticsEnabled,
-                    onHaptic = { InteractionFeedback.click(appContext,hapticsEnabled,soundEnabled,false) },
-                    open = {
-                        section = it
-                        scope.launch { store.setSection(it) }
-                    },
-                    settings = { settings = true },
-                    onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } }
-                )
+                section == null -> AnimatedContent(
+                    targetState = remoteTab,
+                    label = "home-remote-transition"
+                ) { showRemote ->
+                    if (showRemote) {
+                        val remoteDeviceName = when (val status = companionStatus) {
+                            is CompanionConnectionStatus.Connected -> status.host
+                            CompanionConnectionStatus.Searching -> "Поиск телевизора…"
+                            is CompanionConnectionStatus.Unavailable -> status.message
+                        }
+                        TvRemotePadScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            enabled = true,
+                            deviceName = remoteDeviceName,
+                            onKey = { key ->
+                                if (companionStatus is CompanionConnectionStatus.Connected) {
+                                    scope.launch {
+                                        runCatching { activity.companionClient.sendKeyCode(key.toAndroidKeyCode()) }
+                                            .onFailure { notify("Не удалось отправить команду пульта", 2000L) }
+                                    }
+                                } else notify("Телевизор не подключён", 2000L)
+                            },
+                            onBack = { remoteTab = false },
+                            onSettings = { settings = true },
+                            onStartSearch = {
+                                activity.companionClient.resume()
+                                notify("Поиск телевизоров в локальной сети…", 3000L)
+                            },
+                            onFeatureAction = { action ->
+                                when (action) {
+                                    RemoteFeatureAction.KEYBOARD -> remoteKeyboardVisible = true
+                                    RemoteFeatureAction.APP_YOUTUBE -> sendRemoteLaunch("com.google.android.youtube")
+                                    RemoteFeatureAction.APP_NETFLIX -> sendRemoteLaunch("com.netflix.ninja")
+                                    RemoteFeatureAction.VOICE_INPUT -> notify("Голосовой ввод не подключён в этой версии")
+                                    RemoteFeatureAction.AIR_MOUSE -> notify("Воздушная мышь требует отдельного подключения")
+                                    RemoteFeatureAction.TOUCHPAD -> notify("Тачпад требует отдельного подключения")
+                                    RemoteFeatureAction.CAST -> notify("Cast-модуль не входит в это слияние v4.3")
+                                }
+                            }
+                        )
+                    } else {
+                        Home(
+                            activity = activity,
+                            hapticsEnabled = hapticsEnabled,
+                            onHaptic = { InteractionFeedback.click(appContext,hapticsEnabled,soundEnabled,false) },
+                            open = {
+                                remoteTab = false
+                                section = it
+                                scope.launch { store.setSection(it) }
+                            },
+                            onOpenRemote = { remoteTab = true },
+                            settings = { settings = true },
+                            onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } }
+                        )
+                    }
+                }
                 section == Section.TV -> TvV8Screen(
                     player = tv,
                     store = store,
@@ -900,6 +1001,26 @@ private fun App(
 
     if(quickLockSetup){PinSetupDialog(onDismiss={quickLockSetup=false},onSave={pin,hint->if(pinStore.enable(pin,hint)){quickLockSetup=false;pinUnlocked=false;activity.moveTaskToBack(true)}})}
 
+    if (remoteKeyboardVisible) {
+        AlertDialog(
+            onDismissRequest = { remoteKeyboardVisible = false },
+            title = { Text("Клавиатурный ввод") },
+            text = {
+                OutlinedTextField(
+                    value = remoteTextInput,
+                    onValueChange = { remoteTextInput = it },
+                    label = { Text("Текст для телевизора") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { sendRemoteText(remoteTextInput) }) { Text("Отправить", color = Red) }
+            },
+            dismissButton = { TextButton(onClick = { remoteKeyboardVisible = false }) { Text("Отмена") } }
+        )
+    }
+
     if (exit) {
         AlertDialog(
             onDismissRequest = { exit = false },
@@ -916,6 +1037,7 @@ private fun Home(
     hapticsEnabled: Boolean,
     onHaptic: () -> Unit,
     open: (Section) -> Unit,
+    onOpenRemote: () -> Unit,
     settings: () -> Unit,
     onCheckUpdate: () -> Unit
 ) {
@@ -971,6 +1093,16 @@ private fun Home(
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { onHaptic(); onOpenRemote() },
+                    modifier = Modifier.height(40.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Red),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                ) {
+                    Text("Пульт", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
                 Spacer(Modifier.weight(1f))
                 Text(
                     buildAnnotatedString {
@@ -3653,16 +3785,19 @@ private fun LogoImage(
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse")
-    val pulse by pulseTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "radio-logo-pulse-value"
-    )
+    val pulse = if (activeRadio && radioPlaying && !energySaving) {
+        val pulseTransition = rememberInfiniteTransition(label = "radio-logo-pulse-active")
+        val activePulse by pulseTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1100),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "radio-logo-pulse-value"
+        )
+        activePulse
+    } else 0f
 
     var bumping by remember(item.name) { mutableStateOf(false) }
     LaunchedEffect(radioBump) {
@@ -3788,7 +3923,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.2")
+                            .header("User-Agent", "Radio.TV/4.3")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
