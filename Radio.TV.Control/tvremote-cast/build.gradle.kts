@@ -12,6 +12,6 @@ kotlin {
 }
 dependencies {
     implementation(project(":tvremote-core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     api("org.nanohttpd:nanohttpd:2.3.1")
 }
