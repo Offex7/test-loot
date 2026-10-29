@@ -114,7 +114,7 @@ jobs:
               "widget_receivers": ".RadioWidgetProvider" in manifest and ".TvWidgetProvider" in manifest,
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
-              "UA_v4_3": '"Radio.TV/4.3"' in main and '"Radio.TV/4.2"' not in main and '"Radio.TV/4.1"' not in main,
+              "UA_v4_3": '"Radio.TV/4.3"' in main and '"Radio.TV/4.2"' not in main and '"Radio.TV/4.1"' not in main and '"TV-Radio-Online/5.0"' not in main,
               "UA_tv_playlist_repository": tv_playlist.count('"Radio.TV/4.3"') >= 2 and '"Radio.TV/9.0"' not in tv_playlist,
               "UA_radio_playlist_repository": '"Radio.TV/4.3"' in playlist and "TV-Radio-Online/7.0" not in playlist,
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
