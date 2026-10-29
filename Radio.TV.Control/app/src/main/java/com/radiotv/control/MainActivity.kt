@@ -90,6 +90,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.radiotv.control.ui.RadioTvPalette
+import com.radiotv.control.ui.TvRemotePadScreen
 import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.radioTvColorScheme
 import androidx.compose.runtime.Composable
@@ -949,7 +950,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
                             when (screen) {
                             RadioTvTab.REMOTE -> {
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    TvRemotePad(
+                                    TvRemotePadScreen(
                                         enabled = connected || otherConnected || hidConnected,
                                         modifier = Modifier.widthIn(max = if (maxWidth > maxHeight) 420.dp else 470.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 4.dp, vertical = 2.dp),
                                         onKey = dispatchRemoteKey,
