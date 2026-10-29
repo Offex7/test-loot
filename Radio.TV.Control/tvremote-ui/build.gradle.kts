@@ -16,8 +16,9 @@ kotlin {
 }
 dependencies {
     api(project(":tvremote-core"))
-    implementation(platform("androidx.compose:compose-bom:2025.10.01"))
-    implementation("androidx.compose.ui:ui")
+    api(platform("androidx.compose:compose-bom:2025.10.01"))
+    api("androidx.compose.runtime:runtime")
+    api("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 }
