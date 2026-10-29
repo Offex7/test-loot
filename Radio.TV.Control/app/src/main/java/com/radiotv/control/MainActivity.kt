@@ -140,6 +140,7 @@ import com.radiotv.control.core.DiscoveredRemoteDevice
 import com.radiotv.control.core.RemoteDeviceType
 import com.radiotv.control.core.RemoteStatus
 import com.radiotv.control.core.RemoteKey
+import com.radiotv.control.core.toAndroidKeyCode
 import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.OtherTvRemoteController
 import com.radiotv.control.core.OtherTvRemoteStatus
@@ -893,7 +894,7 @@ internal fun RadioTvControlScreen(remote: AndroidTvRemoteV2Transport, adbRemote:
         scope.launch {
             runCatching {
                 if (companionConnected) {
-                    runCatching { companionClient.sendKeyCode(remoteKeyToAndroidKeyCode(key)) }
+                    runCatching { companionClient.sendKeyCode(key.toAndroidKeyCode()) }
                         .recoverCatching {
                             when {
                                 selectedAdbConnected -> adbRemote.sendKey(key)
@@ -1397,41 +1398,6 @@ voiceActive = voiceStatus is VoiceInputStatus.Recording,
             }
         }
     }
-}
-
-private fun remoteKeyToAndroidKeyCode(key: RemoteKey): Int = when (key) {
-    RemoteKey.UP -> 19
-    RemoteKey.DOWN -> 20
-    RemoteKey.LEFT -> 21
-    RemoteKey.RIGHT -> 22
-    RemoteKey.OK -> 23
-    RemoteKey.BACK -> 4
-    RemoteKey.EXIT -> 111
-    RemoteKey.HOME -> 3
-    RemoteKey.MENU -> 82
-    RemoteKey.POWER -> 26
-    RemoteKey.MUTE -> 164
-    RemoteKey.VOLUME_UP -> 24
-    RemoteKey.VOLUME_DOWN -> 25
-    RemoteKey.CHANNEL_UP -> 166
-    RemoteKey.CHANNEL_DOWN -> 167
-    RemoteKey.SOURCE -> 178
-    RemoteKey.PLAY_PAUSE -> 85
-    RemoteKey.PLAY -> 126
-    RemoteKey.PAUSE -> 127
-    RemoteKey.STOP -> 86
-    RemoteKey.REWIND -> 89
-    RemoteKey.FAST_FORWARD -> 90
-    RemoteKey.NUMBER_0 -> 7
-    RemoteKey.NUMBER_1 -> 8
-    RemoteKey.NUMBER_2 -> 9
-    RemoteKey.NUMBER_3 -> 10
-    RemoteKey.NUMBER_4 -> 11
-    RemoteKey.NUMBER_5 -> 12
-    RemoteKey.NUMBER_6 -> 13
-    RemoteKey.NUMBER_7 -> 14
-    RemoteKey.NUMBER_8 -> 15
-    RemoteKey.NUMBER_9 -> 16
 }
 
 private fun friendlyDeviceName(device: DiscoveredRemoteDevice): String {
