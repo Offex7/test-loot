@@ -186,9 +186,9 @@ fun TvRemotePad(
         // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
         // Button diameters follow width; vertical groups grow moderately on taller phones.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.30f).coerceIn(172.dp, 195.dp)
-            compact -> (maxHeight * 0.30f).coerceIn(205.dp, 235.dp)
-            else -> (maxHeight * 0.30f).coerceIn(235.dp, 265.dp)
+            tight -> (maxHeight * 0.30f).coerceIn(150.dp, 170.dp)
+            compact -> (maxHeight * 0.30f).coerceIn(180.dp, 205.dp)
+            else -> (maxHeight * 0.30f).coerceIn(205.dp, 225.dp)
         }
         val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
@@ -565,6 +565,9 @@ fun TvRemotePad(
                 }
             }
 
+            // Keep the main D-pad and EXIT/Source compact; push only the final four actions
+            // to the bottom edge on tall phones. Under scroll constraints, weight collapses.
+            Spacer(modifier = Modifier.weight(1f))
             // The four lower quick actions match the reference image.
             Row(
                 modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
