@@ -144,7 +144,17 @@ companionClient.launchApp(packageName)
 
 Оборачивайте вызовы в coroutine scope приложения и обновляйте `enabled/deviceName` по состоянию `CompanionConnectionStatus.Connected`. В `Searching`/ `Unavailable` выбирайте fallback-подключение, если оно доступно.
 
-`RemoteKey` — тип модели пульта, а `sendKeyCode` принимает Android keycode. Поэтому сопоставление `RemoteKey → Android keycode` должно жить в host/controller слое (либо используйте уже имеющийся core transport, который принимает `RemoteKey`).
+`RemoteKey` — общая модель клавиш, а `sendKeyCode` принимает Android keycode. Для одного и того же сопоставления в Companion и ADB используйте публичное расширение из `:tvremote-core`:
+
+```kotlin
+import com.radiotv.control.core.toAndroidKeyCode
+
+scope.launch {
+    companionClient.sendKeyCode(RemoteKey.OK.toAndroidKeyCode())
+}
+```
+
+Это отображение используется и внутри `AdbRemoteDevice.sendKey(RemoteKey)`, поэтому host-приложению не нужно поддерживать вторую таблицу keycode.
 
 ### TV-сторона — сервер и ADB loopback
 
