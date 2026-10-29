@@ -144,7 +144,6 @@ import com.radiotv.control.core.InstalledTvApp
 import com.radiotv.control.core.OtherTvRemoteController
 import com.radiotv.control.core.OtherTvRemoteStatus
 import com.radiotv.control.ui.TouchpadSurface
-import com.radiotv.control.ui.TvRemotePad
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
