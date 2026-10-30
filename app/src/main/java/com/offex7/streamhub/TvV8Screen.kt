@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -135,6 +136,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -198,6 +201,17 @@ fun TvV8Screen(
     var sourceReady by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var sourcePickerVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var userSources by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<UserPlaylist>()) }
+    val sourceOptions = remember(userSources) {
+        buildList {
+            TV_SOURCES.forEachIndexed { index, source -> add(Triple(builtinSourceKey(index), source.name, source.url)) }
+            userSources.forEach { source -> add(Triple(source.key, source.name, source.url)) }
+        }
+    }
+    var sourceAccess by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var hadPlaybackInCurrentSession by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var signalTrackedChannelIndex by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+    var signalLossNotified by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var signalLossStartedAt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     val configuration = LocalConfiguration.current
     val showHideIcon =
         (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ||
@@ -225,7 +239,6 @@ fun TvV8Screen(
     var navigationSession by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<Int>()) }
     var navigationMode by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(TvNavigationMode.GENERAL) }
     var zoomSaveJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
-    var showScrollAction by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     suspend fun reload() {
         loading = true
@@ -263,6 +276,58 @@ fun TvV8Screen(
         reload()
     }
 
+    LaunchedEffect(sourcePickerVisible, sourceOptions) {
+        if (!sourcePickerVisible) return@LaunchedEffect
+        sourceAccess = emptyMap()
+        val checked = coroutineScope {
+            sourceOptions.map { (key, _, url) ->
+                async(Dispatchers.IO) {
+                    val accessible = runCatching {
+                        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                        try {
+                            connection.connectTimeout = 2500
+                            connection.readTimeout = 2500
+                            connection.requestMethod = "GET"
+                            connection.setRequestProperty("Range", "bytes=0-0")
+                            connection.instanceFollowRedirects = true
+                            val code = connection.responseCode
+                            code in 200..399 || code == 416
+                        } finally { connection.disconnect() }
+                    }.getOrDefault(false)
+                    key to accessible
+                }
+            }.awaitAll()
+        }
+        if (sourcePickerVisible) sourceAccess = checked.toMap()
+    }
+
+    LaunchedEffect(selectedIndex) {
+        if (signalTrackedChannelIndex != selectedIndex) {
+            signalTrackedChannelIndex = selectedIndex
+            hadPlaybackInCurrentSession = false
+            signalLossNotified = false
+            signalLossStartedAt = 0L
+        }
+    }
+
+    LaunchedEffect(fullscreen, isSwitching, isPlaying, waiting, network, error, buffering) {
+        if (!fullscreen) {
+            hadPlaybackInCurrentSession = false
+            signalLossNotified = false
+            signalLossStartedAt = 0L
+            return@LaunchedEffect
+        }
+        if (isPlaying) {
+            hadPlaybackInCurrentSession = true
+            signalLossNotified = false
+            signalLossStartedAt = 0L
+        } else if (hadPlaybackInCurrentSession && !isSwitching && !signalLossNotified && (waiting || !network || error != null || buffering)) {
+            notify("Сигнал утерян, перепроверьте подключение к сети", 3000L)
+            signalLossNotified = true
+            if (signalLossStartedAt == 0L) signalLossStartedAt = System.currentTimeMillis()
+        }
+    }
+
     LaunchedEffect(Unit) {
         val saved = store.scrollPosition(Section.TV)
         runCatching { list.scrollToItem(saved.first.coerceAtLeast(0), saved.second) }
@@ -271,27 +336,6 @@ fun TvV8Screen(
         }.collect { current ->
             store.saveScrollPosition(Section.TV, current.first, current.second)
         }
-    }
-
-    LaunchedEffect(list.isScrollInProgress) {
-        if (!list.isScrollInProgress) {
-            showScrollAction = false
-            return@LaunchedEffect
-        }
-        val started = System.currentTimeMillis()
-        while (list.isScrollInProgress && System.currentTimeMillis() - started < 4_000L) {
-            delay(100L)
-        }
-        if (
-            list.isScrollInProgress &&
-            (list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0)
-        ) {
-            showScrollAction = true
-        }
-        while (list.isScrollInProgress) {
-            delay(100L)
-        }
-        showScrollAction = false
     }
 
     LaunchedEffect(searchOpen) {
@@ -545,6 +589,33 @@ fun TvV8Screen(
         }
     }
 
+    LaunchedEffect(signalLossStartedAt, isPlaying, waiting, network, error, buffering, isSwitching, selectedIndex) {
+        val lostAt = signalLossStartedAt
+        if (lostAt <= 0L || isPlaying || isSwitching || !hadPlaybackInCurrentSession) return@LaunchedEffect
+        val remaining = (25_000L - (System.currentTimeMillis() - lostAt)).coerceAtLeast(0L)
+        if (remaining > 0L) delay(remaining)
+        if (signalLossStartedAt == lostAt && !isPlaying && !isSwitching &&
+            (waiting || !network || error != null || buffering) && selectedIndex in channels.indices
+        ) {
+            val next = adjacentIndex(selectedIndex, 1)
+            signalLossStartedAt = 0L
+            signalLossNotified = false
+            if (next >= 0) {
+                notify("Сигнал не восстановлен за 25 секунд. Переключаю на следующий канал.", 3000L)
+                startPlayback(next, automaticRecovery = true)
+            } else {
+                playbackJob?.cancel()
+                playbackRequestToken += 1L
+                isSwitching = false
+                silentSwitching = false
+                player.stop()
+                notice = null
+                fullscreen = false
+                notify("Сигнал утерян. Рабочие каналы не найдены.", 3000L)
+            }
+        }
+    }
+
     fun closePlayer() {
         playbackJob?.cancel()
         playbackRequestToken += 1L
@@ -556,6 +627,7 @@ fun TvV8Screen(
     }
 
     BackHandler(enabled = fullscreen) { closePlayer() }
+    BackHandler(enabled = sourcePickerVisible) { sourcePickerVisible = false }
 
     if (fullscreen && selectedIndex in channels.indices) {
         val favoriteChannels = channels.mapIndexedNotNull { index, channel ->
@@ -813,16 +885,9 @@ fun TvV8Screen(
     }
 
     if (sourcePickerVisible) {
-        val options = buildList {
-            TV_SOURCES.forEachIndexed { index, source ->
-                add(builtinSourceKey(index) to source.name)
-            }
-            userSources.forEach { source ->
-                add(source.key to source.name)
-            }
-        }
+        val options = sourceOptions
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = { sourcePickerVisible = false },
             title = { Text("Выбор источника") },
             text = {
                 val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -836,9 +901,11 @@ fun TvV8Screen(
                             color = TvV9Gray,
                             fontSize = 12.sp
                         )
-                        options.forEach { (key, name) ->
+                        options.forEach { (key, name, _) ->
                             val active = key == sourceKey
+                            val available = sourceAccess[key] == true
                             TextButton(
+                                enabled = available,
                                 onClick = {
                                     sourcePickerVisible = false
                                     scope.launch {
@@ -850,7 +917,7 @@ fun TvV8Screen(
                             ) {
                                 Text(
                                     name,
-                                    color = if (active) TvV9Red else Color.White,
+                                    color = if (!available) Color(0xFF78909C) else if (active) TvV9Red else Color.White,
                                     maxLines = 2,
                                     textAlign = TextAlign.Start,
                                     modifier = Modifier.fillMaxWidth()
@@ -900,9 +967,11 @@ fun TvV8Screen(
                                 color = TvV9Gray,
                                 fontSize = 12.sp
                             )
-                            options.forEach { (key, name) ->
+                            options.forEach { (key, name, _) ->
                                 val active = key == sourceKey
+                                val available = sourceAccess[key] == true
                                 TextButton(
+                                    enabled = available,
                                     onClick = {
                                         sourcePickerVisible = false
                                         scope.launch {
@@ -914,7 +983,7 @@ fun TvV8Screen(
                                 ) {
                                     Text(
                                         name,
-                                        color = if (active) TvV9Red else Color.White,
+                                        color = if (!available) Color(0xFF78909C) else if (active) TvV9Red else Color.White,
                                         maxLines = 2,
                                         textAlign = TextAlign.Start,
                                         modifier = Modifier.fillMaxWidth()
@@ -1857,21 +1926,18 @@ private fun TvV9Player(
                         )
                     }
 
-                    val showLoading = !silentSwitching && (switching || (!waiting && error == null && !isPlaying && !buffering))
+                    val showLoading = !silentSwitching && (switching || waiting || error != null || buffering || (!isPlaying && bufferPercent >= 100))
 
-                    if (!pipMode && !silentSwitching && noticeMessage == null && (showLoading || waiting || error != null)) {
-                        Text(
-                            when {
-                                switching -> "Загрузка…"
-                                waiting -> "Ожидание сети…\nВозможно источник трансляции канала — сломался"
-                                error != null -> "Поток недоступен"
-                                else -> "Загрузка…"
-                            },
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .background(Color.Black.copy(alpha = .4f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
+                    AnimatedVisibility(
+                        visible = !pipMode && !silentSwitching && noticeMessage == null && showLoading,
+                        modifier = Modifier.align(Alignment.Center),
+                        enter = fadeIn(animationSpec = tween(260)),
+                        exit = fadeOut(animationSpec = tween(300))
+                    ) {
+                        TvLoadingSplash(
+                            buffering = buffering,
+                            bufferPercent = bufferPercent,
+                            waitingForNetwork = waiting
                         )
                     }
 
@@ -2129,4 +2195,80 @@ private fun rememberTvV9Network(): androidx.compose.runtime.State<Boolean> {
     }
 
     return state
+}
+
+
+@Composable
+private fun TvLoadingSplash(
+    buffering: Boolean,
+    bufferPercent: Int,
+    waitingForNetwork: Boolean
+) {
+    var dots by remember { mutableIntStateOf(1) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(360L)
+            dots = if (dots >= 3) 1 else dots + 1
+        }
+    }
+    val transition = rememberInfiniteTransition(label = "tv-loading-squares")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tv-loading-assembly"
+    )
+    Column(
+        modifier = Modifier
+            .widthIn(min = 180.dp, max = 260.dp)
+            .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(18.dp))
+            .border(1.dp, TvV9Red.copy(alpha = .55f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 22.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            "Загрузка" + ".".repeat(dots),
+            color = Color.White,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Canvas(Modifier.size(76.dp)) {
+            val count = 12
+            val angleStep = (Math.PI * 2.0 / count)
+            val swell = ((1.0 - kotlin.math.cos(phase * Math.PI * 2.0)) / 2.0).toFloat()
+            val radius = size.minDimension * (0.12f + 0.30f * swell)
+            val side = size.minDimension * (0.10f + 0.035f * (1f - swell))
+            for (i in 0 until count) {
+                val angle = angleStep * i
+                val cx = size.width / 2f + kotlin.math.cos(angle).toFloat() * radius
+                val cy = size.height / 2f + kotlin.math.sin(angle).toFloat() * radius
+                val alpha = (0.45f + 0.55f * (i + 1).toFloat() / count).coerceIn(0.35f, 1f)
+                drawRoundRect(
+                    color = TvV9Red.copy(alpha = alpha),
+                    topLeft = androidx.compose.ui.geometry.Offset(cx - side / 2f, cy - side / 2f),
+                    size = androidx.compose.ui.geometry.Size(side, side),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(side * (0.12f + 0.38f * swell))
+                )
+            }
+        }
+        Text(
+            if (waitingForNetwork) "Восстанавливаю соединение…" else "Пожалуйста, подождите",
+            color = TvV9Gray,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            textAlign = TextAlign.Center
+        )
+        if (buffering || bufferPercent >= 100) {
+            LinearProgressIndicator(
+                progress = { (bufferPercent.coerceIn(0, 100) / 100f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text("Буферизация: " + bufferPercent.coerceIn(0, 100) + "%", color = Color.LightGray, fontSize = 11.sp)
+        }
+    }
 }

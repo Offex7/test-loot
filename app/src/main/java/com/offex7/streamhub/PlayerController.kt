@@ -23,8 +23,9 @@ import kotlinx.coroutines.flow.asStateFlow
 class PlayerController(context: Context) {
     private companion object {
         const val BUFFER_TARGET_MS = 6_000L
-        const val BUFFER_MAX_MS = 30_000
+        const val BUFFER_MAX_MS = 25_000
         const val BUFFER_TIMEOUT_MS = 25_000L
+        const val BUFFER_STALL_TIMEOUT_MS = 8_000L
         const val WEAK_NETWORK_NOTICE_MS = 2_000L
     }
 
@@ -80,6 +81,8 @@ class PlayerController(context: Context) {
     private var playbackGeneration = 0L
     private var bufferingGeneration = 0L
     private var bufferingStartedAt = 0L
+    private var lastBufferProgressAt = 0L
+    private var lastBufferedPosition = 0L
     private var released = false
     private var fadeAnimator: ValueAnimator? = null
     private var fadeRestoreVolume = 1f
@@ -243,6 +246,8 @@ class PlayerController(context: Context) {
         bufferingGeneration++
         val generation = bufferingGeneration
         bufferingStartedAt = System.currentTimeMillis()
+        lastBufferProgressAt = bufferingStartedAt
+        lastBufferedPosition = player.bufferedPosition
         val wasActive = player.isPlaying || player.playWhenReady
         if (wasActive && !userPaused && !userStopped) {
             resumeAfterInterruption = true
@@ -295,11 +300,25 @@ class PlayerController(context: Context) {
                     !_buffering.value ||
                     player.playbackState != Player.STATE_BUFFERING
                 ) return
-                val bufferedMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L)
+                val now = System.currentTimeMillis()
+                val bufferedPosition = player.bufferedPosition
+                if (bufferedPosition > lastBufferedPosition) {
+                    lastBufferedPosition = bufferedPosition
+                    lastBufferProgressAt = now
+                }
+                val bufferedMs = (bufferedPosition - player.currentPosition).coerceAtLeast(0L)
                 val percent = ((bufferedMs.toDouble() / BUFFER_TARGET_MS) * 100.0)
                     .toInt()
                     .coerceIn(0, 99)
                 _bufferPercent.value = percent
+                if (now - lastBufferProgressAt >= BUFFER_STALL_TIMEOUT_MS) {
+                    resumeAfterInterruption = false
+                    _buffering.value = false
+                    _error.value = "Буферизация остановилась без прогресса. Переключаю канал."
+                    runCatching { setPlayWhenReadySystem(player, false) }
+                    LogExporter.log("TV buffering stalled for " + BUFFER_STALL_TIMEOUT_MS + "ms at " + percent + "%")
+                    return
+                }
                 handler.postDelayed(this, 200L)
             }
         })
@@ -319,6 +338,8 @@ class PlayerController(context: Context) {
     private fun stopBuffering() {
         bufferingGeneration++
         bufferingStartedAt = 0L
+        lastBufferProgressAt = 0L
+        lastBufferedPosition = 0L
         _buffering.value = false
         _bufferPercent.value = 100
         _adaptiveBufferLevel.value = 0
@@ -417,15 +438,25 @@ class PlayerController(context: Context) {
                 if (!started) continue
 
                 val until = System.currentTimeMillis() + attemptTimeoutMs.coerceAtLeast(300L)
+                var readyWithoutPlaybackAt = 0L
                 while (
                     System.currentTimeMillis() < until &&
                     generation == playbackGeneration &&
                     !released
                 ) {
-                    if (currentPlayer.playbackState == Player.STATE_READY && (currentPlayer.isPlaying || currentPlayer.playWhenReady)) {
-                        _error.value = null
-                        internalRetryEnabled = true
-                        return index
+                    if (currentPlayer.playbackState == Player.STATE_READY) {
+                        if (currentPlayer.isPlaying) {
+                            _error.value = null
+                            internalRetryEnabled = true
+                            return index
+                        }
+                        if (readyWithoutPlaybackAt == 0L) readyWithoutPlaybackAt = System.currentTimeMillis()
+                        else if (System.currentTimeMillis() - readyWithoutPlaybackAt >= 2_000L) {
+                            _error.value = "Буфер заполнен на 100%, но воспроизведение не началось."
+                            break
+                        }
+                    } else {
+                        readyWithoutPlaybackAt = 0L
                     }
                     if (_error.value != null) break
                     delay(100L)

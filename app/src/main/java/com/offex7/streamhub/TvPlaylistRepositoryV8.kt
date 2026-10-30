@@ -86,7 +86,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
                     .url(url)
                     .get()
                     .header("Range", "bytes=0-2047")
-                    .header("User-Agent", "Radio.TV/4.3")
+                    .header("User-Agent", "Radio.TV/4.4")
                     .build()
             ).execute().use { response ->
                 when {
@@ -103,7 +103,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         val response = client.newCall(
             Request.Builder()
                 .url(source.url)
-                .header("User-Agent", "Radio.TV/4.3")
+                .header("User-Agent", "Radio.TV/4.4")
                 .header("Accept", "application/vnd.apple.mpegurl, audio/x-mpegurl, application/x-mpegURL, text/plain, */*")
                 .build()
         ).execute()

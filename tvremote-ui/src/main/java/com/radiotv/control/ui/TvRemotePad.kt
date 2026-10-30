@@ -757,7 +757,8 @@ fun TouchpadSurface(
     onMove: (Int, Int) -> Unit,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    helperText: String? = null
 ) {
     val shape = RoundedCornerShape(12.dp)
     Box(
@@ -785,7 +786,7 @@ fun TouchpadSurface(
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("ТАЧПАД", color = if (enabled) Color.White else RadioTvPalette.Muted, fontWeight = FontWeight.Bold)
             Text(
-                if (enabled) "Свайп — курсор · тап — клик · долгий тап — контекстное меню"
+                helperText ?: if (enabled) "Свайп — курсор · тап — клик · долгий тап — контекстное меню"
                 else "Сначала подключите Bluetooth HID на телевизоре",
                 color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center
             )

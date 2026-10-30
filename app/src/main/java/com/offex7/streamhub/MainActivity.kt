@@ -6,6 +6,7 @@
 )
 package com.offex7.streamhub
 
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -26,6 +27,8 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -215,6 +218,16 @@ import com.radiotv.control.companion.RadioTvCompanionClient
 import com.radiotv.control.core.toAndroidKeyCode
 import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.TvRemotePadScreen
+import com.radiotv.control.ui.TvRemoteSettingsScreen
+import com.radiotv.control.ui.TouchpadSurface
+import com.radiotv.control.core.RemoteKey
+import com.radiotv.control.core.RemoteStatus
+import com.radiotv.control.core.AdbRemoteStatus
+import com.radiotv.control.core.BluetoothHidStatus
+import com.radiotv.control.core.VoiceInputStatus
+import com.radiotv.control.core.AirMouseStatus
+import com.radiotv.control.cast.CastMedia
+import com.radiotv.control.cast.DlnaDevice
 
 private val Red = Color(0xFFE53935)
 private val Orange = Color(0xFFFF9800)
@@ -308,6 +321,8 @@ private val SleepOptions = listOf(
 class MainActivity : FragmentActivity() {
     internal lateinit var companionClient: RadioTvCompanionClient
         private set
+    internal lateinit var remoteRuntime: RemoteControlRuntime
+        private set
     private var televisionDevice = false
     internal var requestedSection by mutableStateOf<Section?>(null)
 
@@ -327,6 +342,7 @@ class MainActivity : FragmentActivity() {
         televisionDevice = (getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager)
             ?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         companionClient = RadioTvCompanionClient(applicationContext)
+        remoteRuntime = RemoteControlRuntime(applicationContext)
         if (televisionDevice) {
             ContextCompat.startForegroundService(this, Intent(this, RadioTvCompanionService::class.java))
         }
@@ -385,6 +401,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onDestroy() {
         if (::companionClient.isInitialized) companionClient.close()
+        if (::remoteRuntime.isInitialized) remoteRuntime.close()
         tv.release()
         radio.release()
         super.onDestroy()
@@ -488,6 +505,19 @@ private fun App(
     var notificationToken by remember { mutableLongStateOf(0L) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var remoteTab by rememberSaveable { mutableStateOf(false) }
+    var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
+    var remoteHost by rememberSaveable { mutableStateOf(activity.remoteRuntime.savedHost) }
+    var remotePairingCode by rememberSaveable { mutableStateOf("") }
+    var remoteConnectionMessage by rememberSaveable { mutableStateOf("Нет соединения") }
+    var touchpadDialog by rememberSaveable { mutableStateOf(false) }
+    var castMedia by remember { mutableStateOf<CastMedia?>(null) }
+    var castDevices by remember { mutableStateOf<List<DlnaDevice>>(emptyList()) }
+    var castLoading by remember { mutableStateOf(false) }
+    val remoteV2Status by activity.remoteRuntime.remoteV2.status.collectAsState()
+    val remoteAdbStatus by activity.remoteRuntime.adb.status.collectAsState()
+    val remoteBluetoothStatus by activity.remoteRuntime.bluetooth.status.collectAsState()
+    val remoteAirMouseStatus by activity.remoteRuntime.airMouse.status.collectAsState()
+    val remoteVoiceStatus by activity.remoteRuntime.voice.status.collectAsState()
     var remoteKeyboardVisible by rememberSaveable { mutableStateOf(false) }
     var remoteTextInput by rememberSaveable { mutableStateOf("") }
     var settings by rememberSaveable { mutableStateOf(false) }
@@ -518,30 +548,69 @@ private fun App(
         notificationToken += 1L
     }
 
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) scope.launch { runCatching { activity.remoteRuntime.toggleVoiceInput() }.onSuccess { notify(it, 3000L) }.onFailure { notify(it.message ?: "Голосовой ввод доступен через Android TV Remote v2", 4000L) } }
+        else notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
+    }
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants.values.all { it }) {
+            activity.remoteRuntime.startBluetoothHid()
+            notify("Bluetooth HID запущен. Сопрягите Radio.TV в настройках телевизора.", 4000L)
+        } else notify("Разрешения Bluetooth не предоставлены", 3000L)
+    }
+    val castFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { appContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            scope.launch {
+                castLoading = true
+                runCatching {
+                    val media = activity.remoteRuntime.shareLocalMedia(uri)
+                    val devices = activity.remoteRuntime.discoverCastDevices()
+                    media to devices
+                }.onSuccess { result -> castMedia = result.first; castDevices = result.second }
+                    .onFailure { notify(it.message ?: "Не удалось подготовить DLNA Cast", 4000L) }
+                castLoading = false
+            }
+        }
+    }
+
     fun sendRemoteText(text: String) {
         val normalized = text.trim()
         if (normalized.isEmpty()) { notify("Введите текст"); return }
-        if (companionStatus !is CompanionConnectionStatus.Connected) {
-            notify("Телевизор не подключён", 2000L); return
-        }
         scope.launch {
-            runCatching { activity.companionClient.sendText(normalized) }
+            runCatching { activity.remoteRuntime.sendText(normalized) }
+                .recoverCatching {
+                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendText(normalized)
+                    else throw it
+                }
                 .onSuccess {
                     remoteKeyboardVisible = false
                     remoteTextInput = ""
                     notify("Текст отправлен", 2000L)
                 }
-                .onFailure { notify("Не удалось отправить текст", 2000L) }
+                .onFailure { notify(it.message ?: "Не удалось отправить текст", 3000L) }
         }
     }
 
     fun sendRemoteLaunch(packageName: String) {
-        if (companionStatus !is CompanionConnectionStatus.Connected) {
-            notify("Телевизор не подключён", 2000L); return
-        }
         scope.launch {
-            runCatching { activity.companionClient.launchApp(packageName) }
-                .onFailure { notify("Не удалось запустить приложение на ТВ", 2000L) }
+            runCatching { activity.remoteRuntime.launchApp(packageName) }
+                .recoverCatching {
+                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.launchApp(packageName)
+                    else throw it
+                }
+                .onFailure { notify(it.message ?: "Не удалось запустить приложение на ТВ", 3000L) }
+        }
+    }
+
+    LaunchedEffect(remoteTab, companionStatus) {
+        if (!remoteTab) return@LaunchedEffect
+        val companionHost = (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty()
+        if (remoteHost.isBlank() && companionHost.isNotBlank()) remoteHost = companionHost
+        val target = remoteHost.ifBlank { activity.remoteRuntime.savedHost }
+        if (target.isNotBlank() && remoteV2Status !is RemoteStatus.Connected && remoteAdbStatus !is AdbRemoteStatus.Connected) {
+            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
+                .getOrElse { it.message ?: "Нет соединения" }
         }
     }
 
@@ -736,6 +805,7 @@ private fun App(
         when {
             disclaimer -> disclaimer = false
             settings -> settings = false
+            remoteSettingsVisible -> remoteSettingsVisible = false
             remoteKeyboardVisible -> remoteKeyboardVisible = false
             remoteTab -> remoteTab = false
             section != null -> leaveSection()
@@ -816,41 +886,119 @@ private fun App(
                     label = "home-remote-transition"
                 ) { showRemote ->
                     if (showRemote) {
-                        val remoteDeviceName = when (val status = companionStatus) {
-                            is CompanionConnectionStatus.Connected -> status.host
-                            CompanionConnectionStatus.Searching -> "Поиск телевизора…"
-                            is CompanionConnectionStatus.Unavailable -> status.message
+                        val remoteDeviceName = when {
+                            remoteV2Status is RemoteStatus.Connected -> "Подключено: Android TV Remote v2"
+                            remoteAdbStatus is AdbRemoteStatus.Connected -> "Подключено: ADB"
+                            remoteBluetoothStatus is BluetoothHidStatus.Connected -> "Подключено: Bluetooth HID"
+                            companionStatus is CompanionConnectionStatus.Connected -> "Подключено: Radio.TV Companion"
+                            remoteV2Status is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения"
+                            else -> remoteConnectionMessage
                         }
-                        TvRemotePadScreen(
-                            modifier = Modifier.fillMaxSize(),
-                            enabled = true,
-                            deviceName = remoteDeviceName,
-                            onKey = { key ->
-                                if (companionStatus is CompanionConnectionStatus.Connected) {
+                        if (remoteSettingsVisible) {
+                            TvRemoteSettingsScreen(
+                                host = remoteHost,
+                                onHostChange = { remoteHost = it.trim() },
+                                pairingCode = remotePairingCode,
+                                onPairingCodeChange = { remotePairingCode = it },
+                                connectionStatus = remoteDeviceName,
+                                bluetoothStatus = when (val status = remoteBluetoothStatus) {
+                                    is BluetoothHidStatus.Connected -> "Подключено к Bluetooth HID"
+                                    BluetoothHidStatus.Starting -> "Запуск Bluetooth HID…"
+                                    BluetoothHidStatus.Ready -> "HID активен. Выберите Radio.TV в настройках Bluetooth телевизора."
+                                    is BluetoothHidStatus.Error -> status.message
+                                    else -> "Bluetooth HID не подключён"
+                                },
+                                awaitingPairingCode = remoteV2Status is RemoteStatus.AwaitingCode,
+                                onConnect = {
                                     scope.launch {
-                                        runCatching { activity.companionClient.sendKeyCode(key.toAndroidKeyCode()) }
-                                            .onFailure { notify("Не удалось отправить команду пульта", 2000L) }
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, true) }
+                                            .getOrElse { it.message ?: "Не удалось подключиться" }
                                     }
-                                } else notify("Телевизор не подключён", 2000L)
-                            },
-                            onBack = { remoteTab = false },
-                            onSettings = { settings = true },
-                            onStartSearch = {
-                                activity.companionClient.resume()
-                                notify("Поиск телевизоров в локальной сети…", 3000L)
-                            },
-                            onFeatureAction = { action ->
-                                when (action) {
-                                    RemoteFeatureAction.KEYBOARD -> remoteKeyboardVisible = true
-                                    RemoteFeatureAction.APP_YOUTUBE -> sendRemoteLaunch("com.google.android.youtube")
-                                    RemoteFeatureAction.APP_NETFLIX -> sendRemoteLaunch("com.netflix.ninja")
-                                    RemoteFeatureAction.VOICE_INPUT -> notify("Голосовой ввод не подключён в этой версии")
-                                    RemoteFeatureAction.AIR_MOUSE -> notify("Воздушная мышь требует отдельного подключения")
-                                    RemoteFeatureAction.TOUCHPAD -> notify("Тачпад требует отдельного подключения")
-                                    RemoteFeatureAction.CAST -> notify("Cast-модуль не входит в это слияние v4.3")
-                                }
-                            }
-                        )
+                                },
+                                onCompletePairing = {
+                                    scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.completePairing(remotePairingCode) }
+                                            .getOrElse { it.message ?: "Сопряжение не завершено" }
+                                        remotePairingCode = ""
+                                    }
+                                },
+                                onStartBluetooth = {
+                                    val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
+                                    if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                                        bluetoothPermissionLauncher.launch(permissions)
+                                    } else {
+                                        activity.remoteRuntime.startBluetoothHid()
+                                        notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L)
+                                    }
+                                },
+                                onBack = { remoteSettingsVisible = false },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            TvRemotePadScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                enabled = remoteV2Status is RemoteStatus.Connected || remoteAdbStatus is AdbRemoteStatus.Connected || remoteBluetoothStatus is BluetoothHidStatus.Connected || companionStatus is CompanionConnectionStatus.Connected,
+                                deviceName = remoteDeviceName,
+                                onKey = { key ->
+                                    scope.launch {
+                                        runCatching { activity.remoteRuntime.sendKey(key) }
+                                            .recoverCatching {
+                                                if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode())
+                                                else throw it
+                                            }
+                                            .onFailure { notify(it.message ?: "Не удалось отправить команду", 3000L) }
+                                    }
+                                },
+                                onBack = { remoteSettingsVisible = false; remoteTab = false },
+                                onSettings = { remoteSettingsVisible = true },
+                                onStartSearch = {
+                                    activity.companionClient.resume()
+                                    val target = remoteHost.ifBlank { (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty() }
+                                    if (target.isNotBlank()) scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
+                                            .getOrElse { it.message ?: "Нет соединения" }
+                                    }
+                                    notify("Поиск телевизоров в локальной сети…", 3000L)
+                                },
+                                onFeatureAction = { action ->
+                                    when (action) {
+                                        RemoteFeatureAction.KEYBOARD -> remoteKeyboardVisible = true
+                                        RemoteFeatureAction.APP_YOUTUBE -> sendRemoteLaunch("com.google.android.youtube")
+                                        RemoteFeatureAction.APP_NETFLIX -> sendRemoteLaunch("com.netflix.ninja")
+                                        RemoteFeatureAction.VOICE_INPUT -> {
+                                            val phoneMicRequired = remoteV2Status is RemoteStatus.Connected
+                                            val hasMicPermission = ContextCompat.checkSelfPermission(
+                                                appContext,
+                                                Manifest.permission.RECORD_AUDIO
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                            if (phoneMicRequired && !hasMicPermission) {
+                                                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            } else {
+                                                scope.launch {
+                                                    runCatching { activity.remoteRuntime.toggleVoiceInput() }
+                                                        .onSuccess { notify(it, 3000L) }
+                                                        .onFailure { notify(it.message ?: "Голосовой ввод недоступен для выбранного транспорта", 4000L) }
+                                                }
+                                            }
+                                        }
+                                        RemoteFeatureAction.AIR_MOUSE -> {
+                                            if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
+                                                notify(activity.remoteRuntime.airMouse.toggle(), 2500L)
+                                            } else {
+                                                touchpadDialog = true
+                                                notify("Для Air Mouse сначала подключите Bluetooth HID.", 3500L)
+                                            }
+                                        }
+                                        RemoteFeatureAction.TOUCHPAD -> touchpadDialog = true
+                                        RemoteFeatureAction.CAST -> castFilePicker.launch(arrayOf("*/*"))
+                                    }
+                                },
+                                touchpadActive = remoteBluetoothStatus is BluetoothHidStatus.Connected,
+                                airMouseActive = remoteAirMouseStatus is AirMouseStatus.Active,
+                                voiceActive = remoteVoiceStatus is VoiceInputStatus.Recording,
+                                featureMessage = remoteDeviceName
+                            )
+                        }
                     } else {
                         Home(
                             activity = activity,
@@ -942,7 +1090,7 @@ private fun App(
                             }
                         }.onFailure {
                             updateDownloading = false
-                            notify("Не удалось скачать обновление")
+                            notify(it.message ?: "Не удалось скачать обновление. Проверьте стабильность соединения и попробуйте позже", 6000L)
                         }
                     }
                 },
@@ -1000,6 +1148,81 @@ private fun App(
     }
 
     if(quickLockSetup){PinSetupDialog(onDismiss={quickLockSetup=false},onSave={pin,hint->if(pinStore.enable(pin,hint)){quickLockSetup=false;pinUnlocked=false;activity.moveTaskToBack(true)}})}
+
+    if (touchpadDialog) {
+        AlertDialog(
+            onDismissRequest = { touchpadDialog = false },
+            title = { Text("ТАЧПАД И AIR MOUSE") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TouchpadSurface(
+                        enabled = true,
+                        onMove = { dx, dy ->
+                            scope.launch {
+                                if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
+                                    runCatching { activity.remoteRuntime.moveMouse(dx, dy) }.onFailure { notify(it.message ?: "Ошибка перемещения курсора") }
+                                } else if (kotlin.math.abs(dx) + kotlin.math.abs(dy) >= 5) {
+                                    val key = if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) { if (dx > 0) RemoteKey.RIGHT else RemoteKey.LEFT } else { if (dy > 0) RemoteKey.DOWN else RemoteKey.UP }
+                                    runCatching { activity.remoteRuntime.sendKey(key) }
+                                        .recoverCatching { if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode()) else throw it }
+                                }
+                            }
+                        },
+                        onTap = {
+                            scope.launch {
+                                runCatching {
+                                    if (remoteBluetoothStatus is BluetoothHidStatus.Connected) activity.remoteRuntime.clickMouse()
+                                    else activity.remoteRuntime.sendKey(RemoteKey.OK)
+                                }.onFailure { notify(it.message ?: "Нет соединения") }
+                            }
+                        },
+                        onLongPress = {
+                            scope.launch { runCatching { activity.remoteRuntime.sendKey(RemoteKey.BACK) } }
+                        },
+                        helperText = if (remoteBluetoothStatus is BluetoothHidStatus.Connected) "Свайп — курсор · тап — клик · долгий тап — меню" else "Свайп — навигация по стрелкам · тап — ОК · долгий тап — Назад"
+                    )
+                    Button(
+                        onClick = {
+                            if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
+                                notify(activity.remoteRuntime.airMouse.toggle(), 2500L)
+                            } else {
+                                val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
+                                if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) bluetoothPermissionLauncher.launch(permissions)
+                                else { activity.remoteRuntime.startBluetoothHid(); notify("Запущен Bluetooth HID. Сопрягите Radio.TV на телевизоре.", 4000L) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Red)
+                    ) { Text(if (remoteAirMouseStatus is AirMouseStatus.Active) "ВЫКЛЮЧИТЬ AIR MOUSE" else "ВКЛЮЧИТЬ AIR MOUSE (BLUETOOTH HID)") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { touchpadDialog = false }) { Text("ЗАКРЫТЬ") } }
+        )
+    }
+
+    castMedia?.let { media ->
+        AlertDialog(
+            onDismissRequest = { castMedia = null },
+            title = { Text("CAST — УСТРОЙСТВА DLNA") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(media.title, color = Color.LightGray, fontSize = 12.sp)
+                    if (castLoading) Text("Поиск устройств в локальной сети…")
+                    if (castDevices.isEmpty() && !castLoading) Text("DLNA-приёмники не найдены. Проверьте одну Wi-Fi сеть.", color = Color.LightGray)
+                    castDevices.forEach { device ->
+                        TextButton(onClick = {
+                            scope.launch {
+                                runCatching { activity.remoteRuntime.castTo(device, media) }
+                                    .onSuccess { notify("Трансляция отправлена на " + (device.friendlyName ?: "устройство"), 3000L); castMedia = null }
+                                    .onFailure { notify(it.message ?: "Не удалось начать Cast", 4000L) }
+                            }
+                        }, modifier = Modifier.fillMaxWidth()) { Text(device.friendlyName ?: device.location, color = Color.White) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { castMedia = null }) { Text("ЗАКРЫТЬ") } }
+        )
+    }
 
     if (remoteKeyboardVisible) {
         AlertDialog(
@@ -1441,7 +1664,8 @@ private fun Radio(
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerStartedAtMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerNowMs by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
-    var showScrollAction by remember { mutableStateOf(false) }
+    var timerTargetKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var timerAwaitingAudioStart by rememberSaveable { mutableStateOf(false) }
     var availability by remember { mutableStateOf<Map<String, AvailabilityStatus>>(emptyMap()) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -1463,17 +1687,38 @@ private fun Radio(
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
         val timer = timerStore.state()
-        timerElapsedMs = timer.elapsedMs
-        timerStartedAtMs = timer.startedAtMs
+        val lastExit = store.lastExitTime()
+        val cutoff = if (timer.startedAtMs > 0L && lastExit >= timer.startedAtMs) lastExit else timer.startedAtMs
+        val restored = if (timer.startedAtMs > 0L) timerStore.pause(cutoff) else timer
+        timerElapsedMs = restored.elapsedMs
+        timerStartedAtMs = 0L
         timerNowMs = System.currentTimeMillis()
     }
 
+    LaunchedEffect(playing, index, timerTargetKey, timerAwaitingAudioStart) {
+        val stationKey = RADIO_STATIONS.getOrNull(index)?.key
+        if (playing && stationKey != null && (timerTargetKey == null || timerTargetKey == stationKey)) {
+            val now = System.currentTimeMillis()
+            val state = timerStore.state()
+            if (state.startedAtMs <= 0L) {
+                updateTimerState(timerStore.resume(now, store.lastExitTime()), now)
+            }
+            timerTargetKey = null
+            timerAwaitingAudioStart = false
+        } else if (!playing && timerStartedAtMs > 0L && !timerAwaitingAudioStart) {
+            val now = System.currentTimeMillis()
+            updateTimerState(timerStore.pause(now), now)
+        }
+    }
+
     LaunchedEffect(connected) {
-        if (connected) {
+        if (connected && !playing) {
             val timer = timerStore.state()
-            timerElapsedMs = timer.elapsedMs
-            timerStartedAtMs = timer.startedAtMs
-            timerNowMs = System.currentTimeMillis()
+            if (timer.startedAtMs <= 0L) {
+                timerElapsedMs = timer.elapsedMs
+                timerStartedAtMs = 0L
+                timerNowMs = System.currentTimeMillis()
+            }
         }
     }
 
@@ -1537,50 +1782,19 @@ private fun Radio(
         }
     }
 
-    LaunchedEffect(list.isScrollInProgress) {
-        if (!list.isScrollInProgress) {
-            showScrollAction = false
-            return@LaunchedEffect
-        }
-        val started = System.currentTimeMillis()
-        while (list.isScrollInProgress && System.currentTimeMillis() - started < 4_000L) {
-            delay(100L)
-        }
-        if (
-            list.isScrollInProgress &&
-            (list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0)
-        ) {
-            showScrollAction = true
-        }
-        while (list.isScrollInProgress) delay(100L)
-        showScrollAction = false
-    }
-
     fun updateTimerState(state: RadioTimerState, now: Long) {
         timerElapsedMs = state.elapsedMs
         timerStartedAtMs = state.startedAtMs
         timerNowMs = now
     }
 
-    suspend fun startNewStationTimer() {
-        val now = System.currentTimeMillis()
-        updateTimerState(timerStore.start(now), now)
-    }
-
-    suspend fun pauseCurrentTimer() {
-        val now = System.currentTimeMillis()
-        updateTimerState(timerStore.pause(now), now)
-    }
-
-    suspend fun resumeCurrentTimer() {
-        val now = System.currentTimeMillis()
-        val cutoff = store.lastExitTime()
-        updateTimerState(timerStore.resume(now, cutoff), now)
-    }
-
     suspend fun playNewStation(i: Int, station: StreamItem) {
         if (i !in RADIO_STATIONS.indices) return
-        startNewStationTimer()
+        player.pause()
+        timerStore.reset()
+        updateTimerState(RadioTimerState(0L, 0L), System.currentTimeMillis())
+        timerTargetKey = station.key
+        timerAwaitingAudioStart = true
         player.play(i)
         availability = availability + (station.url to AvailabilityStatus.ONLINE)
         saveLast(station)
@@ -1589,10 +1803,10 @@ private fun Radio(
     suspend fun toggleActiveStation(i: Int, station: StreamItem) {
         if (i !in RADIO_STATIONS.indices) return
         if (player.isPlaying.value) {
-            pauseCurrentTimer()
             player.pause()
         } else {
-            resumeCurrentTimer()
+            timerTargetKey = station.key
+            timerAwaitingAudioStart = false
             player.play(i)
             availability = availability + (station.url to AvailabilityStatus.ONLINE)
             saveLast(station)
@@ -2777,8 +2991,11 @@ private fun Settings(
             onDismissRequest = { sourceDialog = false },
             title = { Text("ИСТОЧНИК ТВ-ПЛЕЙЛИСТА") },
             text = {
+                val config = LocalConfiguration.current
+                val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val sourceListMaxHeight = if (landscape) (config.screenHeightDp.dp - 250.dp).coerceAtLeast(90.dp) else 420.dp
                 Column(Modifier.fillMaxWidth()) {
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = sourceListMaxHeight)) {
                         item {
                             Text("ВСТРОЕННЫЕ ИСТОЧНИКИ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                         }
@@ -2867,7 +3084,10 @@ private fun Settings(
             onDismissRequest = { addDialog = false },
             title = { Text("ДОБАВИТЬ СВОЙ ПЛЕЙЛИСТ") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val config = LocalConfiguration.current
+                val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val formModifier = if (landscape) Modifier.fillMaxWidth().heightIn(max = (config.screenHeightDp.dp - 170.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()) else Modifier
+                Column(formModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = newName, onValueChange = { newName = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Название плейлиста") })
                     OutlinedTextField(value = newUrl, onValueChange = { newUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("URL плейлиста") }, placeholder = { Text("https://.../playlist.m3u") })
                 }
@@ -3463,12 +3683,44 @@ private fun DonationCard() {
                     ) {
                         Text("Telegram", color = Color.White, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "★",
-                            color = Color(0xFFFFD740),
-                            fontSize = 22.sp,
-                            modifier = Modifier.graphicsLayer(scaleX = starPulse, scaleY = starPulse)
-                        )
+                        Canvas(
+                            Modifier.size(22.dp).graphicsLayer(scaleX = starPulse, scaleY = starPulse)
+                        ) {
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val outerRadius = size.minDimension * 0.48f
+                            val innerRadius = outerRadius * 0.46f
+                            val points = (0 until 10).map { index ->
+                                val angle = -Math.PI / 2.0 + index * Math.PI / 5.0
+                                val radius = if (index % 2 == 0) outerRadius else innerRadius
+                                Offset(
+                                    center.x + kotlin.math.cos(angle).toFloat() * radius,
+                                    center.y + kotlin.math.sin(angle).toFloat() * radius
+                                )
+                            }
+                            val path = androidx.compose.ui.graphics.Path()
+                            points.indices.forEach { index ->
+                                val previous = points[(index + points.size - 1) % points.size]
+                                val current = points[index]
+                                val next = points[(index + 1) % points.size]
+                                val cut = outerRadius * if (index % 2 == 0) 0.12f else 0.10f
+                                fun toward(target: Offset): Offset {
+                                    val dx = target.x - current.x
+                                    val dy = target.y - current.y
+                                    val distance = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(0.001f)
+                                    return Offset(
+                                        current.x + dx / distance * cut,
+                                        current.y + dy / distance * cut
+                                    )
+                                }
+                                val start = toward(previous)
+                                val end = toward(next)
+                                if (index == 0) path.moveTo(start.x, start.y)
+                                else path.lineTo(start.x, start.y)
+                                path.quadraticTo(current.x, current.y, end.x, end.y)
+                            }
+                            path.close()
+                            drawPath(path, Color(0xFFFFD740))
+                        }
                     }
                 }
             }
@@ -3923,7 +4175,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.3")
+                            .header("User-Agent", "Radio.TV/4.4")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -4174,7 +4426,7 @@ private suspend fun scanAvailability(
                         client.newCall(
                             Request.Builder().url(item.url)
                                 .header("Range", "bytes=0-1")
-                                .header("User-Agent", "Radio.TV/4.3")
+                                .header("User-Agent", "Radio.TV/4.4")
                                 .get().build()
                         ).execute().use {
                             if (it.isSuccessful || it.code in 300..399 || it.code == 416) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
