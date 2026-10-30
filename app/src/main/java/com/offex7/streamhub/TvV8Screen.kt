@@ -1926,7 +1926,7 @@ private fun TvV9Player(
                         )
                     }
 
-                    val showLoading = !silentSwitching && (switching || waiting || error != null || buffering || (!isPlaying && bufferPercent >= 100))
+                    val showLoading = !silentSwitching && (switching || waiting || error != null || buffering)
 
                     AnimatedVisibility(
                         visible = !pipMode && !silentSwitching && noticeMessage == null && showLoading,
