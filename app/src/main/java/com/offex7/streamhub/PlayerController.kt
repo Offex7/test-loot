@@ -327,7 +327,7 @@ class PlayerController(context: Context) {
     private fun completeBuffering(player: ExoPlayer) {
         val shouldResume =
             resumeAfterInterruption && !userPaused && !userStopped && lastUrl != null
-        stopBuffering()
+        stopBuffering(completed = true)
         if (shouldResume) {
             resumeAfterInterruption = false
             runCatching { player.play() }
@@ -335,13 +335,13 @@ class PlayerController(context: Context) {
         }
     }
 
-    private fun stopBuffering() {
+    private fun stopBuffering(completed: Boolean = false) {
         bufferingGeneration++
         bufferingStartedAt = 0L
         lastBufferProgressAt = 0L
         lastBufferedPosition = 0L
         _buffering.value = false
-        _bufferPercent.value = 100
+        _bufferPercent.value = if (completed) 100 else 0
         _adaptiveBufferLevel.value = 0
     }
 

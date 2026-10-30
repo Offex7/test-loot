@@ -157,7 +157,7 @@ jobs:
               "remote_dlna_cast": "DlnaCastController" in remote_runtime and "suspend fun discoverRenderers(" in cast_module and "castFilePicker.launch" in main,
               "remote_status_indicator": "Подключено: Android TV Remote v2" in main and "Подключено: ADB" in main and "Нет соединения" in main,
               "TV_loading_splash": "TvLoadingSplash" in tv and "rememberInfiniteTransition" in tv and "drawRoundRect" in tv and '"Загрузка" + ".".repeat(dots)' in tv,
-              "TV_waits_for_buffer_100": "(!isPlaying && bufferPercent >= 100)" in tv and "bufferPercent.coerceIn(0, 100)" in tv,
+              "TV_waits_for_buffer_100": "(!isPlaying && bufferPercent >= 100)" in tv and "bufferPercent.coerceIn(0, 100)" in tv and "stopBuffering(completed = true)" in player and "_bufferPercent.value = if (completed) 100 else 0" in player,
               "TV_signal_lost_and_25s_recovery": "Сигнал утерян, перепроверьте подключение к сети" in tv and "signalLossStartedAt" in tv and "25_000L - (System.currentTimeMillis() - lostAt)" in tv and "startPlayback(next, automaticRecovery = true)" in tv,
               "TV_source_dialog_back_and_disabled_sources": "BackHandler(enabled = sourcePickerVisible)" in tv and "onDismissRequest = { sourcePickerVisible = false }" in tv and "Range" in tv and "bytes=0-0" in tv and "enabled = available" in tv and "Color(0xFF78909C)" in tv,
               "updater_resumable_and_retry": 'header("Range", "bytes=" + offset + "-")' in updater and "MAX_DOWNLOAD_ATTEMPTS = 3" in updater and "Content-Range" in updater,
