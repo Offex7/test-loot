@@ -239,3 +239,26 @@ jobs:
           name: Radio-TV-v4.4-Source
           path: Radio-TV-v4.4-source.zip
           if-no-files-found: error
+
+      - name: Publish direct APK and source download links
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.4
+          name: Radio.TV v4.4
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+          body: |
+            Radio.TV v4.4
+
+            versionCode: 17
+            versionName: 4.4
+            Package: com.offex7.streamhub
+
+            APK is signed with the existing v4 signing key. The source archive is attached below.
+          files: |
+            Radio-TV-v4.4.apk
+            Radio-TV-v4.4-source.zip
