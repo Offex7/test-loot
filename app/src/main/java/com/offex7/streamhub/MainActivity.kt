@@ -1701,13 +1701,19 @@ private fun Radio(
             val now = System.currentTimeMillis()
             val state = timerStore.state()
             if (state.startedAtMs <= 0L) {
-                updateTimerState(timerStore.resume(now, store.lastExitTime()), now)
+                val resumed = timerStore.resume(now, store.lastExitTime())
+                timerElapsedMs = resumed.elapsedMs
+                timerStartedAtMs = resumed.startedAtMs
+                timerNowMs = now
             }
             timerTargetKey = null
             timerAwaitingAudioStart = false
         } else if (!playing && timerStartedAtMs > 0L && !timerAwaitingAudioStart) {
             val now = System.currentTimeMillis()
-            updateTimerState(timerStore.pause(now), now)
+            val paused = timerStore.pause(now)
+            timerElapsedMs = paused.elapsedMs
+            timerStartedAtMs = paused.startedAtMs
+            timerNowMs = now
         }
     }
 

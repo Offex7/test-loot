@@ -193,6 +193,7 @@ fun TvV8Screen(
     val error by player.error.collectAsStateWithLifecycle()
     val waiting by player.waitingForNetwork.collectAsStateWithLifecycle()
     val isPlaying by player.isPlaying.collectAsStateWithLifecycle()
+    val buffering by player.buffering.collectAsStateWithLifecycle()
     val playerInstance by player.playerInstance.collectAsStateWithLifecycle()
     val focusRequester = FocusRequester()
     val keyboardController = LocalSoftwareKeyboardController.current
