@@ -110,7 +110,7 @@ fun ScrollTopButtonV37(
         val awayFromTop =
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
         if (session == scrollSession && scrollDirection == 1 &&
-            listState.isScrollInProgress && awayFromTop && !ignoreProgrammaticScrollState
+            lastScrollActivityAt > 0L && awayFromTop && !ignoreProgrammaticScrollState
         ) {
             visible = true
         }
@@ -122,7 +122,7 @@ fun ScrollTopButtonV37(
             val stillAwayFromTop =
                 listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
             if (session == scrollSession && activityAt == lastScrollActivityAt &&
-                stillAwayFromTop && listState.canScrollForward && !listState.isScrollInProgress
+                stillAwayFromTop && listState.canScrollForward
             ) {
                 visible = false
             }
