@@ -178,7 +178,7 @@ jobs:
               "five_custom_playlists_and_cleanup": "current.size >= 5" in storage and "favorites.remove(playlistId)" in storage and "hidden.remove(playlistId)" in storage and "return users + builtins" in tv_playlist,
               "notification_toggle": "notificationsEnabledFlow()" in storage and "if (!notificationsEnabled) return" in main and "ПОКАЗЫВАТЬ УВЕДОМЛЕНИЯ" in main,
               "remote_crash_guards": "guardedSync" in remote_runtime and "SecurityException" in remote_runtime and "guarded(\"голосовой ввод\")" in remote_runtime and "guarded(\"трансляция DLNA\")" in remote_runtime,
-              "remote_energy_saving": "energySaving: Boolean = false" in remote_pad and "if (energySaving) tween(0)" in remote_pad,
+              "remote_energy_saving": "energySaving: Boolean = false" in remote_pad and "targetValue = if (energySaving) 1f else 1.05f" in remote_pad and "targetValue = if (energySaving) 0f else 1f" in remote_pad,
               "remote_orientation_lock": "SCREEN_ORIENTATION_PORTRAIT" in main and "activity.requestedOrientation = previousOrientation" in main,
               "remote_settings_original_options": "onConnectionMethodChange" in remote_settings and "Bluetooth HID" in remote_settings and "RemoteSettingRow" in remote_settings,
           })

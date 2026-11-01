@@ -217,16 +217,16 @@ internal fun TvRemotePad(
         val okPulse by transition.animateFloat(
             initialValue = 1f,
             targetValue = if (energySaving) 1f else 1.05f,
-            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
+            animationSpec = infiniteRepeatable(
                 animation = tween(1000, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "ok-pulse"
         )
         val searchPulse by transition.animateFloat(
-            initialValue = 0.97f,
+            initialValue = if (energySaving) 1f else 0.97f,
             targetValue = if (energySaving) 1f else 1.03f,
-            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
+            animationSpec = infiniteRepeatable(
                 animation = tween(900, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
@@ -235,7 +235,7 @@ internal fun TvRemotePad(
         val rainbowOffset by transition.animateFloat(
             initialValue = 0f,
             targetValue = if (energySaving) 0f else 1f,
-            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
+            animationSpec = infiniteRepeatable(
                 animation = tween(3600, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
