@@ -162,6 +162,7 @@ internal fun TvRemotePad(
     keyboardActive: Boolean = false,
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
+    energySaving: Boolean = false,
     deviceName: String = "Телевизор не подключён",
     onSettings: () -> Unit = {},
     onBack: () -> Unit = { onKey(RemoteKey.BACK) },
@@ -215,8 +216,8 @@ internal fun TvRemotePad(
         val transition = rememberInfiniteTransition(label = "remote-animations")
         val okPulse by transition.animateFloat(
             initialValue = 1f,
-            targetValue = 1.05f,
-            animationSpec = infiniteRepeatable(
+            targetValue = if (energySaving) 1f else 1.05f,
+            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
                 animation = tween(1000, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
@@ -224,8 +225,8 @@ internal fun TvRemotePad(
         )
         val searchPulse by transition.animateFloat(
             initialValue = 0.97f,
-            targetValue = 1.03f,
-            animationSpec = infiniteRepeatable(
+            targetValue = if (energySaving) 1f else 1.03f,
+            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
                 animation = tween(900, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
@@ -233,8 +234,8 @@ internal fun TvRemotePad(
         )
         val rainbowOffset by transition.animateFloat(
             initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
+            targetValue = if (energySaving) 0f else 1f,
+            animationSpec = if (energySaving) tween(0) else infiniteRepeatable(
                 animation = tween(3600, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),

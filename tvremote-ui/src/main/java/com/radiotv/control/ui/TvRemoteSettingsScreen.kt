@@ -16,7 +16,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Independent remote settings; does not access Radio.TV application preferences. */
+/**
+ * Integrated remote settings. The host app supplies persisted preferences and transport actions,
+ * so this screen stays UI-only and does not create another settings store.
+ */
 @Composable
 fun TvRemoteSettingsScreen(
     host: String,
@@ -26,7 +29,16 @@ fun TvRemoteSettingsScreen(
     connectionStatus: String,
     bluetoothStatus: String,
     awaitingPairingCode: Boolean,
+    connectionMethod: String,
+    onConnectionMethodChange: (String) -> Unit,
+    hapticsEnabled: Boolean,
+    onHapticsChange: (Boolean) -> Unit,
+    soundEnabled: Boolean,
+    onSoundChange: (Boolean) -> Unit,
+    notificationsEnabled: Boolean,
+    onNotificationsChange: (Boolean) -> Unit,
     onConnect: () -> Unit,
+    onStartSearch: () -> Unit,
     onCompletePairing: () -> Unit,
     onStartBluetooth: () -> Unit,
     onBack: () -> Unit,
@@ -34,7 +46,7 @@ fun TvRemoteSettingsScreen(
 ) {
     Column(
         modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -42,12 +54,47 @@ fun TvRemoteSettingsScreen(
             }
             Text("НАСТРОЙКИ ПУЛЬТА", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Surface)
         ) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("СПОСОБ ПОДКЛЮЧЕНИЯ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Авто", "manual" to "Ручное", "bluetooth" to "Bluetooth").forEach { (value, label) ->
+                        val selected = connectionMethod == value
+                        Surface(
+                            modifier = Modifier.weight(1f).height(42.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) RadioTvPalette.Red else RadioTvPalette.Raised,
+                            onClick = { onConnectionMethodChange(value) }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                Text(
+                    when (connectionMethod) {
+                        "manual" -> "Подключение по IP-адресу телевизора."
+                        "bluetooth" -> "Управление через Bluetooth HID после сопряжения."
+                        else -> "Автоматический выбор доступного транспорта: Android TV Remote v2, ADB или Companion."
+                    },
+                    color = RadioTvPalette.Muted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Surface)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("ПОДКЛЮЧЕНИЕ К ТЕЛЕВИЗОРУ", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
                 Text(
                     connectionStatus,
@@ -66,13 +113,18 @@ fun TvRemoteSettingsScreen(
                     label = { Text("IP-адрес телевизора") },
                     placeholder = { Text("192.168.1.100") }
                 )
-                Button(
-                    onClick = onConnect,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = host.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = RadioTvPalette.Red)
-                ) {
-                    Text("ПОДКЛЮЧИТЬ / СОПРЯЧЬ", color = Color.White)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onStartSearch, modifier = Modifier.weight(1f)) {
+                        Text("ИСКАТЬ")
+                    }
+                    Button(
+                        onClick = onConnect,
+                        modifier = Modifier.weight(1f),
+                        enabled = host.isNotBlank() || connectionMethod == "bluetooth",
+                        colors = ButtonDefaults.buttonColors(containerColor = RadioTvPalette.Red)
+                    ) {
+                        Text("ПОДКЛЮЧИТЬ", color = Color.White)
+                    }
                 }
                 if (awaitingPairingCode) {
                     Text("Введите шестизначный HEX-код с экрана телевизора.", color = RadioTvPalette.Muted, fontSize = 12.sp)
@@ -96,6 +148,7 @@ fun TvRemoteSettingsScreen(
                 }
             }
         }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
@@ -118,9 +171,43 @@ fun TvRemoteSettingsScreen(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = RadioTvPalette.Surface)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ОТКЛИК КНОПОК", color = RadioTvPalette.Red, fontWeight = FontWeight.Bold)
+                RemoteSettingRow("Вибрация", "Короткий тактильный отклик", hapticsEnabled, onHapticsChange)
+                RemoteSettingRow("Звук", "Звуковой отклик на действия", soundEnabled, onSoundChange)
+                RemoteSettingRow(
+                    "Показывать уведомления",
+                    "Короткие сообщения о подключении и действиях.",
+                    notificationsEnabled,
+                    onNotificationsChange
+                )
+            }
+        }
+
         TextButton(onClick = onBack, modifier = Modifier.align(Alignment.End)) {
             Text("НАЗАД К ПУЛЬТУ", color = RadioTvPalette.Red)
         }
+    }
+}
+
+@Composable
+private fun RemoteSettingRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text(description, color = RadioTvPalette.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

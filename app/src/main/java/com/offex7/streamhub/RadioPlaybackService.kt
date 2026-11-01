@@ -19,16 +19,45 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class RadioPlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val timerMutex = Mutex()
+    private fun launchTimerTask(action: suspend () -> Unit) {
+        if (destroying) return
+        serviceScope.launch {
+            runCatching {
+                timerMutex.withLock {
+                    timerRecovery.await()
+                    action()
+                }
+            }.onFailure { error ->
+                LogExporter.log("Radio timer persistence failed: " + (error.message ?: error.javaClass.simpleName))
+            }
+        }
+    }
+
     private lateinit var settingsStore: SettingsStore
+    private lateinit var radioTimerStore: RadioTimerStore
+    private val timerRecovery = CompletableDeferred<Unit>()
+    @Volatile private var destroying = false
+    private val timerCheckpointRunnable = object : Runnable {
+        override fun run() {
+            val player = session?.player
+            if (destroying || player?.isPlaying != true) return
+            launchTimerTask { radioTimerStore.checkpoint(System.currentTimeMillis()) }
+            mainHandler.postDelayed(this, 5_000L)
+        }
+    }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var resumeAfterInterruption = false
@@ -69,6 +98,15 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         settingsStore = SettingsStore(applicationContext)
+        radioTimerStore = RadioTimerStore(applicationContext)
+        serviceScope.launch {
+            try {
+                runCatching { radioTimerStore.recoverAfterProcessRestart() }
+                    .onFailure { error -> LogExporter.log("Radio timer recovery failed: " + (error.message ?: error.javaClass.simpleName)) }
+            } finally {
+                timerRecovery.complete(Unit)
+            }
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(6_000, 30_000, 2_000, 5_000)
             .build()
@@ -106,6 +144,28 @@ class RadioPlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 LogExporter.log("Radio isPlaying=" + isPlaying + ", state=" + player.playbackState)
+                if (!destroying) {
+                    if (isPlaying) {
+                        mainHandler.removeCallbacks(timerCheckpointRunnable)
+                        launchTimerTask {
+                            val now = System.currentTimeMillis()
+                            player.currentMediaItem?.mediaId?.let { radioTimerStore.resumeIfNeeded(now, it) }
+                        }
+                        mainHandler.postDelayed(timerCheckpointRunnable, 5_000L)
+                    } else {
+                        mainHandler.removeCallbacks(timerCheckpointRunnable)
+                        launchTimerTask { radioTimerStore.pauseIfRunning(System.currentTimeMillis()) }
+                    }
+                }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (!destroying && player.isPlaying) {
+                    val stationId = mediaItem?.mediaId ?: mediaItem?.localConfiguration?.uri?.toString()
+                    if (!stationId.isNullOrBlank()) {
+                        launchTimerTask { radioTimerStore.resumeIfNeeded(System.currentTimeMillis(), stationId) }
+                    }
+                }
             }
 
             override fun onPlayWhenReadyChanged(isReady: Boolean, reason: Int) {
@@ -145,6 +205,10 @@ class RadioPlaybackService : MediaSessionService() {
                     Player.STATE_IDLE, Player.STATE_ENDED -> {
                         if (playbackState == Player.STATE_ENDED) {
                             resumeAfterInterruption = false
+                        }
+                        if (!destroying) {
+                            mainHandler.removeCallbacks(timerCheckpointRunnable)
+                            launchTimerTask { radioTimerStore.pauseIfRunning(System.currentTimeMillis()) }
                         }
                     }
                 }
@@ -215,7 +279,8 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
-        serviceScope.cancel()
+        destroying = true
+        mainHandler.removeCallbacks(timerCheckpointRunnable)
         mainHandler.removeCallbacksAndMessages(null)
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         audioEffects?.release()
@@ -225,6 +290,13 @@ class RadioPlaybackService : MediaSessionService() {
             release()
         }
         session = null
+        serviceScope.launch {
+            runCatching {
+                timerRecovery.await()
+                radioTimerStore.pauseIfRunning(System.currentTimeMillis())
+            }
+            serviceScope.cancel()
+        }
         super.onDestroy()
     }
 

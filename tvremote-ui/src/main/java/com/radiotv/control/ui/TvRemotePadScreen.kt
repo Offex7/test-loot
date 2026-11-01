@@ -24,6 +24,7 @@ fun TvRemotePadScreen(
     keyboardActive: Boolean = false,
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
+    energySaving: Boolean = false,
     deviceName: String = "Телевизор не подключён",
     onSettings: () -> Unit = {},
     onStartSearch: () -> Unit = {}
@@ -40,6 +41,7 @@ fun TvRemotePadScreen(
         keyboardActive = keyboardActive,
         featureMessage = featureMessage,
         showFeatureActions = showFeatureActions,
+        energySaving = energySaving,
         deviceName = deviceName,
         onSettings = onSettings,
         onBack = onBack,

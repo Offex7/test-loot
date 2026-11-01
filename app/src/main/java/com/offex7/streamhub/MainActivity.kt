@@ -11,6 +11,7 @@ import android.app.PictureInPictureParams
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.widget.Toast
 import android.graphics.Bitmap
@@ -50,7 +51,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
@@ -442,6 +445,8 @@ private fun App(
     val energySaving = LocalEnergySaving.current
     val hapticsEnabled by store.hapticsFlow().collectAsState(true)
     val soundEnabled by store.soundFeedbackFlow().collectAsState(true)
+    val notificationsEnabled by store.notificationsEnabledFlow().collectAsState(true)
+    val remoteConnectionMethod by store.remoteConnectionMethodFlow().collectAsState("auto")
     val autoStartEnabled by store.autoStartFlow().collectAsState(true)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
@@ -506,6 +511,13 @@ private fun App(
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var remoteTab by rememberSaveable { mutableStateOf(false) }
     var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
+    DisposableEffect(activity, remoteTab) {
+        val previousOrientation = activity.requestedOrientation
+        if (remoteTab) activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose {
+            if (remoteTab) activity.requestedOrientation = previousOrientation
+        }
+    }
     var remoteHost by rememberSaveable { mutableStateOf(activity.remoteRuntime.savedHost) }
     var remotePairingCode by rememberSaveable { mutableStateOf("") }
     var remoteConnectionMessage by rememberSaveable { mutableStateOf("Нет соединения") }
@@ -534,6 +546,10 @@ private fun App(
     var updateDownloading by remember { mutableStateOf(false) }
     var updateProgress by remember { mutableFloatStateOf(0f) }
 
+    LaunchedEffect(notificationsEnabled) {
+        if (!notificationsEnabled) notification = null
+    }
+
     DisposableEffect(activity, settings, disclaimer) {
         if (settings || disclaimer) {
             activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
@@ -543,6 +559,7 @@ private fun App(
         onDispose { activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) }
     }
     fun notify(message: String, durationMs: Long = 5000L) {
+        if (!notificationsEnabled) return
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
         notificationToken += 1L
@@ -554,8 +571,9 @@ private fun App(
     }
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.all { it }) {
-            activity.remoteRuntime.startBluetoothHid()
-            notify("Bluetooth HID запущен. Сопрягите Radio.TV в настройках телевизора.", 4000L)
+            runCatching { activity.remoteRuntime.startBluetoothHid() }
+                .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV в настройках телевизора.", 4000L) }
+                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
         } else notify("Разрешения Bluetooth не предоставлены", 3000L)
     }
     val castFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -827,6 +845,8 @@ private fun App(
                 settings -> Settings(
                     store = store,
                     pip = pip,
+                    notificationsEnabled = notificationsEnabled,
+                    onNotificationsChange = { enabled -> scope.launch { store.setNotificationsEnabled(enabled) } },
                     sleepRemaining = sleepRemaining,
                     sleepUntil = sleepUntil,
                     sleepMinutes = sleepMinutes,
@@ -909,10 +929,43 @@ private fun App(
                                     else -> "Bluetooth HID не подключён"
                                 },
                                 awaitingPairingCode = remoteV2Status is RemoteStatus.AwaitingCode,
+                                connectionMethod = remoteConnectionMethod,
+                                onConnectionMethodChange = { method -> scope.launch { store.setRemoteConnectionMethod(method) } },
+                                hapticsEnabled = hapticsEnabled,
+                                onHapticsChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
+                                soundEnabled = soundEnabled,
+                                onSoundChange = { enabled -> scope.launch { store.setSoundFeedbackEnabled(enabled) } },
+                                notificationsEnabled = notificationsEnabled,
+                                onNotificationsChange = { enabled -> scope.launch { store.setNotificationsEnabled(enabled) } },
                                 onConnect = {
-                                    scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, true) }
-                                            .getOrElse { it.message ?: "Не удалось подключиться" }
+                                    if (remoteConnectionMethod == "bluetooth") {
+                                        val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
+                                        if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                                            bluetoothPermissionLauncher.launch(permissions)
+                                        } else {
+                                            runCatching { activity.remoteRuntime.startBluetoothHid() }
+                                                .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L) }
+                                                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
+                                        }
+                                    } else {
+                                        scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, remoteConnectionMethod == "auto") }
+                                                .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
+                                            notify(remoteConnectionMessage, 3500L)
+                                        }
+                                    }
+                                },
+                                onStartSearch = {
+                                    activity.companionClient.resume()
+                                    val target = remoteHost.ifBlank { (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty() }
+                                    if (target.isBlank()) {
+                                        notify("Введите IP телевизора или выберите Bluetooth HID.", 3000L)
+                                    } else {
+                                        scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
+                                                .getOrElse { it.message ?: "Не удалось найти телевизор" }
+                                            notify(remoteConnectionMessage, 3500L)
+                                        }
                                     }
                                 },
                                 onCompletePairing = {
@@ -927,8 +980,9 @@ private fun App(
                                     if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
                                         bluetoothPermissionLauncher.launch(permissions)
                                     } else {
-                                        activity.remoteRuntime.startBluetoothHid()
-                                        notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L)
+                                        runCatching { activity.remoteRuntime.startBluetoothHid() }
+                                            .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L) }
+                                            .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
                                     }
                                 },
                                 onBack = { remoteSettingsVisible = false },
@@ -938,6 +992,7 @@ private fun App(
                             TvRemotePadScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 enabled = remoteV2Status is RemoteStatus.Connected || remoteAdbStatus is AdbRemoteStatus.Connected || remoteBluetoothStatus is BluetoothHidStatus.Connected || companionStatus is CompanionConnectionStatus.Connected,
+                                energySaving = energySaving,
                                 deviceName = remoteDeviceName,
                                 onKey = { key ->
                                     scope.launch {
@@ -983,7 +1038,11 @@ private fun App(
                                         }
                                         RemoteFeatureAction.AIR_MOUSE -> {
                                             if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
-                                                notify(activity.remoteRuntime.airMouse.toggle(), 2500L)
+                                                scope.launch {
+                                                    runCatching { activity.remoteRuntime.toggleAirMouse() }
+                                                        .onSuccess { notify(it, 2500L) }
+                                                        .onFailure { notify(it.message ?: "Air Mouse недоступна", 3500L) }
+                                                }
                                             } else {
                                                 touchpadDialog = true
                                                 notify("Для Air Mouse сначала подключите Bluetooth HID.", 3500L)
@@ -1184,11 +1243,19 @@ private fun App(
                     Button(
                         onClick = {
                             if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
-                                notify(activity.remoteRuntime.airMouse.toggle(), 2500L)
+                                scope.launch {
+                                    runCatching { activity.remoteRuntime.toggleAirMouse() }
+                                        .onSuccess { notify(it, 2500L) }
+                                        .onFailure { notify(it.message ?: "Air Mouse недоступна", 3500L) }
+                                }
                             } else {
                                 val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
                                 if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) bluetoothPermissionLauncher.launch(permissions)
-                                else { activity.remoteRuntime.startBluetoothHid(); notify("Запущен Bluetooth HID. Сопрягите Radio.TV на телевизоре.", 4000L) }
+                                else {
+                                    runCatching { activity.remoteRuntime.startBluetoothHid() }
+                                        .onSuccess { notify("Запущен Bluetooth HID. Сопрягите Radio.TV на телевизоре.", 4000L) }
+                                        .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1316,15 +1383,27 @@ private fun Home(
     BoxWithConstraints(Modifier.fillMaxSize().padding(18.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = { onHaptic(); onOpenRemote() },
-                    modifier = Modifier.height(40.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, Red),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                AnimatedVisibility(
+                    visible = LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { width -> -width },
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(220)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { width -> -width },
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(220))
                 ) {
-                    Text("Пульт", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedButton(
+                        onClick = { onHaptic(); onOpenRemote() },
+                        modifier = Modifier.height(40.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Red),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                    ) {
+                        Text("ПУЛЬТ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -1687,21 +1766,23 @@ private fun Radio(
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
         val timer = timerStore.state()
-        val lastExit = store.lastExitTime()
-        val cutoff = if (timer.startedAtMs > 0L && lastExit >= timer.startedAtMs) lastExit else timer.startedAtMs
-        val restored = if (timer.startedAtMs > 0L) timerStore.pause(cutoff) else timer
-        timerElapsedMs = restored.elapsedMs
-        timerStartedAtMs = 0L
+        timerElapsedMs = timer.elapsedMs
+        timerStartedAtMs = timer.startedAtMs
         timerNowMs = System.currentTimeMillis()
     }
 
-    LaunchedEffect(playing, index, timerTargetKey, timerAwaitingAudioStart) {
+    LaunchedEffect(connected, playing, index, timerTargetKey, timerAwaitingAudioStart) {
+        if (!connected) return@LaunchedEffect
         val stationKey = RADIO_STATIONS.getOrNull(index)?.key
         if (playing && stationKey != null && (timerTargetKey == null || timerTargetKey == stationKey)) {
             val now = System.currentTimeMillis()
             val state = timerStore.state()
-            if (state.startedAtMs <= 0L) {
-                val resumed = timerStore.resume(now, store.lastExitTime())
+            if (state.startedAtMs > 0L) {
+                timerElapsedMs = state.elapsedMs
+                timerStartedAtMs = state.startedAtMs
+                timerNowMs = now
+            } else {
+                val resumed = timerStore.resume(now)
                 timerElapsedMs = resumed.elapsedMs
                 timerStartedAtMs = resumed.startedAtMs
                 timerNowMs = now
@@ -1964,7 +2045,7 @@ private fun Radio(
                             }
                             if (i >= 0) {
                                 val now = System.currentTimeMillis()
-                                updateTimerState(timerStore.resume(now, store.lastExitTime()), now)
+                                updateTimerState(timerStore.resume(now), now)
                                 player.play(i)
                                 saveLast(RADIO_STATIONS[i])
                             } else {
@@ -2547,6 +2628,8 @@ private fun Settings(
     onSource: (String) -> Unit,
     onDisclaimer: () -> Unit,
     notify: (String, Long) -> Unit,
+    notificationsEnabled: Boolean,
+    onNotificationsChange: (Boolean) -> Unit,
     onCheckUpdate: () -> Unit,
     updateAvailable: Boolean,
     onResetAll: () -> Unit
@@ -2806,6 +2889,26 @@ private fun Settings(
             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        Text("ПОКАЗЫВАТЬ УВЕДОМЛЕНИЯ", fontSize = 16.sp)
+                        Text("Всплывающие сообщения о действиях приложения", color = Gray, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = notificationsEnabled,
+                        onCheckedChange = { enabled -> toggleFeedback(); onNotificationsChange(enabled) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Red,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Gray
+                        )
+                    )
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
                         Text("КАРТИНКА В КАРТИНКЕ", fontSize = 16.sp)
                     }
                     Switch(
@@ -3002,38 +3105,8 @@ private fun Settings(
                 val sourceListMaxHeight = if (landscape) (config.screenHeightDp.dp - 250.dp).coerceAtLeast(90.dp) else 420.dp
                 Column(Modifier.fillMaxWidth()) {
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = sourceListMaxHeight)) {
-                        item {
-                            Text("ВСТРОЕННЫЕ ИСТОЧНИКИ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
-                        }
-                        items(TV_SOURCES) { source ->
-                            val i = TV_SOURCES.indexOf(source)
-                            val key = builtinSourceKey(i)
-                            Row(
-                                Modifier.fillMaxWidth().combinedClickable(onClick = {
-                                    activeSourceKey = key
-                                    sourceDialog = false
-                                    onSource(key)
-                                }),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = activeSourceKey == key,
-                                    onClick = {
-                                        activeSourceKey = key
-                                        sourceDialog = false
-                                        onSource(key)
-                                    }
-                                )
-                                Text(
-                                    source.name,
-                                    Modifier.padding(6.dp).weight(1f),
-                                    color = if (activeSourceKey == key) Orange else Color.White
-                                )
-                            }
-                        }
                         if (userPlaylists.isNotEmpty()) {
                             item {
-                                Spacer(Modifier.height(8.dp))
                                 Text("МОИ ПЛЕЙЛИСТЫ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                             }
                             items(userPlaylists, key = { it.key }) { playlist ->
@@ -3064,6 +3137,36 @@ private fun Settings(
                                         Icon(Icons.Default.Delete, "Удалить плейлист", tint = Red)
                                     }
                                 }
+                            }
+                        }
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Text("ВСТРОЕННЫЕ ИСТОЧНИКИ", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                        }
+                        items(TV_SOURCES) { source ->
+                            val i = TV_SOURCES.indexOf(source)
+                            val key = builtinSourceKey(i)
+                            Row(
+                                Modifier.fillMaxWidth().combinedClickable(onClick = {
+                                    activeSourceKey = key
+                                    sourceDialog = false
+                                    onSource(key)
+                                }),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = activeSourceKey == key,
+                                    onClick = {
+                                        activeSourceKey = key
+                                        sourceDialog = false
+                                        onSource(key)
+                                    }
+                                )
+                                Text(
+                                    source.name,
+                                    Modifier.padding(6.dp).weight(1f),
+                                    color = if (activeSourceKey == key) Orange else Color.White
+                                )
                             }
                         }
                     }
@@ -3106,10 +3209,16 @@ private fun Settings(
                         val valid = name.isNotBlank() && (url.startsWith("http://", true) || url.startsWith("https://", true))
                         if (!valid) return@TextButton
                         scope.launch {
+                            if (store.userPlaylists().size >= 5) {
+                                notify("Можно добавить не более 5 пользовательских плейлистов", 3500L)
+                                return@launch
+                            }
                             val added = runCatching { store.addUserPlaylist(name, url) }.getOrDefault(false)
                             if (added) {
                                 userPlaylists = store.userPlaylists()
                                 addDialog = false
+                            } else {
+                                notify("Не удалось добавить плейлист. Проверьте URL и отсутствие дубликата.", 3500L)
                             }
                         }
                     },
@@ -3257,6 +3366,7 @@ private fun PinGate(
     val settingsStore = remember(context) { SettingsStore(context.applicationContext) }
     val hapticsEnabled by settingsStore.hapticsFlow().collectAsState(true)
     val soundEnabled by settingsStore.soundFeedbackFlow().collectAsState(true)
+    val notificationsEnabled by settingsStore.notificationsEnabledFlow().collectAsState(true)
 
     LaunchedEffect(lockoutUntil) {
         while (true) {
@@ -3473,7 +3583,9 @@ private fun PinGate(
                     }
                     Spacer(Modifier.height(4.dp))
                     TextButton(onClick = {
-                        Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show()
+                        if (notificationsEnabled) {
+                            Toast.makeText(context, "Подсказка: " + store.hint(), Toast.LENGTH_LONG).show()
+                        }
                     }) {
                         Text("Забыли PIN?", color = Red, fontSize = if (landscape) 10.sp else 12.sp)
                     }
@@ -4181,7 +4293,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.4")
+                            .header("User-Agent", "Radio.TV/4.5")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -4432,7 +4544,7 @@ private suspend fun scanAvailability(
                         client.newCall(
                             Request.Builder().url(item.url)
                                 .header("Range", "bytes=0-1")
-                                .header("User-Agent", "Radio.TV/4.4")
+                                .header("User-Agent", "Radio.TV/4.5")
                                 .get().build()
                         ).execute().use {
                             if (it.isSuccessful || it.code in 300..399 || it.code == 416) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE

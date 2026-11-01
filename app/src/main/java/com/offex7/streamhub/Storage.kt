@@ -37,6 +37,11 @@ class SettingsStore(private val context: Context) {
     private val tvFavoritesKey = stringSetPreferencesKey("favorites_tv")
     private val radioFavoritesKey = stringSetPreferencesKey("favorites_radio")
     private val tvFavoriteTimesKey = stringPreferencesKey("favorites_tv_added_at_v1")
+    private val tvFavoritesByPlaylistKey = stringPreferencesKey("favorites_tv_by_playlist_v1")
+    private val tvFavoriteTimesByPlaylistKey = stringPreferencesKey("favorites_tv_added_at_by_playlist_v1")
+    private val hiddenChannelsByPlaylistKey = stringPreferencesKey("hidden_channels_by_playlist_v1")
+    private val notificationsEnabledKey = booleanPreferencesKey("notifications_enabled_v1")
+    private val remoteConnectionMethodKey = stringPreferencesKey("remote_connection_method_v1")
     private val radioFavoriteTimesKey = stringPreferencesKey("favorites_radio_added_at_v1")
     private val pipKey = booleanPreferencesKey("pip_on_minimize")
     private val tvUsageKey = longPreferencesKey("usage_tv_seconds")
@@ -76,33 +81,154 @@ class SettingsStore(private val context: Context) {
     suspend fun disclaimerShown(): Boolean = context.dataStore.data.first()[firstLaunchKey] ?: false
     suspend fun setDisclaimerShown(shown: Boolean) { context.dataStore.edit { it[firstLaunchKey] = shown } }
 
-    fun hiddenChannelsFlow(): Flow<Set<String>> =
-        context.dataStore.data.map { it[hiddenChannelsKey] ?: emptySet() }
+    fun notificationsEnabledFlow(): Flow<Boolean> =
+        context.dataStore.data.map { it[notificationsEnabledKey] ?: true }
 
-    suspend fun hiddenChannels(): Set<String> = context.dataStore.data.first()[hiddenChannelsKey] ?: emptySet()
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[notificationsEnabledKey] = enabled }
+    }
 
-    suspend fun addHiddenChannel(channelId: String) {
-        val id = channelId.trim()
-        if (id.isBlank()) return
-        context.dataStore.edit {
-            val set = (it[hiddenChannelsKey] ?: emptySet()).toMutableSet()
-            set.add(id)
-            it[hiddenChannelsKey] = set
+    fun remoteConnectionMethodFlow(): Flow<String> =
+        context.dataStore.data.map { values ->
+            when (values[remoteConnectionMethodKey]) {
+                "manual" -> "manual"
+                "bluetooth" -> "bluetooth"
+                else -> "auto"
+            }
+        }
+
+    suspend fun setRemoteConnectionMethod(value: String) {
+        val method = when (value) {
+            "manual" -> "manual"
+            "bluetooth" -> "bluetooth"
+            else -> "auto"
+        }
+        context.dataStore.edit { it[remoteConnectionMethodKey] = method }
+    }
+
+    private fun decodePlaylistSetMap(raw: String?): MutableMap<String, Set<String>> = runCatching {
+        val json = org.json.JSONObject(raw.orEmpty())
+        val result = linkedMapOf<String, Set<String>>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val array = json.optJSONArray(key) ?: continue
+            val values = linkedSetOf<String>()
+            for (index in 0 until array.length()) array.optString(index).takeIf { it.isNotBlank() }?.let(values::add)
+            result[key] = values
+        }
+        result
+    }.getOrDefault(linkedMapOf())
+
+    private fun encodePlaylistSetMap(values: Map<String, Set<String>>): String = org.json.JSONObject().apply {
+        values.forEach { (key, ids) -> put(key, org.json.JSONArray().apply { ids.forEach { put(it) } }) }
+    }.toString()
+
+    private fun decodePlaylistTimesMap(raw: String?): MutableMap<String, Map<String, Long>> = runCatching {
+        val json = org.json.JSONObject(raw.orEmpty())
+        val result = linkedMapOf<String, Map<String, Long>>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val item = json.optJSONObject(key) ?: continue
+            val times = linkedMapOf<String, Long>()
+            val timeKeys = item.keys()
+            while (timeKeys.hasNext()) {
+                val id = timeKeys.next()
+                val value = item.optLong(id, 0L)
+                if (value > 0L) times[id] = value
+            }
+            result[key] = times
+        }
+        result
+    }.getOrDefault(linkedMapOf())
+
+    private fun encodePlaylistTimesMap(values: Map<String, Map<String, Long>>): String = org.json.JSONObject().apply {
+        values.forEach { (key, times) -> put(key, org.json.JSONObject().apply { times.forEach { (id, time) -> put(id, time) } }) }
+    }.toString()
+
+    /** Moves v4.4's unscoped TV state into the first source opened after upgrading. */
+    private suspend fun migrateLegacyPlaylistState(playlistId: String) {
+        if (playlistId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val favorites = decodePlaylistSetMap(prefs[tvFavoritesByPlaylistKey])
+            if (!favorites.containsKey(playlistId)) {
+                favorites[playlistId] = prefs[tvFavoritesKey].orEmpty()
+                prefs[tvFavoritesByPlaylistKey] = encodePlaylistSetMap(favorites)
+                prefs.remove(tvFavoritesKey)
+            }
+            val favoriteTimes = decodePlaylistTimesMap(prefs[tvFavoriteTimesByPlaylistKey])
+            if (!favoriteTimes.containsKey(playlistId)) {
+                favoriteTimes[playlistId] = decodeFavoriteTimes(prefs[tvFavoriteTimesKey])
+                prefs[tvFavoriteTimesByPlaylistKey] = encodePlaylistTimesMap(favoriteTimes)
+                prefs.remove(tvFavoriteTimesKey)
+            }
+            val hidden = decodePlaylistSetMap(prefs[hiddenChannelsByPlaylistKey])
+            if (!hidden.containsKey(playlistId)) {
+                hidden[playlistId] = prefs[hiddenChannelsKey].orEmpty()
+                prefs[hiddenChannelsByPlaylistKey] = encodePlaylistSetMap(hidden)
+                prefs.remove(hiddenChannelsKey)
+            }
         }
     }
 
-    suspend fun removeHiddenChannel(channelId: String) {
+    fun hiddenChannelsFlow(playlistId: String? = null): Flow<Set<String>> =
+        if (playlistId.isNullOrBlank()) {
+            context.dataStore.data.map { it[hiddenChannelsKey] ?: emptySet() }
+        } else {
+            context.dataStore.data.map { decodePlaylistSetMap(it[hiddenChannelsByPlaylistKey])[playlistId].orEmpty() }
+        }
+
+    suspend fun hiddenChannels(playlistId: String? = null): Set<String> {
+        if (playlistId.isNullOrBlank()) return context.dataStore.data.first()[hiddenChannelsKey] ?: emptySet()
+        migrateLegacyPlaylistState(playlistId)
+        return decodePlaylistSetMap(context.dataStore.data.first()[hiddenChannelsByPlaylistKey])[playlistId].orEmpty()
+    }
+
+    suspend fun addHiddenChannel(channelId: String, playlistId: String? = null) {
         val id = channelId.trim()
         if (id.isBlank()) return
-        context.dataStore.edit {
-            val set = (it[hiddenChannelsKey] ?: emptySet()).toMutableSet()
-            set.remove(id)
-            it[hiddenChannelsKey] = set
+        if (!playlistId.isNullOrBlank()) migrateLegacyPlaylistState(playlistId)
+        context.dataStore.edit { prefs ->
+            if (playlistId.isNullOrBlank()) {
+                val set = (prefs[hiddenChannelsKey] ?: emptySet()).toMutableSet()
+                set.add(id)
+                prefs[hiddenChannelsKey] = set
+            } else {
+                val map = decodePlaylistSetMap(prefs[hiddenChannelsByPlaylistKey])
+                map[playlistId] = (map[playlistId].orEmpty() + id).toSet()
+                prefs[hiddenChannelsByPlaylistKey] = encodePlaylistSetMap(map)
+            }
         }
     }
 
-    suspend fun clearHiddenChannels() {
-        context.dataStore.edit { it[hiddenChannelsKey] = emptySet() }
+    suspend fun removeHiddenChannel(channelId: String, playlistId: String? = null) {
+        val id = channelId.trim()
+        if (id.isBlank()) return
+        if (!playlistId.isNullOrBlank()) migrateLegacyPlaylistState(playlistId)
+        context.dataStore.edit { prefs ->
+            if (playlistId.isNullOrBlank()) {
+                val set = (prefs[hiddenChannelsKey] ?: emptySet()).toMutableSet()
+                set.remove(id)
+                prefs[hiddenChannelsKey] = set
+            } else {
+                val map = decodePlaylistSetMap(prefs[hiddenChannelsByPlaylistKey])
+                map[playlistId] = map[playlistId].orEmpty() - id
+                prefs[hiddenChannelsByPlaylistKey] = encodePlaylistSetMap(map)
+            }
+        }
+    }
+
+    suspend fun clearHiddenChannels(playlistId: String? = null) {
+        if (!playlistId.isNullOrBlank()) migrateLegacyPlaylistState(playlistId)
+        context.dataStore.edit { prefs ->
+            if (playlistId.isNullOrBlank()) prefs[hiddenChannelsKey] = emptySet()
+            else {
+                val map = decodePlaylistSetMap(prefs[hiddenChannelsByPlaylistKey])
+                map[playlistId] = emptySet()
+                prefs[hiddenChannelsByPlaylistKey] = encodePlaylistSetMap(map)
+            }
+        }
     }
 
 
@@ -173,16 +299,38 @@ class SettingsStore(private val context: Context) {
         val cleanUrl = url.trim()
         if (cleanName.isBlank() || !(cleanUrl.startsWith("http://", true) || cleanUrl.startsWith("https://", true))) return false
         val current = userPlaylists()
-        if (current.any { it.url.equals(cleanUrl, ignoreCase = true) }) return false
+        if (current.size >= 5 || current.any { it.url.equals(cleanUrl, ignoreCase = true) }) return false
         context.dataStore.edit { it[userPlaylistsStorage] = encodeUserPlaylists(current + UserPlaylist(cleanName, cleanUrl)) }
         return true
     }
 
     suspend fun removeUserPlaylist(url: String) {
         val cleanUrl = url.trim()
+        val playlistId = userPlaylistKey(cleanUrl)
         val updated = userPlaylists().filterNot { it.url.equals(cleanUrl, ignoreCase = true) }
-        context.dataStore.edit { it[userPlaylistsStorage] = encodeUserPlaylists(updated) }
-        if (activeSourceKey() == userPlaylistKey(cleanUrl)) setActiveSourceKey(builtinSourceKey(0))
+        context.dataStore.edit { prefs ->
+            prefs[userPlaylistsStorage] = encodeUserPlaylists(updated)
+            val favorites = decodePlaylistSetMap(prefs[tvFavoritesByPlaylistKey])
+            favorites.remove(playlistId)
+            prefs[tvFavoritesByPlaylistKey] = encodePlaylistSetMap(favorites)
+            val favoriteTimes = decodePlaylistTimesMap(prefs[tvFavoriteTimesByPlaylistKey])
+            favoriteTimes.remove(playlistId)
+            prefs[tvFavoriteTimesByPlaylistKey] = encodePlaylistTimesMap(favoriteTimes)
+            val hidden = decodePlaylistSetMap(prefs[hiddenChannelsByPlaylistKey])
+            hidden.remove(playlistId)
+            prefs[hiddenChannelsByPlaylistKey] = encodePlaylistSetMap(hidden)
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(cleanUrl.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+            .take(20)
+        listOf(
+            "tv_v8_$digest.m3u",
+            "tv_v8_$digest.timestamp",
+            "tv_playlist_user_$digest.m3u",
+            "tv_playlist_user_$digest.m3u.timestamp"
+        ).forEach { name -> runCatching { java.io.File(context.filesDir, name).delete() } }
+        if (activeSourceKey() == playlistId) setActiveSourceKey(builtinSourceKey(0))
     }
 
     private fun encodeUserPlaylists(items: List<UserPlaylist>): String =
@@ -218,10 +366,30 @@ class SettingsStore(private val context: Context) {
         return StreamItem(name, url, prefs[lk])
     }
 
-    suspend fun favorites(section: Section): Set<String> =
-        context.dataStore.data.first()[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet()
+    suspend fun favorites(section: Section, playlistId: String? = null): Set<String> {
+        if (section == Section.TV && !playlistId.isNullOrBlank()) {
+            migrateLegacyPlaylistState(playlistId)
+            return decodePlaylistSetMap(context.dataStore.data.first()[tvFavoritesByPlaylistKey])[playlistId].orEmpty()
+        }
+        return context.dataStore.data.first()[if (section == Section.TV) tvFavoritesKey else radioFavoritesKey] ?: emptySet()
+    }
 
-    suspend fun favoriteAddedAt(section: Section): Map<String, Long> {
+    suspend fun favoriteAddedAt(section: Section, playlistId: String? = null): Map<String, Long> {
+        if (section == Section.TV && !playlistId.isNullOrBlank()) {
+            migrateLegacyPlaylistState(playlistId)
+            val prefs = context.dataStore.data.first()
+            val favorites = decodePlaylistSetMap(prefs[tvFavoritesByPlaylistKey])[playlistId].orEmpty()
+            val timesMap = decodePlaylistTimesMap(prefs[tvFavoriteTimesByPlaylistKey])
+            val existing = timesMap[playlistId].orEmpty().toMutableMap()
+            val missing = favorites.filterNot { existing.containsKey(it) }.sorted()
+            if (missing.isNotEmpty()) {
+                var next = maxOf(System.currentTimeMillis(), (existing.values.maxOrNull() ?: 0L) + 1L)
+                missing.forEach { id -> existing[id] = next++ }
+                timesMap[playlistId] = existing
+                context.dataStore.edit { it[tvFavoriteTimesByPlaylistKey] = encodePlaylistTimesMap(timesMap) }
+            }
+            return existing
+        }
         val prefs = context.dataStore.data.first()
         val favoriteKey = if (section == Section.TV) tvFavoritesKey else radioFavoritesKey
         val timeKey = if (section == Section.TV) tvFavoriteTimesKey else radioFavoriteTimesKey
@@ -239,7 +407,30 @@ class SettingsStore(private val context: Context) {
         return existing
     }
 
-    suspend fun setFavorite(section: Section, channelId: String, value: Boolean) {
+    suspend fun setFavorite(section: Section, channelId: String, value: Boolean, playlistId: String? = null) {
+        if (section == Section.TV && !playlistId.isNullOrBlank()) {
+            migrateLegacyPlaylistState(playlistId)
+            val id = channelId.trim()
+            if (id.isBlank()) return
+            context.dataStore.edit { prefs ->
+                val favoritesMap = decodePlaylistSetMap(prefs[tvFavoritesByPlaylistKey])
+                val set = favoritesMap[playlistId].orEmpty().toMutableSet()
+                val timesMap = decodePlaylistTimesMap(prefs[tvFavoriteTimesByPlaylistKey])
+                val times = timesMap[playlistId].orEmpty().toMutableMap()
+                if (value) {
+                    set.add(id)
+                    times[id] = System.currentTimeMillis()
+                } else {
+                    set.remove(id)
+                    times.remove(id)
+                }
+                favoritesMap[playlistId] = set
+                timesMap[playlistId] = times
+                prefs[tvFavoritesByPlaylistKey] = encodePlaylistSetMap(favoritesMap)
+                prefs[tvFavoriteTimesByPlaylistKey] = encodePlaylistTimesMap(timesMap)
+            }
+            return
+        }
         val id = channelId.trim()
         if (id.isBlank()) return
         context.dataStore.edit {

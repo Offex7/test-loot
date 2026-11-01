@@ -115,9 +115,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -189,7 +191,7 @@ fun TvV8Screen(
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
     val network by rememberTvV9Network()
-    val hiddenChannels by store.hiddenChannelsFlow().collectAsStateWithLifecycle(initialValue = emptySet())
+    var hiddenChannels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
     val error by player.error.collectAsStateWithLifecycle()
     val waiting by player.waitingForNetwork.collectAsStateWithLifecycle()
     val isPlaying by player.isPlaying.collectAsStateWithLifecycle()
@@ -204,8 +206,8 @@ fun TvV8Screen(
     var userSources by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<UserPlaylist>()) }
     val sourceOptions = remember(userSources) {
         buildList {
-            TV_SOURCES.forEachIndexed { index, source -> add(Triple(builtinSourceKey(index), source.name, source.url)) }
             userSources.forEach { source -> add(Triple(source.key, source.name, source.url)) }
+            TV_SOURCES.forEachIndexed { index, source -> add(Triple(builtinSourceKey(index), source.name, source.url)) }
         }
     }
     var sourceAccess by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Map<String, Boolean>>(emptyMap()) }
@@ -271,8 +273,9 @@ fun TvV8Screen(
 
     LaunchedEffect(sourceKey, sourceReady) {
         if (!sourceReady) return@LaunchedEffect
-        favorites = store.favorites(Section.TV)
-        favoriteTimes = store.favoriteAddedAt(Section.TV)
+        favorites = store.favorites(Section.TV, sourceKey)
+        favoriteTimes = store.favoriteAddedAt(Section.TV, sourceKey)
+        hiddenChannels = store.hiddenChannels(sourceKey)
         savedZooms = store.channelZooms()
         reload()
     }
@@ -360,17 +363,6 @@ fun TvV8Screen(
             query = ""
             keyboardController?.hide()
         }
-    }
-
-    LaunchedEffect(channels, favorites) {
-        if (channels.isEmpty()) return@LaunchedEffect
-        val favoriteUrls = favorites.mapNotNull { key ->
-            channels.firstOrNull { it.key == key }?.logoUrl
-        }
-        logoCache.prefetch(
-            priorityUrls = favoriteUrls,
-            secondaryUrls = channels.mapNotNull { it.logoUrl }
-        )
     }
 
     LaunchedEffect(fullscreen) {
@@ -844,15 +836,16 @@ fun TvV8Screen(
                                 onFavorite = {
                                     scope.launch {
                                         val newFavorite = !favorite
-                                        store.setFavorite(Section.TV, channel.key, newFavorite)
-                                        favorites = store.favorites(Section.TV)
-                                        favoriteTimes = store.favoriteAddedAt(Section.TV)
+                                        store.setFavorite(Section.TV, channel.key, newFavorite, sourceKey)
+                                        favorites = store.favorites(Section.TV, sourceKey)
+                                        favoriteTimes = store.favoriteAddedAt(Section.TV, sourceKey)
                                         notify(if (newFavorite) "Канал добавлен в избранное" else "Канал удалён из избранного", 3000L)
                                     }
                                 },
                                 onHide = {
                                     scope.launch {
-                                        store.addHiddenChannel(channel.key)
+                                        store.addHiddenChannel(channel.key, sourceKey)
+                                        hiddenChannels = store.hiddenChannels(sourceKey)
                                         notify("Канал скрыт", 3000L)
                                     }
                                 }
@@ -866,6 +859,7 @@ fun TvV8Screen(
                 listState = list,
                 hapticsEnabled = hapticsEnabled,
                 soundEnabled = soundEnabled,
+                ignoreProgrammaticScroll = searchOpen || sourcePickerVisible || refreshing || fullscreen || isSwitching,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout))
@@ -892,9 +886,32 @@ fun TvV8Screen(
             title = { Text("Выбор источника") },
             text = {
                 val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-                if (!landscape) {
+                val scrollState = rememberScrollState()
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = if (landscape) 260.dp else 420.dp)
+                ) {
                     Column(
-                        Modifier.heightIn(max = 420.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState)
+                            .padding(end = 12.dp)
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                                    when (event.nativeKeyEvent.keyCode) {
+                                        KeyEvent.KEYCODE_PAGE_DOWN -> {
+                                            scope.launch { scrollState.scrollTo((scrollState.value + 220).coerceAtMost(scrollState.maxValue)) }
+                                            true
+                                        }
+                                        KeyEvent.KEYCODE_PAGE_UP -> {
+                                            scope.launch { scrollState.scrollTo((scrollState.value - 220).coerceAtLeast(0)) }
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                } else false
+                            },
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
@@ -926,97 +943,39 @@ fun TvV8Screen(
                             }
                         }
                     }
-                } else {
-                    val scrollState = rememberScrollState()
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                    ) {
-                        Column(
+                    if (scrollState.maxValue > 0) {
+                        Canvas(
                             Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(scrollState)
-                                .padding(end = 10.dp)
-                                .onPreviewKeyEvent { event ->
-                                    if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
-                                        when (event.nativeKeyEvent.keyCode) {
-                                            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                scope.launch {
-                                                    scrollState.scrollTo(
-                                                        (scrollState.value + 72).coerceAtMost(scrollState.maxValue)
-                                                    )
-                                                }
-                                                true
-                                            }
-                                            KeyEvent.KEYCODE_DPAD_UP -> {
-                                                scope.launch {
-                                                    scrollState.scrollTo(
-                                                        (scrollState.value - 72).coerceAtLeast(0)
-                                                    )
-                                                }
-                                                true
-                                            }
-                                            else -> false
-                                        }
-                                    } else false
-                                },
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                "Источник по умолчанию недоступен. Выберите другой источник",
-                                color = TvV9Gray,
-                                fontSize = 12.sp
-                            )
-                            options.forEach { (key, name, _) ->
-                                val active = key == sourceKey
-                                val available = sourceAccess[key] == true
-                                TextButton(
-                                    enabled = available,
-                                    onClick = {
-                                        sourcePickerVisible = false
-                                        scope.launch {
-                                            store.setActiveSourceKey(key)
-                                            sourceReady = true
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        name,
-                                        color = if (!available) Color(0xFF78909C) else if (active) TvV9Red else Color.White,
-                                        maxLines = 2,
-                                        textAlign = TextAlign.Start,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .width(4.dp)
+                                .pointerInput(scrollState) {
+                                    androidx.compose.foundation.gestures.detectTapGestures { tap ->
+                                        val fraction = (tap.y / size.height).coerceIn(0f, 1f)
+                                        scope.launch { scrollState.scrollTo((fraction * scrollState.maxValue).toInt()) }
+                                    }
                                 }
-                            }
-                        }
-
-                        if (scrollState.maxValue > 0) {
-                            Canvas(
-                                Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .fillMaxHeight()
-                                    .width(3.dp)
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                val viewport = size.height
-                                val thumbHeight =
-                                    (viewport * viewport / (viewport + scrollState.maxValue)).coerceAtLeast(24f)
-                                val thumbTop =
-                                    (scrollState.value / scrollState.maxValue.toFloat()).coerceIn(0f, 1f) *
-                                        (viewport - thumbHeight)
-                                drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.35f),
-                                    topLeft = androidx.compose.ui.geometry.Offset(0f, thumbTop),
-                                    size = androidx.compose.ui.geometry.Size(size.width, thumbHeight),
-                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width, size.width)
-                                )
-                            }
+                        ) {
+                            val viewport = size.height
+                            val thumbHeight = (viewport * viewport / (viewport + scrollState.maxValue)).coerceAtLeast(24f)
+                            val thumbTop = (scrollState.value / scrollState.maxValue.toFloat()).coerceIn(0f, 1f) *
+                                (viewport - thumbHeight)
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.12f),
+                                topLeft = androidx.compose.ui.geometry.Offset(size.width / 2f - 0.5f, 0f),
+                                size = androidx.compose.ui.geometry.Size(1.dp.toPx(), viewport),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
+                            )
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.42f),
+                                topLeft = androidx.compose.ui.geometry.Offset(0f, thumbTop),
+                                size = androidx.compose.ui.geometry.Size(size.width, thumbHeight),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width, size.width)
+                            )
                         }
                     }
                 }
+            },
             },
             confirmButton = {}
         )
@@ -1246,25 +1205,27 @@ private fun TvV9Logo(
     size: Dp,
     dimmed: Boolean
 ) {
-    var bitmap by androidx.compose.runtime.remember(url) {
-        androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    val context = LocalContext.current
+    val request = remember(url, context) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .crossfade(false)
+            .build()
     }
-    androidx.compose.runtime.LaunchedEffect(url) {
-        bitmap = cache.loadImageBitmap(url)
-    }
-    if (bitmap != null) {
-        androidx.compose.foundation.Image(
-            bitmap = bitmap!!,
-            contentDescription = null,
-            modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
-            contentScale = ContentScale.Fit
-        )
-    } else {
-        Box(
-            Modifier.size(size).background(TvV9PanelAlt, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("NO\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+    Box(
+        Modifier.size(size).background(TvV9PanelAlt, RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("NO\\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = request,
+                contentDescription = null,
+                modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
+                contentScale = ContentScale.Fit
+            )
         }
     }
 }
@@ -1709,6 +1670,8 @@ private fun TvV9Player(
                 }
         )
 
+        val showLoading = !silentSwitching && (switching || waiting || error != null || buffering)
+
         if (locked && !pipMode) {
             IconButton(
                 onClick = {
@@ -1825,43 +1788,6 @@ private fun TvV9Player(
                         )
                     }
 
-                    val showBuffering = !pipMode &&
-                        !silentSwitching &&
-                        !switching &&
-                        !waiting &&
-                        error == null &&
-                        buffering &&
-                        bufferPercent < 100
-
-                    if (showBuffering) {
-                        Card(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 140.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = .35f)),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Column(
-                                Modifier.width(180.dp).padding(horizontal = 12.dp, vertical = 7.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    "Буферизация… $bufferPercent%",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(Modifier.height(5.dp))
-                                LinearProgressIndicator(
-                                    progress = { bufferPercent / 100f },
-                                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                                    color = TvV9Red,
-                                    trackColor = Color.White.copy(alpha = .20f)
-                                )
-                            }
-                        }
-                    }
-
                     AnimatedVisibility(
                         visible = channelNotice,
                         modifier = Modifier
@@ -1924,21 +1850,6 @@ private fun TvV9Player(
                                 .background(TvV9Red.copy(alpha = .92f), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             textAlign = TextAlign.Center
-                        )
-                    }
-
-                    val showLoading = !silentSwitching && (switching || waiting || error != null || buffering)
-
-                    AnimatedVisibility(
-                        visible = !pipMode && !silentSwitching && noticeMessage == null && showLoading,
-                        modifier = Modifier.align(Alignment.Center),
-                        enter = fadeIn(animationSpec = tween(260)),
-                        exit = fadeOut(animationSpec = tween(300))
-                    ) {
-                        TvLoadingSplash(
-                            buffering = buffering,
-                            bufferPercent = bufferPercent,
-                            waitingForNetwork = waiting
                         )
                     }
 
@@ -2093,6 +2004,19 @@ private fun TvV9Player(
                 }
             }
         }
+        AnimatedVisibility(
+            visible = !pipMode && !silentSwitching && showLoading,
+            modifier = Modifier.align(Alignment.Center).zIndex(2f),
+            enter = fadeIn(animationSpec = tween(260)),
+            exit = fadeOut(animationSpec = tween(300))
+        ) {
+            TvLoadingSplash(
+                buffering = buffering,
+                bufferPercent = bufferPercent,
+                waitingForNetwork = waiting
+            )
+        }
+
     }
 }
 
@@ -2225,8 +2149,7 @@ private fun TvLoadingSplash(
     Column(
         modifier = Modifier
             .widthIn(min = 180.dp, max = 260.dp)
-            .background(TvV9Panel.copy(alpha = .88f), RoundedCornerShape(18.dp))
-            .border(1.dp, TvV9Red.copy(alpha = .55f), RoundedCornerShape(18.dp))
+            .background(Color.Black.copy(alpha = .30f), RoundedCornerShape(14.dp))
             .padding(horizontal = 22.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)

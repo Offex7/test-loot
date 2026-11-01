@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @Composable
@@ -49,10 +50,13 @@ fun ScrollTopButtonV37(
     var visible by remember { mutableStateOf(false) }
     var scrollSession by remember { mutableLongStateOf(0L) }
     var lastScrollActivityAt by remember { mutableLongStateOf(0L) }
+    var scrollDirection by remember { mutableStateOf(0) }
     val ignoreProgrammaticScrollState by rememberUpdatedState(ignoreProgrammaticScroll)
 
     LaunchedEffect(listState) {
         var wasScrolling = false
+        var previousIndex = listState.firstVisibleItemIndex
+        var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
             Triple(
                 listState.firstVisibleItemIndex,
@@ -60,53 +64,72 @@ fun ScrollTopButtonV37(
                 listState.isScrollInProgress
             )
         }.collect { (index, offset, scrolling) ->
-            if (ignoreProgrammaticScrollState) {
-                visible = false
-                scrollSession = 0L
-                lastScrollActivityAt = 0L
-                wasScrolling = scrolling
-                return@collect
-            }
             val awayFromTop = index > 0 || offset > 0
-            if (!awayFromTop) {
+            if (ignoreProgrammaticScrollState || !awayFromTop) {
                 visible = false
                 scrollSession = 0L
+                scrollDirection = 0
                 lastScrollActivityAt = 0L
                 wasScrolling = scrolling
+                previousIndex = index
+                previousOffset = offset
                 return@collect
             }
 
-            if (scrolling) {
+            val movedDown = index > previousIndex ||
+                (index == previousIndex && offset > previousOffset)
+            val movedUp = index < previousIndex ||
+                (index == previousIndex && offset < previousOffset)
+
+            if (scrolling && movedDown) {
                 lastScrollActivityAt = System.currentTimeMillis()
-                if (!wasScrolling) scrollSession += 1L
+                if (!wasScrolling || scrollDirection != 1) {
+                    scrollSession += 1L
+                    visible = false
+                }
+                scrollDirection = 1
+            } else if (scrolling && movedUp) {
+                lastScrollActivityAt = System.currentTimeMillis()
+                scrollDirection = -1
+                scrollSession = 0L
+                visible = false
+            } else if (!scrolling && !wasScrolling) {
+                // No new user movement: leave the current five-second idle timer intact.
             }
+
             wasScrolling = scrolling
+            previousIndex = index
+            previousOffset = offset
         }
     }
 
     LaunchedEffect(scrollSession) {
         if (scrollSession <= 0L) return@LaunchedEffect
         val session = scrollSession
-        delay(3000L)
+        delay(2_000L)
         val awayFromTop =
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        if (session == scrollSession && listState.isScrollInProgress && awayFromTop) {
+        if (session == scrollSession && scrollDirection == 1 &&
+            listState.isScrollInProgress && awayFromTop && !ignoreProgrammaticScrollState
+        ) {
             visible = true
         }
-    }
 
-    LaunchedEffect(lastScrollActivityAt) {
-        if (lastScrollActivityAt <= 0L) return@LaunchedEffect
-        val activityAt = lastScrollActivityAt
-        delay(5000L)
-        val awayFromTop =
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        if (activityAt == lastScrollActivityAt && awayFromTop && listState.canScrollForward) {
-            visible = false
+        // One debounced timeout coroutine instead of restarting a delay on every scroll frame.
+        snapshotFlow { lastScrollActivityAt }.collectLatest { activityAt ->
+            if (activityAt <= 0L) return@collectLatest
+            delay(5_000L)
+            val stillAwayFromTop =
+                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+            if (session == scrollSession && activityAt == lastScrollActivityAt &&
+                stillAwayFromTop && listState.canScrollForward && !listState.isScrollInProgress
+            ) {
+                visible = false
+            }
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v39")
+    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v45")
     val pulse by pulseTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.045f,
@@ -114,7 +137,7 @@ fun ScrollTopButtonV37(
             animation = tween(850, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "scroll-top-v39-pulse"
+        label = "scroll-top-v45-pulse"
     )
 
     AnimatedVisibility(
@@ -133,6 +156,9 @@ fun ScrollTopButtonV37(
             onClick = {
                 InteractionFeedback.vibrate(context, hapticsEnabled, 52L, 165)
                 if (soundEnabled) InteractionFeedback.beep(context, true)
+                visible = false
+                scrollSession = 0L
+                scrollDirection = 0
                 scope.launch { listState.animateScrollToItem(0) }
             },
             modifier = Modifier

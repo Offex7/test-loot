@@ -40,7 +40,7 @@ class PlaylistRepository(
         val users = store.userPlaylists().map { playlist ->
             ResolvedSource(playlist.key, playlist.name, playlist.url)
         }
-        return builtins + users
+        return users + builtins
     }
 
     private fun cacheFile(source: ResolvedSource): File {
@@ -125,7 +125,7 @@ class PlaylistRepository(
         val response = client.newCall(
             Request.Builder()
                 .url(url)
-                .header("User-Agent", "Radio.TV/4.4")
+                .header("User-Agent", "Radio.TV/4.5")
                 .build()
         ).execute()
         return response.use { r ->
