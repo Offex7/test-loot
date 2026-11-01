@@ -950,7 +950,7 @@ fun TvV8Screen(
                                 .fillMaxHeight()
                                 .width(4.dp)
                                 .pointerInput(scrollState) {
-                                    androidx.compose.foundation.gestures.detectTapGestures { tap ->
+                                    detectTapGestures { tap ->
                                         val fraction = (tap.y / size.height).coerceIn(0f, 1f)
                                         scope.launch { scrollState.scrollTo((fraction * scrollState.maxValue).toInt()) }
                                     }
@@ -975,7 +975,6 @@ fun TvV8Screen(
                         }
                     }
                 }
-            },
             },
             confirmButton = {}
         )
