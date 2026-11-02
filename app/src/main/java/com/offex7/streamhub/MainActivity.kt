@@ -81,6 +81,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -118,6 +119,8 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Send
@@ -566,7 +569,22 @@ private fun App(
     val remoteTextHistory by store.remoteTextHistoryFlow().collectAsState(emptyList())
     val remoteKeyboardFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val remoteKeyboardImeVisible =
+        WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    var remoteKeyboardImeWasVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(remoteKeyboardVisible, remoteKeyboardImeVisible) {
+        if (!remoteKeyboardVisible) {
+            remoteKeyboardImeWasVisible = false
+        } else if (remoteKeyboardImeVisible) {
+            remoteKeyboardImeWasVisible = true
+        } else if (remoteKeyboardImeWasVisible) {
+            // Android's IME may consume Back before Compose receives it.
+            remoteKeyboardImeWasVisible = false
+            remoteKeyboardVisible = false
+        }
+    }
     var activeSpeechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+    var pendingSearchVoiceCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
@@ -631,7 +649,7 @@ private fun App(
         }
     }
 
-    fun startSystemSpeechInput() {
+    fun startSystemSpeechInput(onRecognized: ((String) -> Unit)? = null) {
         if (!SpeechRecognizer.isRecognitionAvailable(appContext) || !appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)) {
             Toast.makeText(appContext, "Микрофон или системное распознавание речи недоступны.", Toast.LENGTH_LONG).show()
             return
@@ -654,6 +672,9 @@ private fun App(
                     activeSpeechRecognizer = null
                     if (recognized.isBlank()) {
                         notify("Не удалось распознать речь.", 3000L)
+                    } else if (onRecognized != null) {
+                        onRecognized(recognized)
+                        notify("Поиск: $recognized", 2500L)
                     } else {
                         remoteTextInput = recognized
                         scope.launch {
@@ -701,8 +722,24 @@ private fun App(
     }
 
     val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startSystemSpeechInput()
-        else notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
+        if (granted) {
+            val callback = pendingSearchVoiceCallback
+            pendingSearchVoiceCallback = null
+            startSystemSpeechInput(callback)
+        } else {
+            pendingSearchVoiceCallback = null
+            notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
+        }
+    }
+    fun startSearchVoiceInput(onResult: (String) -> Unit) {
+        val granted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startSystemSpeechInput(onResult)
+        } else {
+            pendingSearchVoiceCallback = onResult
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
     fun bluetoothPermissionsGranted(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || listOf(
@@ -1067,7 +1104,10 @@ private fun App(
             disclaimer -> disclaimer = false
             settings -> settings = false
             remoteSettingsVisible -> remoteSettingsVisible = false
-            remoteKeyboardVisible -> remoteKeyboardVisible = false
+            remoteKeyboardVisible -> {
+                remoteKeyboardVisible = false
+                keyboardController?.hide()
+            }
             remoteTab -> remoteTab = false
             section != null -> leaveSection()
             else -> exit = true
@@ -1330,7 +1370,8 @@ private fun App(
                     pipMode = activity.pipMode,
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
-                    radioPlaying = radio.isPlaying.collectAsState(false).value
+                    radioPlaying = radio.isPlaying.collectAsState(false).value,
+                    requestVoiceSearch = ::startSearchVoiceInput
                 )
                 else -> Radio(
                     player = radio,
@@ -1351,7 +1392,8 @@ private fun App(
                     onCancelSleep = ::cancelSleep,
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
-                    onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true }
+                    onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true },
+                    requestVoiceSearch = ::startSearchVoiceInput
                 )
             }
 
@@ -1904,6 +1946,7 @@ private fun Header(
     onSearchClose: () -> Unit,
     onRefresh: (() -> Unit)? = null,
     extraAction: (@Composable () -> Unit)? = null,
+    onVoiceSearch: (() -> Unit)? = null,
     showSearch: Boolean = true,
     showTimer: Boolean = true
 ) {
@@ -1930,7 +1973,14 @@ private fun Header(
                 maxLines = 1,
                 placeholder = { Text("Поиск…") },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = Red) },
-                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, null) } }
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (onVoiceSearch != null) {
+                            IconButton(onClick = onVoiceSearch) { Icon(Icons.Default.Mic, "Голосовой поиск", tint = Red) }
+                        }
+                        if (query.isNotEmpty()) IconButton(onClick = onSearchClose) { Icon(Icons.Default.Close, null) }
+                    }
+                }
             )
         }
     }
@@ -1963,7 +2013,8 @@ private fun Radio(
     onCancelSleep: () -> Unit,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
-    onQuickLock: () -> Unit
+    onQuickLock: () -> Unit,
+    requestVoiceSearch: ((String) -> Unit) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -2241,7 +2292,7 @@ private fun Radio(
                         }
                     }
                 },
-                searchOpen = false,
+                searchOpen = searchOpen,
                 query = query,
                 onSearchOpen = {
                     searchOpen = true
@@ -2258,7 +2309,13 @@ private fun Radio(
                     query = ""
                     searchStamp = System.currentTimeMillis()
                 },
-                showSearch = false,
+                onVoiceSearch = {
+                    requestVoiceSearch { recognized ->
+                        query = recognized
+                        searchStamp = System.currentTimeMillis()
+                    }
+                },
+                showSearch = true,
                 showTimer = false
             )
 
@@ -2881,7 +2938,6 @@ private fun Settings(
     val radioUsage by store.usageFlow(Section.RADIO).collectAsState(0L)
     val tvChannels by store.channelUsageFlow(Section.TV).collectAsState(emptyMap())
     val radioStations by store.channelUsageFlow(Section.RADIO).collectAsState(emptyMap())
-    val hiddenChannels by store.hiddenChannelsFlow().collectAsState(emptySet())
     var statsNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val tvSession by store.usageSessionFlow(Section.TV).collectAsState(initial = null)
     val radioSession by store.usageSessionFlow(Section.RADIO).collectAsState(initial = null)
@@ -2916,6 +2972,7 @@ private fun Settings(
     val tvRepo = remember(settingsContext, store) { TvPlaylistRepositoryV8(settingsContext, store) }
     var tvCatalog by remember { mutableStateOf(emptyList<StreamItem>()) }
     var activeSourceKey by remember { mutableStateOf(builtinSourceKey(0)) }
+    val hiddenChannels by store.hiddenChannelsFlow(activeSourceKey).collectAsState(emptySet())
     var userPlaylists by remember { mutableStateOf(emptyList<UserPlaylist>()) }
     var sourceDialog by remember { mutableStateOf(false) }
     var addDialog by remember { mutableStateOf(false) }
@@ -2942,6 +2999,40 @@ private fun Settings(
     var logDialogText by remember { mutableStateOf<String?>(null) }
     var resetAllConfirm by remember { mutableStateOf(false) }
     val pinStore = remember(settingsContext) { PinSecurityStore(settingsContext) }
+    val backupImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val raw = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val input = settingsContext.contentResolver.openInputStream(uri)
+                            ?: error("Не удалось открыть файл резервной копии.")
+                        input.use { stream ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (true) {
+                                val count = stream.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                require(total <= 2_000_000) { "Файл резервной копии слишком большой." }
+                                output.write(buffer, 0, count)
+                            }
+                            String(output.toByteArray(), Charsets.UTF_8)
+                        }
+                    }
+                    store.importSettingsBackup(raw)
+                    val currentSource = store.activeSourceKey()
+                    activeSourceKey = currentSource
+                    userPlaylists = store.userPlaylists()
+                    store.hiddenChannels(currentSource)
+                }.onSuccess {
+                    notify("Настройки загружены", 3000L)
+                }.onFailure {
+                    notify(it.message ?: "Не удалось загрузить настройки", 4000L)
+                }
+            }
+        }
+    }
 
     fun toggleFeedback() {
         InteractionFeedback.vibrate(settingsContext, hapticsEnabled, 55L, 180)
@@ -2953,7 +3044,9 @@ private fun Settings(
     KeepSystemBarsVisible()
 
     LaunchedEffect(Unit) {
-        activeSourceKey = store.activeSourceKey()
+        val currentSource = store.activeSourceKey()
+        activeSourceKey = currentSource
+        store.hiddenChannels(currentSource)
         userPlaylists = store.userPlaylists()
     }
     LaunchedEffect(hiddenChannels, activeSourceKey) {
@@ -3209,6 +3302,61 @@ private fun Settings(
                 }
             }
         }
+        item {
+            Card(
+                onClick = {
+                    scope.launch {
+                        runCatching {
+                            val json = store.exportSettingsBackup()
+                            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT)
+                                .format(java.util.Date())
+                            val file = java.io.File(settingsContext.cacheDir, "RadioTV_Настройки_$timestamp.json")
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                file.writeText(json, Charsets.UTF_8)
+                            }
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                settingsContext,
+                                "${settingsContext.packageName}.fileprovider",
+                                file
+                            )
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/json"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                clipData = ClipData.newUri(settingsContext.contentResolver, "Radio.TV settings", uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            settingsContext.startActivity(
+                                Intent.createChooser(sendIntent, "Поделиться настройками Radio.TV")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }.onFailure {
+                            notify(it.message ?: "Не удалось сохранить настройки", 4000L)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("СОХРАНИТЬ НАСТРОЙКИ", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.Share, "Поделиться настройками", tint = Red)
+                }
+            }
+        }
+        item {
+            Card(
+                onClick = { backupImportLauncher.launch("application/json") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("ЗАГРУЗИТЬ НАСТРОЙКИ", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.FolderOpen, "Выбрать файл настроек", tint = Red)
+                }
+            }
+        }
         if (hiddenChannels.isNotEmpty()) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
@@ -3244,13 +3392,13 @@ private fun Settings(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 TextButton(
-                                    onClick = { scope.launch { store.removeHiddenChannel(key); notify("Канал восстановлен",3000L) } },
+                                    onClick = { scope.launch { store.removeHiddenChannel(key, activeSourceKey); notify("Канал восстановлен",3000L) } },
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                                 ) { Text("Восстановить", color = Red, fontSize = 11.sp) }
                             }
                         }
                         Button(
-                            onClick = { scope.launch { store.clearHiddenChannels(); notify("Канал восстановлен",3000L) } },
+                            onClick = { scope.launch { store.clearHiddenChannels(activeSourceKey); notify("Канал восстановлен",3000L) } },
                             modifier = Modifier.fillMaxWidth().height(38.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PanelAlt)

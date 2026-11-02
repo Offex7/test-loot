@@ -22,11 +22,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -58,16 +60,21 @@ fun ScrollTopButtonV37(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var visible by remember(listState) { mutableStateOf(false) }
+
+    // The bottom pin is a direct property of the list, so it survives screen recomposition
+    // and does not depend on a coroutine or lifecycle event having run at the right moment.
+    val pinnedAtBottom by remember(listState) {
+        derivedStateOf { listState.canScrollBackward && !listState.canScrollForward }
+    }
+    var visible by rememberSaveable { mutableStateOf(false) }
     var userScrollActive by remember(listState) { mutableStateOf(false) }
-    var pinnedAtBottom by remember(listState) { mutableStateOf(false) }
     var scrollSessionId by remember(listState) { mutableLongStateOf(0L) }
     var idleToken by remember(listState) { mutableLongStateOf(0L) }
     var arrowScrollInProgress by remember(listState) { mutableStateOf(false) }
+    var initialized by remember(listState) { mutableStateOf(false) }
     val ignoreProgrammaticScrollState by rememberUpdatedState(ignoreProgrammaticScroll)
 
-    // Observe actual list movement. This also sees mouse wheel, D-pad/keyboard and accessibility scrolling,
-    // which do not necessarily emit DragInteraction.Start.
+    // Watch real position changes. This covers touch, wheel, keyboard and D-pad scrolling.
     LaunchedEffect(listState) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
@@ -82,17 +89,22 @@ fun ScrollTopButtonV37(
             )
         }.collect { sample ->
             val moved = sample.index != previousIndex || sample.offset != previousOffset
+
+            if (!initialized) {
+                initialized = true
+                // A previously saved non-top position should not lose the arrow on re-entry.
+                if (sample.canScrollBackward && !sample.ignored) visible = true
+            }
+
             when {
                 sample.ignored -> {
                     visible = false
-                    pinnedAtBottom = false
                     userScrollActive = false
                     scrollSessionId += 1L
                     idleToken += 1L
                 }
                 !sample.canScrollBackward -> {
                     visible = false
-                    pinnedAtBottom = false
                     userScrollActive = false
                     scrollSessionId += 1L
                     idleToken += 1L
@@ -101,58 +113,68 @@ fun ScrollTopButtonV37(
                     if (!userScrollActive) {
                         userScrollActive = true
                         scrollSessionId += 1L
-                        pinnedAtBottom = false
                     }
-                    if (pinnedAtBottom && sample.canScrollForward) pinnedAtBottom = false
-                    if (visible && !sample.canScrollForward) pinnedAtBottom = true
+                }
+                moved && !sample.isScrolling -> {
+                    // A restored list position or an explicit non-user scroll is still real state.
+                    visible = sample.canScrollBackward
+                    idleToken += 1L
                 }
                 !sample.isScrolling && userScrollActive -> {
                     userScrollActive = false
-                    scrollSessionId += 1L
                     idleToken += 1L
-                    if (visible && !sample.canScrollForward) pinnedAtBottom = true
                 }
             }
+
+            // At the last item the arrow is pinned regardless of the 2s/5s timers.
+            if (sample.canScrollBackward && !sample.canScrollForward && !sample.ignored) {
+                visible = true
+                if (userScrollActive) {
+                    userScrollActive = false
+                    idleToken += 1L
+                }
+            }
+
             previousIndex = sample.index
             previousOffset = sample.offset
         }
     }
 
-    // A fresh touch-drag also releases the bottom pin, including a drag at the edge
-    // where the list cannot move far enough to produce a new position sample.
+    // Start a new timer as soon as a physical drag begins, even at the list boundary.
     LaunchedEffect(listState) {
         listState.interactionSource.interactions.collect { interaction ->
             if (
                 interaction is DragInteraction.Start &&
                 !ignoreProgrammaticScrollState &&
-                !arrowScrollInProgress &&
-                pinnedAtBottom
+                !arrowScrollInProgress
             ) {
-                pinnedAtBottom = false
-                idleToken += 1L
+                if (!userScrollActive) {
+                    userScrollActive = true
+                    scrollSessionId += 1L
+                }
+                if (pinnedAtBottom) visible = false
             }
         }
     }
 
-    // Show only if the same user scroll has remained active for the full 2 seconds.
+    // The 2s timer is tied to the start of the scroll session, not to continued movement.
+    // It therefore also handles a short swipe that ends before the timer expires.
     LaunchedEffect(scrollSessionId) {
         val session = scrollSessionId
-        if (!userScrollActive || session <= 0L) return@LaunchedEffect
+        if (session <= 0L) return@LaunchedEffect
         delay(2_000L)
         if (
             session == scrollSessionId &&
-            userScrollActive &&
-            listState.isScrollInProgress &&
             listState.canScrollBackward &&
+            !pinnedAtBottom &&
             !ignoreProgrammaticScrollState &&
             !arrowScrollInProgress
         ) {
             visible = true
-            if (!listState.canScrollForward) pinnedAtBottom = true
         }
     }
 
-    // After motion stops, keep the arrow for 5 seconds. New motion cancels this timer.
+    // After motion stops, hide after 5s of inactivity. A new drag cancels this effect.
     LaunchedEffect(idleToken, visible, userScrollActive, pinnedAtBottom) {
         if (!visible || userScrollActive || pinnedAtBottom) return@LaunchedEffect
         val token = idleToken
@@ -170,7 +192,7 @@ fun ScrollTopButtonV37(
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v47")
+    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v48")
     val pulse by pulseTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.045f,
@@ -178,11 +200,11 @@ fun ScrollTopButtonV37(
             animation = tween(850, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "scroll-top-v47-pulse"
+        label = "scroll-top-v48-pulse"
     )
 
     AnimatedVisibility(
-        visible = visible,
+        visible = !ignoreProgrammaticScrollState && !arrowScrollInProgress && (visible || pinnedAtBottom),
         modifier = modifier,
         enter = slideInHorizontally(initialOffsetX = { width -> width }, animationSpec = tween(300, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
         exit = slideOutHorizontally(targetOffsetX = { width -> width }, animationSpec = tween(300, easing = FastOutSlowInEasing)) + fadeOut(tween(220))
@@ -192,7 +214,6 @@ fun ScrollTopButtonV37(
                 InteractionFeedback.vibrate(context, hapticsEnabled, 52L, 165)
                 if (soundEnabled) InteractionFeedback.beep(context, true)
                 visible = false
-                pinnedAtBottom = false
                 userScrollActive = false
                 scrollSessionId += 1L
                 idleToken += 1L

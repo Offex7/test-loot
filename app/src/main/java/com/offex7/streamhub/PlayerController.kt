@@ -25,7 +25,7 @@ class PlayerController(context: Context) {
         const val BUFFER_TARGET_MS = 6_000L
         const val BUFFER_MAX_MS = 25_000
         const val BUFFER_TIMEOUT_MS = 25_000L
-        const val BUFFER_STALL_TIMEOUT_MS = 8_000L
+        const val BUFFER_STALL_TIMEOUT_MS = 25_000L
         const val WEAK_NETWORK_NOTICE_MS = 2_000L
     }
 
@@ -291,7 +291,12 @@ class PlayerController(context: Context) {
             ) {
                 resumeAfterInterruption = false
                 _error.value = "Буферизация не завершилась за 25 секунд. Переключите канал."
-                runCatching { setPlayWhenReadySystem(player, false) }
+                stopBuffering()
+                runCatching {
+                    setPlayWhenReadySystem(player, false)
+                    player.stop()
+                    player.clearMediaItems()
+                }
                 LogExporter.log("TV buffering timeout after 25s")
             }
         }, BUFFER_TIMEOUT_MS)
@@ -321,9 +326,13 @@ class PlayerController(context: Context) {
                 _bufferPercent.value = percent
                 if (now - lastBufferProgressAt >= BUFFER_STALL_TIMEOUT_MS) {
                     resumeAfterInterruption = false
-                    _buffering.value = false
                     _error.value = "Буферизация остановилась без прогресса. Переключаю канал."
-                    runCatching { setPlayWhenReadySystem(player, false) }
+                    stopBuffering()
+                    runCatching {
+                        setPlayWhenReadySystem(player, false)
+                        player.stop()
+                        player.clearMediaItems()
+                    }
                     LogExporter.log("TV buffering stalled for " + BUFFER_STALL_TIMEOUT_MS + "ms at " + percent + "%")
                     return
                 }
@@ -336,6 +345,7 @@ class PlayerController(context: Context) {
         val shouldResume =
             resumeAfterInterruption && !userPaused && !userStopped && lastUrl != null
         stopBuffering(completed = true)
+        _error.value = null
         if (shouldResume) {
             resumeAfterInterruption = false
             runCatching { player.play() }

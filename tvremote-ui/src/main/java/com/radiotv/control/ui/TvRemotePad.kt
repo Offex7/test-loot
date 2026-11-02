@@ -78,6 +78,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -201,18 +203,19 @@ internal fun TvRemotePad(
             compact -> (maxHeight * 0.30f).coerceIn(180.dp, 205.dp)
             else -> (maxHeight * 0.30f).coerceIn(205.dp, 225.dp)
         }
-        val volumePillWidth = (maxWidth * (if (tight) 0.18f else 0.205f)).coerceIn(if (tight) 54.dp else 68.dp, if (tight) 68.dp else 84.dp)
+        val volumePillWidth = (maxWidth * (if (tight) 0.21f else 0.23f)).coerceIn(if (tight) 60.dp else 76.dp, if (tight) 76.dp else 96.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
         val secondRowButtonSize = (maxWidth * 0.18f).coerceIn(if (tight) 50.dp else 62.dp, if (tight) 62.dp else 74.dp)
         val footerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
+        val arrowSideWidth = arrowSize * 1.28f
         val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
         val arrowVerticalInset = if (tight) 7.dp else if (compact) 8.dp else 10.dp
         // Fit the four directional keys snugly around OK: the center-to-edge gap is ~4 dp.
         val dpadHeight = okSize + (arrowSize + arrowVerticalInset + 4.dp) * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSize - 4.dp).coerceIn(8.dp, 82.dp)
+        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSideWidth - 4.dp).coerceIn(8.dp, 82.dp)
         val rowSpacing = if (tight) 5.dp else 7.dp
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 8.dp +
             if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
@@ -480,19 +483,39 @@ internal fun TvRemotePad(
                         }
                         drawPath(
                             path,
-                            color = Color(0xFF111111),
+                            color = Color(0xFF202020),
                             style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
-                        val gradientTravel = w * rainbowOffset
-                        drawPath(
-                            path,
-                            brush = Brush.linearGradient(
-                                colors = rainbowColors,
-                                start = Offset(-w + gradientTravel, 0f),
-                                end = Offset(w + gradientTravel, h)
-                            ),
-                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
+                        val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
+                        val pathLength = measure.length
+                        if (pathLength > 0f) {
+                            val segmentLength = pathLength * 0.16f
+                            val segmentStart = pathLength * rainbowOffset
+                            val segmentEnd = segmentStart + segmentLength
+                            val movingSegment = android.graphics.Path()
+                            if (segmentEnd <= pathLength) {
+                                measure.getSegment(segmentStart, segmentEnd, movingSegment, true)
+                            } else {
+                                measure.getSegment(segmentStart, pathLength, movingSegment, true)
+                                val wrappedSegment = android.graphics.Path()
+                                measure.getSegment(0f, segmentEnd - pathLength, wrappedSegment, true)
+                                movingSegment.addPath(wrappedSegment)
+                            }
+                            val snakePath = movingSegment.asComposePath()
+                            drawPath(
+                                snakePath,
+                                brush = Brush.sweepGradient(
+                                    colors = rainbowColors,
+                                    center = Offset(w / 2f, h / 2f)
+                                ),
+                                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                            drawPath(
+                                snakePath,
+                                color = Color.White.copy(alpha = 0.72f),
+                                style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                        }
                     }
             ) {
                 RemoteSurfaceButton(
@@ -510,7 +533,8 @@ internal fun TvRemotePad(
                     description = "Влево",
                     modifier = Modifier.align(Alignment.CenterStart)
                         .padding(start = arrowInset)
-                        .size(arrowSize),
+                        .width(arrowSideWidth)
+                        .height(arrowSize),
                     shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.LEFT) }
@@ -521,7 +545,8 @@ internal fun TvRemotePad(
                     description = "Вправо",
                     modifier = Modifier.align(Alignment.CenterEnd)
                         .padding(end = arrowInset)
-                        .size(arrowSize),
+                        .width(arrowSideWidth)
+                        .height(arrowSize),
                     shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.RIGHT) }
@@ -531,7 +556,7 @@ internal fun TvRemotePad(
                 RemoteSurfaceButton(
                     description = "Вниз",
                     modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(bottom = arrowVerticalInset)
+                        .padding(bottom = if (tight) 0.dp else 1.dp)
                         .size(arrowSize),
                     shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
                     background = padButtonColor,
@@ -647,6 +672,8 @@ private fun RemoteSurfaceButton(
     background: Color,
     onClick: () -> Unit,
     pulseScale: Float = 1f,
+    pressTiltX: Float = 0f,
+    pressTiltY: Float = 0f,
     content: @Composable () -> Unit
 ) {
     val interactions = remember { MutableInteractionSource() }
@@ -663,6 +690,9 @@ private fun RemoteSurfaceButton(
             .graphicsLayer {
                 scaleX = pressScale * pulseScale
                 scaleY = pressScale * pulseScale
+                rotationX = if (pressed) pressTiltX else 0f
+                rotationY = if (pressed) pressTiltY else 0f
+                cameraDistance = 32.dp.toPx()
                 alpha = if (pressed) 0.82f else 1f
             }
             .clip(shape)
@@ -715,7 +745,8 @@ private fun WhiteVolumePill(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             shape = CircleShape,
             background = white,
-            onClick = onTop
+            onClick = onTop,
+            pressTiltX = 7f
         ) {
             if (title == "VOL") {
                 Text(topLabel, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Normal)
@@ -735,7 +766,8 @@ private fun WhiteVolumePill(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             shape = CircleShape,
             background = white,
-            onClick = onBottom
+            onClick = onBottom,
+            pressTiltX = -7f
         ) {
             if (title == "VOL") {
                 Text(bottomLabel, color = ink, fontSize = 31.sp, fontWeight = FontWeight.Normal)

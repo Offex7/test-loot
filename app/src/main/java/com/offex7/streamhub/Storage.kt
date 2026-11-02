@@ -842,5 +842,184 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+
+    private val backupStringNames = setOf(
+        userPlaylistsStorage.name,
+        activeSourceKeyStorage.name,
+        tvFavoritesByPlaylistKey.name,
+        tvFavoriteTimesByPlaylistKey.name,
+        hiddenChannelsByPlaylistKey.name,
+        tvFavoriteTimesKey.name,
+        radioFavoriteTimesKey.name,
+        channelZoomsStorage.name,
+        equalizerPresetKey.name,
+        energySavingModeKey.name,
+        remoteConnectionMethodKey.name
+    )
+    private val backupIntNames = setOf(
+        sourceKey.name,
+        equalizerBassKey.name,
+        equalizerMidKey.name,
+        equalizerTrebleKey.name
+    )
+    private val backupBooleanNames = setOf(
+        notificationsEnabledKey.name,
+        pipKey.name,
+        hapticsKey.name,
+        autoStartKey.name,
+        soundFeedbackKey.name,
+        normalizeKey.name
+    )
+    private val backupSetNames = setOf(
+        tvFavoritesKey.name,
+        radioFavoritesKey.name,
+        hiddenChannelsKey.name
+    )
+    private val backupJsonObjectNames = setOf(
+        tvFavoritesByPlaylistKey.name,
+        tvFavoriteTimesByPlaylistKey.name,
+        hiddenChannelsByPlaylistKey.name,
+        tvFavoriteTimesKey.name,
+        radioFavoriteTimesKey.name,
+        channelZoomsStorage.name
+    )
+
+    private fun validateBackupPlaylistJson(raw: String) {
+        val array = org.json.JSONArray(raw)
+        require(array.length() <= 5) { "В резервной копии больше 5 пользовательских плейлистов." }
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: error("Некорректная запись плейлиста.")
+            val name = item.optString("name").trim()
+            val url = item.optString("url").trim()
+            require(name.isNotBlank() && name.length <= 120) { "Некорректное название плейлиста." }
+            require(url.length <= 2048 && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                "В резервной копии найден некорректный URL плейлиста."
+            }
+        }
+    }
+
+    private fun validateBackupJsonMap(raw: String, setValues: Boolean) {
+        val json = org.json.JSONObject(raw)
+        require(json.length() <= 32) { "Слишком много наборов данных в резервной копии." }
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            require(key.length <= 256) { "Некорректный идентификатор плейлиста." }
+            if (setValues) {
+                val array = json.optJSONArray(key) ?: error("Некорректный список каналов в резервной копии.")
+                require(array.length() <= 10000) { "Слишком много каналов в резервной копии." }
+                for (index in 0 until array.length()) {
+                    val value = array.optString(index)
+                    require(value.isNotBlank() && value.length <= 512) { "Некорректный идентификатор канала." }
+                }
+            } else {
+                require(json.optJSONObject(key) != null) { "Некорректная карта времени или масштаба." }
+            }
+        }
+    }
+
+    suspend fun exportSettingsBackup(): String {
+        val preferences = context.dataStore.data.first()
+        val values = org.json.JSONObject()
+        preferences.asMap().forEach { (key, value) ->
+            val name = key.name
+            if (
+                name !in backupStringNames &&
+                name !in backupIntNames &&
+                name !in backupBooleanNames &&
+                name !in backupSetNames
+            ) return@forEach
+
+            when (value) {
+                is String -> values.put(name, value)
+                is Int -> values.put(name, value)
+                is Boolean -> values.put(name, value)
+                is Set<*> -> values.put(
+                    name,
+                    org.json.JSONArray().apply {
+                        value.filterIsInstance<String>().forEach { put(it) }
+                    }
+                )
+            }
+        }
+        return org.json.JSONObject()
+            .put("format", "radiotv-settings")
+            .put("schemaVersion", 1)
+            .put("values", values)
+            .toString(2)
+    }
+
+    suspend fun importSettingsBackup(raw: String) {
+        require(raw.toByteArray(Charsets.UTF_8).size <= 2_000_000) { "Файл резервной копии слишком большой." }
+        val root = org.json.JSONObject(raw)
+        require(root.optString("format") == "radiotv-settings") { "Это не файл настроек Radio.TV." }
+        require(root.optInt("schemaVersion", -1) == 1) { "Неподдерживаемая версия резервной копии." }
+        val values = root.optJSONObject("values") ?: error("В резервной копии отсутствуют настройки.")
+        require(values.length() <= 64) { "Слишком много параметров в резервной копии." }
+
+        // Validate the entire payload before touching DataStore, so a broken file cannot partially apply.
+        backupStringNames.forEach { name ->
+            if (!values.has(name)) return@forEach
+            val value = values.opt(name) as? String ?: error("Некорректный параметр $name.")
+            require(value.length <= 256_000) { "Слишком большое значение параметра $name." }
+            when (name) {
+                userPlaylistsStorage.name -> validateBackupPlaylistJson(value)
+                in backupJsonObjectNames -> validateBackupJsonMap(
+                    value,
+                    setValues = name == tvFavoritesByPlaylistKey.name || name == hiddenChannelsByPlaylistKey.name
+                )
+                energySavingModeKey.name -> require(value in setOf("OFF", "ON", "AUTO")) { "Некорректный режим энергосбережения." }
+                remoteConnectionMethodKey.name -> require(value in setOf("auto", "manual", "bluetooth")) { "Некорректный способ подключения пульта." }
+                equalizerPresetKey.name -> require(value.length <= 32) { "Некорректный пресет эквалайзера." }
+                activeSourceKeyStorage.name -> require(value.isNotBlank()) { "Некорректный активный плейлист." }
+            }
+        }
+        backupSetNames.forEach { name ->
+            if (!values.has(name)) return@forEach
+            val array = values.optJSONArray(name) ?: error("Некорректный список параметра $name.")
+            require(array.length() <= 10000) { "Слишком много элементов в параметре $name." }
+            for (index in 0 until array.length()) {
+                val value = array.optString(index)
+                require(value.isNotBlank() && value.length <= 512) { "Некорректный элемент параметра $name." }
+            }
+        }
+        backupIntNames.forEach { name ->
+            if (values.has(name)) require(values.opt(name) is Number) { "Некорректный числовой параметр $name." }
+        }
+        backupBooleanNames.forEach { name ->
+            if (values.has(name)) require(values.opt(name) is Boolean) { "Некорректный логический параметр $name." }
+        }
+
+        context.dataStore.edit { preferences ->
+            backupStringNames.forEach { name ->
+                if (values.has(name)) {
+                    val value = values.getString(name)
+                    preferences[stringPreferencesKey(name)] = value
+                }
+            }
+            backupIntNames.forEach { name ->
+                if (values.has(name)) {
+                    val value = values.getInt(name)
+                    val safeValue = when (name) {
+                        sourceKey.name -> value.coerceIn(0, 100)
+                        else -> value.coerceIn(-1500, 1500)
+                    }
+                    preferences[intPreferencesKey(name)] = safeValue
+                }
+            }
+            backupBooleanNames.forEach { name ->
+                if (values.has(name)) preferences[booleanPreferencesKey(name)] = values.getBoolean(name)
+            }
+            backupSetNames.forEach { name ->
+                if (values.has(name)) {
+                    val array = values.getJSONArray(name)
+                    preferences[stringSetPreferencesKey(name)] = buildSet {
+                        for (index in 0 until array.length()) add(array.getString(index))
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun resetAll() { context.dataStore.edit { it.clear() } }
 }

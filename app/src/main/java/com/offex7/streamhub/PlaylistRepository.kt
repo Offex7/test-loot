@@ -125,7 +125,7 @@ class PlaylistRepository(
         val response = client.newCall(
             Request.Builder()
                 .url(url)
-                .header("User-Agent", "Radio.TV/4.7")
+                .header("User-Agent", "Radio.TV/4.8")
                 .build()
         ).execute()
         return response.use { r ->

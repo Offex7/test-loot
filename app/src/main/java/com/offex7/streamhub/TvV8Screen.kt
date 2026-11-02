@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -121,6 +122,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalView
@@ -199,7 +201,8 @@ fun TvV8Screen(
     pipMode: Boolean,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
-    radioPlaying: Boolean
+    radioPlaying: Boolean,
+    requestVoiceSearch: ((String) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -556,10 +559,16 @@ fun TvV8Screen(
                     }
 
                     health = health + (candidate.url to AvailabilityStatus.OFFLINE)
-                    if (!fastSwitch && !automaticRecovery) {
-                        notify("Не удалось воспроизвести канал, переключаю на следующий", 3000L)
+                    val nextCursor = adjacentIndex(cursor, step)
+                    if (!fastSwitch) {
+                        val nextChannel = channels.getOrNull(nextCursor)
+                        if (nextChannel != null) {
+                            notify("Канал ${candidate.name} недоступен, переключаю на ${nextChannel.name}", 3000L)
+                        } else {
+                            notify("Канал ${candidate.name} недоступен", 3000L)
+                        }
                     }
-                    cursor = adjacentIndex(cursor, step)
+                    cursor = nextCursor
                     if (cursor < 0) break
                 }
 
@@ -592,12 +601,12 @@ fun TvV8Screen(
         health = health + (failed.url to AvailabilityStatus.OFFLINE)
         val next = adjacentIndex(selectedIndex, 1)
         if (next >= 0 && next !in channels.indices.filter { channels[it].url in autoRecoveryTargets }) {
-            notify("Не удалось воспроизвести канал, переключаю на следующий", 3000L)
+            notify("Канал ${failed.name} недоступен, переключаю на ${channels[next].name}", 3000L)
             startPlayback(next, automaticRecovery = true)
         } else {
             fullscreen = false
             player.stop()
-            notify("Не удалось найти рабочий канал", 3000L)
+            notify("Канал ${failed.name} недоступен. Рабочие каналы не найдены.", 3000L)
         }
     }
 
@@ -613,7 +622,9 @@ fun TvV8Screen(
             signalLossStartedAt = 0L
             signalLossNotified = false
             if (next >= 0) {
-                notify("Сигнал не восстановлен за 25 секунд. Переключаю на следующий канал.", 3000L)
+                val failedChannel = channels[selectedIndex]
+                val nextChannel = channels[next]
+                notify("Канал ${failedChannel.name} недоступен, переключаю на ${nextChannel.name}", 3000L)
                 startPlayback(next, automaticRecovery = true)
             } else {
                 playbackJob?.cancel()
@@ -751,6 +762,12 @@ fun TvV8Screen(
                 searchStamp = System.currentTimeMillis()
                 keyboardController?.hide()
             },
+            onVoiceSearch = {
+                requestVoiceSearch { recognized ->
+                    query = recognized
+                    searchStamp = System.currentTimeMillis()
+                }
+            },
             onRefresh = {
                 scope.launch {
                     refreshing = true
@@ -758,7 +775,13 @@ fun TvV8Screen(
                     refreshing = false
                 }
             },
-            onSettings = settings
+            onSettings = settings,
+            onVoiceSearch = {
+                requestVoiceSearch { recognized ->
+                    query = recognized
+                    searchStamp = System.currentTimeMillis()
+                }
+            }
         )
 
         if (searchOpen && query.isBlank()) {
@@ -1012,7 +1035,8 @@ private fun TvV9Header(
     onQuery: (String) -> Unit,
     onSearchClose: () -> Unit,
     onRefresh: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onVoiceSearch: () -> Unit
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
@@ -1030,8 +1054,13 @@ private fun TvV9Header(
                 placeholder = { Text("Поиск…") },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = TvV9Red) },
                 trailingIcon = {
-                    IconButton(onClick = onSearchClose) {
-                        Icon(Icons.Default.Close, null, tint = TvV9Red)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onVoiceSearch) {
+                            Icon(Icons.Default.Mic, "Голосовой поиск", tint = TvV9Red)
+                        }
+                        IconButton(onClick = onSearchClose) {
+                            Icon(Icons.Default.Close, null, tint = TvV9Red)
+                        }
                     }
                 }
             )
@@ -1235,18 +1264,22 @@ private fun TvV9Logo(
             .crossfade(false)
             .build()
     }
+    var logoLoaded by remember(url) { mutableStateOf(false) }
     Box(
         Modifier.size(size).background(TvV9PanelAlt, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
-        Text("NO\\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+        if (!logoLoaded) {
+            Text("NO\\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+        }
         if (!url.isNullOrBlank()) {
             AsyncImage(
                     imageLoader = logoImageLoader,
                 model = request,
                 contentDescription = null,
                 modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit,
+                onState = { state -> logoLoaded = state is AsyncImagePainter.State.Success }
             )
         }
     }
@@ -1413,6 +1446,20 @@ private fun TvV9Player(
     var menuInteractionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var formatMode by androidx.compose.runtime.remember(channel.key, initialZoom) { androidx.compose.runtime.mutableIntStateOf(if (initialZoom != null) 5 else 0) }
     val orientation = LocalConfiguration.current.orientation
+    DisposableEffect(activity, locked) {
+        if (locked && activity != null) {
+            activity.requestedOrientation = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
+        onDispose {
+            if (locked && activity != null) {
+                activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+    }
     var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
     var channelNotice by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     val channelLogoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
