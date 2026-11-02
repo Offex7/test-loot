@@ -100,7 +100,7 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 20" in gradle and 'versionName = "4.7"' in gradle,
+              "version": "versionCode = 21" in gradle and 'versionName = "4.7"' in gradle,
               "remote_modules": all((Path(name) / "build.gradle.kts").is_file() for name in ("tvremote-ui", "tvremote-core", "tvremote-companion", "tvremote-cast")),
               "remote_tab": "TvRemotePadScreen" in main and 'Text("ПУЛЬТ"' in main and "onOpenRemote" in main,
               "companion_lifecycle": "companionClient.pause()" in main and "companionClient.resume()" in main and "companionClient.close()" in main,
@@ -134,7 +134,7 @@ jobs:
               "remote_widget_vector_icon": "<vector" in remote_widget_icon and "#E53935" in remote_widget_icon,
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
               "recommendation": "🎬 Прямой телеэфир и радиовещание без рекламы и подписок?" in main and "P.S. Сообщение пересылаю лично" in main,
-              "UA_v4_5_1": '"Radio.TV/4.7"' in main and '"Radio.TV/4.3"' not in main and '"Radio.TV/4.2"' not in main and '"Radio.TV/4.1"' not in main and '"TV-Radio-Online/5.0"' not in main,
+              "UA_v4_7": '"Radio.TV/4.7"' in main and '"Radio.TV/4.3"' not in main and '"Radio.TV/4.2"' not in main and '"Radio.TV/4.1"' not in main and '"TV-Radio-Online/5.0"' not in main,
               "UA_tv_playlist_repository": tv_playlist.count('"Radio.TV/4.7"') >= 2 and '"Radio.TV/4.3"' not in tv_playlist and '"Radio.TV/9.0"' not in tv_playlist,
               "UA_radio_playlist_repository": '"Radio.TV/4.7"' in playlist and '"Radio.TV/4.3"' not in playlist and "TV-Radio-Online/7.0" not in playlist,
               "scroll_arrow_grown": "Modifier.size(36.dp)" in arrows,
