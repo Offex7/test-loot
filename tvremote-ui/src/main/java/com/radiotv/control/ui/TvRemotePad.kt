@@ -666,7 +666,11 @@ private fun RemoteSurfaceButton(
             }
             .clip(shape)
             .background(background)
-            .semantics { contentDescription = description }
+            .semantics {
+                contentDescription = description
+                role = androidx.compose.ui.semantics.Role.Button
+            }
+            // The clickable is on the full outer Box, not on its icon/text child.
             .clickable(
                 interactionSource = interactions,
                 indication = ripple(bounded = true),
@@ -678,7 +682,9 @@ private fun RemoteSurfaceButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        content()
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            content()
+        }
     }
 }
 
