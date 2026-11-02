@@ -1442,11 +1442,8 @@ private fun TvV9Player(
     val orientation = LocalConfiguration.current.orientation
     DisposableEffect(activity, locked) {
         if (locked && activity != null) {
-            activity.requestedOrientation = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } else {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
+            // Freeze the exact current rotation, including reverse landscape.
+            activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
         }
         onDispose {
             if (locked && activity != null) {

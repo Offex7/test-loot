@@ -158,6 +158,7 @@ jobs:
               "TV_ready_signal_prevents_false_failover": "currentPlayer.playbackState == Player.STATE_READY" in player and "if (currentPlayer.isPlaying)" in player and "Буфер заполнен на 100%" in player,
               "TV_fast_switch_state": "fullscreen && (player.isPlaying.value || player.player.playWhenReady)" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Канал ${failed.name} недоступен, переключаю на ${channels[next].name}" in tv and "autoRecoveryTargets" in tv,
+              "tv_orientation_lock": "SCREEN_ORIENTATION_LOCKED" in tv and "SCREEN_ORIENTATION_UNSPECIFIED" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
               "radio_active_restore": "fun refreshPlaybackState()" in radio_controller and "Lifecycle.Event.ON_RESUME" in main and "animateScrollToItem(targetIndex)" in main and "activeStationFocusRequester.requestFocus()" in main,
               "radio_controller_release_safe": "handler.post" in radio_controller and "pendingFuture?.cancel(false)" in radio_controller and "if (released) return" in radio_controller,
