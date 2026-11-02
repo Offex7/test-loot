@@ -2198,7 +2198,7 @@ private fun TvLoadingSplash(
                 progress = { bufferPercent.coerceIn(0, 100) / 100f },
                 modifier = Modifier.fillMaxWidth()
             )
-            Text("\${bufferPercent.coerceIn(0, 100)}%", color = Color.LightGray, fontSize = 10.sp)
+            Text(text = "${bufferPercent.coerceIn(0, 100)}%", color = Color.LightGray, fontSize = 10.sp, maxLines = 1)
         }
     }
 }

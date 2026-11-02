@@ -1,5 +1,6 @@
 package com.radiotv.control.core
 
+import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
@@ -7,6 +8,8 @@ import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -174,25 +177,55 @@ class BluetoothHidController(context: Context) : AutoCloseable {
         }
     }
 
+    @Suppress("MissingPermission")
     fun start() {
-        if (profileRequested || profile != null) return
         val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
         if (adapter == null) {
-            stateMutable.value = BluetoothHidStatus.Error("На этом устройстве нет Bluetooth-адаптера.")
-            return
+            val message = "На этом устройстве нет Bluetooth-адаптера."
+            stateMutable.value = BluetoothHidStatus.Error(message)
+            throw IllegalStateException(message)
         }
-        if (!runCatching { adapter.isEnabled }.getOrDefault(false)) {
-            stateMutable.value = BluetoothHidStatus.Error("Сначала включите Bluetooth.")
-            return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val missingPermissions = listOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE
+            ).filter { permission ->
+                appContext.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missingPermissions.isNotEmpty()) {
+                val message = "Для Bluetooth HID нужны разрешения «Устройства поблизости» (CONNECT и ADVERTISE)."
+                stateMutable.value = BluetoothHidStatus.Error(message)
+                throw SecurityException(message)
+            }
         }
+
+        val enabled = runCatching { adapter.isEnabled }.getOrElse { error ->
+            val message = error.message ?: "Нет доступа к состоянию Bluetooth."
+            stateMutable.value = BluetoothHidStatus.Error(message)
+            throw SecurityException(message, error)
+        }
+        if (!enabled) {
+            val message = "Bluetooth выключен. Включите его и повторите запуск HID."
+            stateMutable.value = BluetoothHidStatus.Error(message)
+            throw IllegalStateException(message)
+        }
+
+        if (profileRequested || profile != null) return
+
         stateMutable.value = BluetoothHidStatus.Starting
-        profileRequested = runCatching {
+        profileRequested = try {
             adapter.getProfileProxy(appContext, serviceListener, BluetoothProfile.HID_DEVICE)
-        }.getOrElse {
-            stateMutable.value = BluetoothHidStatus.Error(it.message ?: "Не удалось открыть Bluetooth HID profile.")
-            false
+        } catch (error: Throwable) {
+            val message = error.message ?: "Не удалось открыть Bluetooth HID profile."
+            stateMutable.value = BluetoothHidStatus.Error(message)
+            throw IllegalStateException(message, error)
         }
-        if (!profileRequested) stateMutable.value = BluetoothHidStatus.Error("Система не предоставила Bluetooth HID profile.")
+        if (!profileRequested) {
+            val message = "Система не предоставила Bluetooth HID profile."
+            stateMutable.value = BluetoothHidStatus.Error(message)
+            throw IllegalStateException(message)
+        }
     }
 
     suspend fun sendRemoteKey(key: RemoteKey) = withContext(Dispatchers.IO) {

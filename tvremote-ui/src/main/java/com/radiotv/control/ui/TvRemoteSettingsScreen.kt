@@ -59,6 +59,7 @@ fun TvRemoteSettingsScreen(
     onNotificationsChange: (Boolean) -> Unit,
     onConnect: () -> Unit,
     onStartSearch: () -> Unit,
+    isSearching: Boolean = false,
     onCompletePairing: () -> Unit,
     onStartBluetooth: () -> Unit,
     savedDevices: List<RemoteSavedDeviceUi> = emptyList(),
@@ -229,11 +230,27 @@ fun TvRemoteSettingsScreen(
                     }
                     else -> {
                         Text("Поиск телевизоров по mDNS и SSDP в локальной сети.", color = RadioTvPalette.Muted, fontSize = 12.sp)
+                        if (isSearching) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = RadioTvPalette.Red,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(9.dp))
+                                Text("Поиск устройств в сети…", color = Color.White, fontSize = 12.sp)
+                            }
+                        }
                         Button(
                             onClick = onStartSearch,
                             modifier = Modifier.fillMaxWidth(),
+                            enabled = !isSearching,
                             colors = ButtonDefaults.buttonColors(containerColor = RadioTvPalette.Red)
-                        ) { Text("ИСКАТЬ ТЕЛЕВИЗОРЫ", color = Color.White) }
+                        ) { Text(if (isSearching) "ПОИСК…" else "ИСКАТЬ ТЕЛЕВИЗОРЫ", color = Color.White) }
                     }
                 }
 

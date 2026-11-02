@@ -7,6 +7,8 @@
 package com.offex7.streamhub
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.app.PictureInPictureParams
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -334,9 +336,11 @@ class MainActivity : FragmentActivity() {
         private set
     private var televisionDevice = false
     internal var requestedSection by mutableStateOf<Section?>(null)
+    internal var requestedRemotePad by mutableStateOf(false)
 
     companion object {
         const val EXTRA_WIDGET_SECTION = "widget_section"
+        const val WIDGET_REMOTE_SECTION = "REMOTE"
     }
 
     private lateinit var store: SettingsStore
@@ -361,11 +365,13 @@ class MainActivity : FragmentActivity() {
         window.navigationBarColor = AColor.TRANSPARENT
         window.setNavigationBarDividerColor(AColor.TRANSPARENT)
         store = SettingsStore(applicationContext)
-        requestedSection = when (intent.getStringExtra(EXTRA_WIDGET_SECTION)) {
+        val widgetSection = intent.getStringExtra(EXTRA_WIDGET_SECTION)
+        requestedSection = when (widgetSection) {
             Section.RADIO.name -> Section.RADIO
             Section.TV.name -> Section.TV
             else -> null
         }
+        requestedRemotePad = widgetSection == WIDGET_REMOTE_SECTION
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
         setContent { AppTheme(store) { App(store, tv, radio, this) } }
@@ -383,11 +389,13 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        requestedSection = when (intent.getStringExtra(EXTRA_WIDGET_SECTION)) {
+        val widgetSection = intent.getStringExtra(EXTRA_WIDGET_SECTION)
+        requestedSection = when (widgetSection) {
             Section.RADIO.name -> Section.RADIO
             Section.TV.name -> Section.TV
             else -> null
         }
+        requestedRemotePad = widgetSection == WIDGET_REMOTE_SECTION
     }
 
     override fun onStart() {
@@ -530,8 +538,9 @@ private fun App(
     var notificationDuration by remember { mutableLongStateOf(5000L) }
     var notificationToken by remember { mutableLongStateOf(0L) }
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
-    var remoteTab by rememberSaveable { mutableStateOf(false) }
+    var remoteTab by rememberSaveable { mutableStateOf(activity.requestedRemotePad) }
     var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
+    var remoteAutoSearching by remember { mutableStateOf(false) }
     DisposableEffect(activity, remoteTab, remoteSettingsVisible) {
         val previousOrientation = activity.requestedOrientation
         val lockRemotePadPortrait = remoteTab && !remoteSettingsVisible && !activity.isTelevisionDevice
@@ -594,6 +603,32 @@ private fun App(
     fun refreshRemoteDevices() {
         remoteSavedDevices = activity.remoteRuntime.savedDevices()
         remoteBondedDevices = runCatching { activity.remoteRuntime.bondedBluetoothDevices() }.getOrDefault(emptyList())
+    }
+
+    LaunchedEffect(activity.requestedRemotePad) {
+        if (activity.requestedRemotePad) {
+            section = null
+            remoteSettingsVisible = false
+            remoteTab = true
+            activity.requestedRemotePad = false
+        }
+    }
+
+    fun startRemoteAutoSearch() {
+        if (remoteAutoSearching) return
+        activity.companionClient.resume()
+        remoteAutoSearching = true
+        remoteConnectionMessage = "Поиск телевизоров в локальной сети…"
+        scope.launch {
+            try {
+                remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
+                    .getOrElse { it.message ?: "Телевизоры не найдены." }
+                refreshRemoteDevices()
+                notify(remoteConnectionMessage, 3500L)
+            } finally {
+                remoteAutoSearching = false
+            }
+        }
     }
 
     fun startSystemSpeechInput() {
@@ -669,15 +704,70 @@ private fun App(
         if (granted) startSystemSpeechInput()
         else notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
     }
+    fun bluetoothPermissionsGranted(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S || listOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        ).all { permission ->
+            ContextCompat.checkSelfPermission(appContext, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+    @Suppress("MissingPermission")
+    fun currentBluetoothAdapter(): BluetoothAdapter? = runCatching {
+        (appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+            ?: BluetoothAdapter.getDefaultAdapter()
+    }.getOrNull()
+
+    @Suppress("MissingPermission")
+    fun startBluetoothHidAfterChecks() {
+        if (!bluetoothPermissionsGranted()) {
+            notify("Ошибка Bluetooth: не выданы разрешения «Устройства поблизости».", 4000L)
+            return
+        }
+        val adapter = currentBluetoothAdapter()
+        if (adapter == null) {
+            notify("Ошибка Bluetooth: адаптер не найден на этом устройстве.", 4000L)
+            return
+        }
+        val enabled = runCatching { adapter.isEnabled }.getOrElse {
+            notify("Ошибка Bluetooth: нет доступа к состоянию адаптера.", 4000L)
+            return
+        }
+        if (!enabled) {
+            notify("Ошибка Bluetooth: адаптер выключен. Включите Bluetooth и повторите запуск.", 4000L)
+            return
+        }
+        runCatching { activity.remoteRuntime.startBluetoothHid() }
+            .onSuccess {
+                refreshRemoteDevices()
+                notify("Bluetooth включён. Система приняла запрос на запуск HID; подтвердите сопряжение на телевизоре.", 4500L)
+            }
+            .onFailure { notify("Ошибка Bluetooth HID: " + (it.message ?: "не удалось запустить профиль"), 4500L) }
+    }
+
+    val bluetoothEnableLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val adapter = currentBluetoothAdapter()
+        val enabled = bluetoothPermissionsGranted() && runCatching { adapter?.isEnabled == true }.getOrDefault(false)
+        if (result.resultCode == android.app.Activity.RESULT_OK && enabled) {
+            startBluetoothHidAfterChecks()
+        } else if (enabled) {
+            startBluetoothHidAfterChecks()
+        } else {
+            notify("Ошибка Bluetooth: включение отменено или адаптер остался выключен.", 4000L)
+        }
+    }
+
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.all { it }) {
-            runCatching { activity.remoteRuntime.startBluetoothHid() }
-                .onSuccess {
-                    refreshRemoteDevices()
-                    notify("Bluetooth HID запущен. Сопрягите телевизор в настройках Bluetooth ТВ.", 4000L)
-                }
-                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
-        } else notify("Разрешения Bluetooth не предоставлены", 3000L)
+        if (grants.values.all { it } && bluetoothPermissionsGranted()) {
+            val adapter = currentBluetoothAdapter()
+            when {
+                adapter == null -> notify("Ошибка Bluetooth: адаптер не найден на этом устройстве.", 4000L)
+                runCatching { adapter.isEnabled }.getOrDefault(false) -> startBluetoothHidAfterChecks()
+                else -> bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            }
+        } else {
+            notify("Ошибка Bluetooth: необходимые разрешения не предоставлены.", 4000L)
+        }
     }
     val castFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -723,14 +813,26 @@ private fun App(
     }
 
     fun prepareBluetoothMode() {
-        val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
-        if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-            bluetoothPermissionLauncher.launch(permissions)
-        } else {
-            runCatching { activity.remoteRuntime.startBluetoothHid() }
-                .onSuccess { refreshRemoteDevices(); notify("Bluetooth HID запущен.", 2500L) }
-                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 3500L) }
+        if (!bluetoothPermissionsGranted()) {
+            bluetoothPermissionLauncher.launch(
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+            )
+            return
         }
+        val adapter = currentBluetoothAdapter()
+        if (adapter == null) {
+            notify("Ошибка Bluetooth: адаптер не найден на этом устройстве.", 4000L)
+            return
+        }
+        val enabled = runCatching { adapter.isEnabled }.getOrElse {
+            notify("Ошибка Bluetooth: нет доступа к состоянию адаптера.", 4000L)
+            return
+        }
+        if (!enabled) {
+            bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            return
+        }
+        startBluetoothHidAfterChecks()
     }
 
     fun sendRemoteLaunch(packageName: String) {
@@ -1078,12 +1180,7 @@ private fun App(
                                     scope.launch { store.setRemoteConnectionMethod(method) }
                                     when (method) {
                                         "bluetooth" -> prepareBluetoothMode()
-                                        "auto" -> scope.launch {
-                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
-                                                .getOrElse { it.message ?: "Телевизоры не найдены." }
-                                            refreshRemoteDevices()
-                                            notify(remoteConnectionMessage, 3500L)
-                                        }
+                                        "auto" -> startRemoteAutoSearch()
                                     }
                                 },
                                 hapticsEnabled = hapticsEnabled,
@@ -1100,15 +1197,8 @@ private fun App(
                                         notify(remoteConnectionMessage, 3500L)
                                     }
                                 },
-                                onStartSearch = {
-                                    activity.companionClient.resume()
-                                    scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
-                                            .getOrElse { it.message ?: "Телевизоры не найдены." }
-                                        refreshRemoteDevices()
-                                        notify(remoteConnectionMessage, 3500L)
-                                    }
-                                },
+                                onStartSearch = { startRemoteAutoSearch() },
+                                isSearching = remoteAutoSearching,
                                 onCompletePairing = {
                                     scope.launch {
                                         remoteConnectionMessage = runCatching { activity.remoteRuntime.completePairing(remotePairingCode) }
@@ -1170,16 +1260,7 @@ private fun App(
                                 },
                                 onBack = { remoteSettingsVisible = false; remoteTab = false },
                                 onSettings = { remoteSettingsVisible = true },
-                                onStartSearch = {
-                                    activity.companionClient.resume()
-                                    scope.launch {
-                                        notify("Поиск телевизоров в локальной сети…", 2500L)
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
-                                            .getOrElse { it.message ?: "Нет соединения" }
-                                        refreshRemoteDevices()
-                                        notify(remoteConnectionMessage, 3500L)
-                                    }
-                                },
+                                onStartSearch = { startRemoteAutoSearch() },
                                 onFeatureAction = { action ->
                                     when (action) {
                                         RemoteFeatureAction.KEYBOARD -> remoteKeyboardVisible = true
@@ -1403,13 +1484,7 @@ private fun App(
                                         .onFailure { notify(it.message ?: "Air Mouse недоступна", 3500L) }
                                 }
                             } else {
-                                val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
-                                if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) bluetoothPermissionLauncher.launch(permissions)
-                                else {
-                                    runCatching { activity.remoteRuntime.startBluetoothHid() }
-                                        .onSuccess { notify("Запущен Bluetooth HID. Сопрягите Radio.TV на телевизоре.", 4000L) }
-                                        .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
-                                }
+                                prepareBluetoothMode()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -4461,7 +4536,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.6")
+                            .header("User-Agent", "Radio.TV/4.7")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -4712,7 +4787,7 @@ private suspend fun scanAvailability(
                         client.newCall(
                             Request.Builder().url(item.url)
                                 .header("Range", "bytes=0-1")
-                                .header("User-Agent", "Radio.TV/4.6")
+                                .header("User-Agent", "Radio.TV/4.7")
                                 .get().build()
                         ).execute().use {
                             if (it.isSuccessful || it.code in 300..399 || it.code == 416) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
