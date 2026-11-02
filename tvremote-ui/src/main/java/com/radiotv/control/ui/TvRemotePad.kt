@@ -3,6 +3,11 @@ package com.radiotv.control.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.LocalHapticFeedback
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -91,6 +96,8 @@ import kotlinx.coroutines.delay
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST, APP_YOUTUBE, APP_NETFLIX }
 
 
+private val LocalRemoteHaptics = staticCompositionLocalOf { true }
+
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
     val DeepRed = Color(0xFFD32F2F)
@@ -163,11 +170,13 @@ internal fun TvRemotePad(
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
     energySaving: Boolean = false,
+    hapticsEnabled: Boolean = true,
     deviceName: String = "Телевизор не подключён",
     onSettings: () -> Unit = {},
     onBack: () -> Unit = { onKey(RemoteKey.BACK) },
     onStartSearch: () -> Unit = {}
 ) {
+    CompositionLocalProvider(LocalRemoteHaptics provides hapticsEnabled) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
             .background(Color(0xFF000000))
@@ -308,7 +317,7 @@ internal fun TvRemotePad(
                             scaleX = scale
                             scaleY = scale
                         }
-                        .clickable(enabled = deviceName == "Начать поиск", onClick = onStartSearch),
+                        .clickable(enabled = !enabled, onClick = onStartSearch),
                     color = if (deviceName == "Начать поиск") RadioTvPalette.Red else Color.White,
                     fontSize = if (tight) 16.sp else 19.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -626,6 +635,7 @@ internal fun TvRemotePad(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -640,9 +650,11 @@ private fun RemoteSurfaceButton(
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
+    val hapticsEnabled = LocalRemoteHaptics.current
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.91f else 1f,
-        animationSpec = tween(140, easing = FastOutSlowInEasing),
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(70, easing = FastOutSlowInEasing),
         label = "press-$description"
     )
     Box(
@@ -657,9 +669,12 @@ private fun RemoteSurfaceButton(
             .semantics { contentDescription = description }
             .clickable(
                 interactionSource = interactions,
-                indication = null,
+                indication = rememberRipple(bounded = true),
                 onClickLabel = description,
-                onClick = onClick
+                onClick = {
+                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onClick()
+                }
             ),
         contentAlignment = Alignment.Center
     ) {

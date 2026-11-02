@@ -2,6 +2,7 @@ package com.radiotv.control.core
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
@@ -40,6 +41,7 @@ class BluetoothHidController(context: Context) : AutoCloseable {
 
     @Volatile private var profile: BluetoothHidDevice? = null
     @Volatile private var connectedHost: BluetoothDevice? = null
+    @Volatile private var selectedHost: BluetoothDevice? = null
     @Volatile private var appRegistered = false
     @Volatile private var profileRequested = false
 
@@ -55,7 +57,9 @@ class BluetoothHidController(context: Context) : AutoCloseable {
                 connectedHost = pluggedDevice
                 stateMutable.value = BluetoothHidStatus.Connected(deviceName(pluggedDevice), safeAddress(pluggedDevice))
             } else {
-                stateMutable.value = BluetoothHidStatus.Ready
+                val selected = selectedHost
+                if (selected != null) connectSelectedHost(selected)
+                else stateMutable.value = BluetoothHidStatus.Ready
             }
         }
 
@@ -128,6 +132,46 @@ class BluetoothHidController(context: Context) : AutoCloseable {
             appRegistered = false
             profileRequested = false
             stateMutable.value = BluetoothHidStatus.Idle
+        }
+    }
+
+    /** Returns only devices already paired in Android system settings. */
+    fun bondedDevices(): List<BluetoothRemoteDevice> {
+        val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        return runCatching {
+            adapter?.bondedDevices.orEmpty().map { device ->
+                BluetoothRemoteDevice(
+                    name = runCatching { device.name?.takeIf { it.isNotBlank() } ?: "Bluetooth TV" }.getOrDefault("Bluetooth TV"),
+                    address = runCatching { device.address.orEmpty() }.getOrDefault("")
+                )
+            }.filter { it.address.isNotBlank() }.sortedBy { it.name.lowercase() }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Selects an already-bonded TV; actual connection is confirmed by the HID framework callback. */
+    fun connectToBondedDevice(address: String) {
+        val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        val cleanAddress = address.trim()
+        require(cleanAddress.matches(Regex("(?i)([0-9a-f]{2}:){5}[0-9a-f]{2}"))) { "Некорректный Bluetooth-адрес." }
+        val device = checkNotNull(adapter) { "Bluetooth-адаптер недоступен." }.getRemoteDevice(cleanAddress)
+        check(device.bondState == BluetoothDevice.BOND_BONDED) { "Сначала сопрягите телевизор в настройках Bluetooth Android." }
+        selectedHost = device
+        val current = profile
+        if (current != null && appRegistered) connectSelectedHost(device) else start()
+    }
+
+    private fun connectSelectedHost(device: BluetoothDevice) {
+        val current = profile ?: return
+        runCatching {
+            if (current.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED) {
+                connectedHost = device
+                stateMutable.value = BluetoothHidStatus.Connected(deviceName(device), safeAddress(device))
+            } else {
+                check(current.connect(device)) { "Телевизор отклонил подключение Bluetooth HID." }
+                stateMutable.value = BluetoothHidStatus.Starting
+            }
+        }.onFailure {
+            stateMutable.value = BluetoothHidStatus.Error(it.message ?: "Не удалось подключить Bluetooth HID.")
         }
     }
 
@@ -234,6 +278,7 @@ class BluetoothHidController(context: Context) : AutoCloseable {
         val hid = profile
         profile = null
         connectedHost = null
+        selectedHost = null
         appRegistered = false
         profileRequested = false
         runCatching { hid?.unregisterApp() }

@@ -91,6 +91,8 @@ class PlayerController(context: Context) {
     private var resumeAfterInterruption = false
     private var userPaused = false
     private var userStopped = false
+    private var hasStartedPlayback = false
+    private var lastWeakSignalNoticeAt = 0L
     private var internalPlayWhenReadyChange = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -147,7 +149,10 @@ class PlayerController(context: Context) {
             .also { newPlayer ->
                 newPlayer.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(value: Boolean) {
-                        if (newPlayer === currentPlayer) _isPlaying.value = value
+                        if (newPlayer === currentPlayer) {
+                            _isPlaying.value = value
+                            if (value) hasStartedPlayback = true
+                        }
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
@@ -248,7 +253,7 @@ class PlayerController(context: Context) {
         bufferingStartedAt = System.currentTimeMillis()
         lastBufferProgressAt = bufferingStartedAt
         lastBufferedPosition = player.bufferedPosition
-        val wasActive = player.isPlaying || player.playWhenReady
+        val wasActive = hasStartedPlayback && !userPaused && !userStopped
         if (wasActive && !userPaused && !userStopped) {
             resumeAfterInterruption = true
             LogExporter.log("TV buffering started; playback kept ready for automatic recovery")
@@ -263,10 +268,13 @@ class PlayerController(context: Context) {
                 player === currentPlayer &&
                 player.playbackState == Player.STATE_BUFFERING &&
                 System.currentTimeMillis() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS &&
+                wasActive &&
                 !suppressBufferRecovery
             ) {
-                if (_weakNetworkNoticeCount.value < 1) {
-                    _weakNetworkNoticeCount.value = 1
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (lastWeakSignalNoticeAt == 0L || now - lastWeakSignalNoticeAt >= 120_000L) {
+                    lastWeakSignalNoticeAt = now
+                    _weakNetworkNoticeCount.value += 1
                     _weakNetworkEvent.value += 1L
                 }
                 _weakNetwork.value = true
@@ -390,6 +398,7 @@ class PlayerController(context: Context) {
         lastUrl = url
         userPaused = false
         userStopped = false
+        hasStartedPlayback = false
         resumeAfterInterruption = false
         cancelFadeOut(restore = false)
         _error.value = null
@@ -419,6 +428,7 @@ class PlayerController(context: Context) {
         suppressBufferRecovery = suppressRecovery
         userPaused = false
         userStopped = false
+        hasStartedPlayback = false
         resumeAfterInterruption = false
         reconnectAttempts = 0
         cancelFadeOut(restore = false)

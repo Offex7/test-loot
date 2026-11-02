@@ -8,8 +8,17 @@ import com.radiotv.control.cast.DlnaDevice
 import com.radiotv.control.cast.LocalMediaHttpServer
 import com.radiotv.control.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.Closeable
 import java.net.SocketTimeoutException
 
@@ -17,6 +26,11 @@ import java.net.SocketTimeoutException
 internal class RemoteControlRuntime(context: Context) : Closeable {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences("radio_tv_remote_runtime", Context.MODE_PRIVATE)
+    private val deviceHistory = RemoteDeviceHistory(appContext)
+    private val networkDiscovery = TvNetworkDiscovery(appContext)
+    private val connectionMutex = Mutex()
+    private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var lastResumeReconnectAt = 0L
 
     val remoteV2 = AndroidTvRemoteV2Transport(appContext)
     val adb = AdbRemoteDevice(appContext)
@@ -25,6 +39,37 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
     val voice = AndroidTvVoiceInputController(appContext, remoteV2)
     val cast = DlnaCastController(appContext)
     val mediaServer = LocalMediaHttpServer(appContext)
+
+    init {
+        runtimeScope.launch {
+            bluetooth.status.collect { status ->
+                if (status is BluetoothHidStatus.Connected) {
+                    deviceHistory.record(status.address, status.deviceName, "Bluetooth")
+                    preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()
+                }
+            }
+        }
+    }
+
+    fun savedDevices(): List<SavedRemoteDevice> = deviceHistory.devices()
+
+    fun saveManualHost(host: String) {
+        val clean = host.trim()
+        if (clean.isBlank()) preferences.edit().remove("last_remote_host").apply()
+        else preferences.edit().putString("last_remote_host", clean).apply()
+    }
+    fun renameSavedDevice(id: String, name: String): Boolean = deviceHistory.rename(id, name)
+    fun removeSavedDevice(id: String) = deviceHistory.remove(id)
+    fun bondedBluetoothDevices(): List<BluetoothRemoteDevice> = guardedSync("список Bluetooth-устройств") { bluetooth.bondedDevices() }
+    fun rememberCompanionDevice(host: String, name: String) { deviceHistory.record(host, name.ifBlank { "Android TV" }, "Wi-Fi"); preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply() }
+
+    private fun rememberWifiDevice(host: String, source: String) {
+        val clean = host.trim()
+        if (clean.isBlank()) return
+        val label = if (source.isBlank()) "Android TV" else source.take(16)
+        deviceHistory.record(clean, label, "Wi-Fi")
+        preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()
+    }
 
     val savedHost: String
         get() = preferences.getString("last_remote_host", null)?.takeIf { it.isNotBlank() }
@@ -67,19 +112,20 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         }
     }
 
-    suspend fun connect(host: String, allowPairing: Boolean): String {
+    suspend fun connect(host: String, allowPairing: Boolean): String = connectionMutex.withLock {
         val target = host.trim().ifBlank { savedHost }
         require(target.isNotBlank()) { "Введите IP-адрес телевизора." }
         preferences.edit().putString("last_remote_host", target).apply()
 
         if (remoteV2.status.value is RemoteStatus.AwaitingCode) {
-            return "Ожидается код сопряжения Android TV Remote v2."
+            return@withLock "Ожидается код сопряжения Android TV Remote v2."
         }
 
         var remoteError: Throwable? = null
         try {
             guarded("подключение Android TV Remote v2") { remoteV2.connect(target) }
-            return "Подключено: Android TV Remote v2"
+            rememberWifiDevice(target, "Android TV")
+            return@withLock "Подключено: Android TV Remote v2"
         } catch (error: Exception) {
             remoteError = error
         }
@@ -87,7 +133,7 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         if (allowPairing) {
             try {
                 guarded("сопряжение Android TV Remote v2") { remoteV2.beginPairing(target) }
-                return "На экране телевизора появится шестизначный код сопряжения."
+                return@withLock "На экране телевизора появится шестизначный код сопряжения."
             } catch (error: Exception) {
                 remoteError = error
             }
@@ -95,17 +141,85 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
 
         try {
             guarded("подключение ADB") { adb.connect(target) }
-            return "Подключено: ADB"
+            rememberWifiDevice(target, "Android TV")
+            return@withLock "Подключено: ADB"
         } catch (error: Exception) {
-            if (bluetooth.status.value is BluetoothHidStatus.Connected) return "Подключено: Bluetooth HID"
+            if (bluetooth.status.value is BluetoothHidStatus.Connected) return@withLock "Подключено: Bluetooth HID"
             val detail = error.message ?: remoteError?.let { messageFor("подключение", it) }
                 ?: "Устройство недоступно."
-            return "Нет соединения. $detail"
+            return@withLock "Нет соединения. $detail"
         }
+    }
+
+    suspend fun autoConnect(hostHint: String = ""): String {
+        val hint = hostHint.trim()
+        if (hint.isNotBlank()) return connect(hint, false)
+
+        val saved = savedHost
+        if (saved.isNotBlank()) {
+            val result = connect(saved, false)
+            if (remoteV2.status.value is RemoteStatus.Connected || adb.status.value is AdbRemoteStatus.Connected) return result
+        }
+
+        val discovered = networkDiscovery.discover()
+        for (device in discovered) {
+            val result = runCatching { connect(device.host, true) }.getOrElse { it.message ?: "Не удалось подключиться." }
+            if (remoteV2.status.value is RemoteStatus.AwaitingCode) return result
+            if (remoteV2.status.value is RemoteStatus.Connected || adb.status.value is AdbRemoteStatus.Connected) {
+                deviceHistory.record(device.host, device.name, "Wi-Fi")
+                preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()
+                return result
+            }
+        }
+        return if (discovered.isEmpty()) {
+            "Телевизоры не найдены. Проверьте Wi-Fi и разрешение локальной сети."
+        } else {
+            "Не удалось подключиться к найденным телевизорам. Попробуйте ручной IP или Bluetooth HID."
+        }
+    }
+
+    suspend fun connectBluetoothDevice(address: String): String = guarded("подключение Bluetooth HID") {
+        bluetooth.connectToBondedDevice(address)
+        val outcome = withTimeoutOrNull(15_000L) {
+            bluetooth.status.first { it is BluetoothHidStatus.Connected || it is BluetoothHidStatus.Error }
+        }
+        when (outcome) {
+            is BluetoothHidStatus.Connected -> {
+                val device = bluetooth.bondedDevices().firstOrNull { it.address.equals(outcome.address, true) }
+                deviceHistory.record(outcome.address, device?.name ?: outcome.deviceName, "Bluetooth")
+                preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()
+                "Подключено: Bluetooth HID"
+            }
+            is BluetoothHidStatus.Error -> throw IllegalStateException(outcome.message)
+            else -> "Bluetooth HID запускается. Подтвердите подключение на телевизоре."
+        }
+    }
+
+    suspend fun reconnectAfterResume(): String? {
+        val now = android.os.SystemClock.elapsedRealtime()
+        synchronized(this) {
+            if (now - lastResumeReconnectAt < 2_000L) return null
+            lastResumeReconnectAt = now
+        }
+        if (!preferences.getBoolean(KEY_HAS_CONNECTED, false)) return null
+        if (remoteV2.status.value is RemoteStatus.Connected || adb.status.value is AdbRemoteStatus.Connected || bluetooth.status.value is BluetoothHidStatus.Connected) return null
+        val recent = deviceHistory.devices().firstOrNull()
+        if (recent?.connectionType == "Bluetooth") return connectBluetoothDevice(recent.host)
+        val target = recent?.host?.takeIf { it.isNotBlank() } ?: savedHost
+        if (target.isBlank()) return null
+        return connect(target, false)
+    }
+
+    suspend fun connectSavedDevice(id: String): String {
+        val device = deviceHistory.devices().firstOrNull { it.id == id }
+            ?: throw IllegalArgumentException("Телевизор больше не сохранён.")
+        return if (device.connectionType == "Bluetooth") connectBluetoothDevice(device.host)
+        else connect(device.host, false)
     }
 
     suspend fun completePairing(code: String): String = guarded("сопряжение Android TV Remote v2") {
         remoteV2.completePairing(code)
+        remoteV2.pairedHost()?.let { rememberWifiDevice(it, "Android TV") }
         "Подключено: Android TV Remote v2"
     }
 
@@ -200,7 +314,10 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
     suspend fun castTo(device: DlnaDevice, media: CastMedia) =
         guarded("трансляция DLNA") { cast.play(device, media) }
 
+    private companion object { const val KEY_HAS_CONNECTED = "has_successful_remote_connection_v1" }
+
     override fun close() {
+        runtimeScope.cancel()
         runCatching { voice.close() }
         runCatching { airMouse.close() }
         runCatching { bluetooth.close() }

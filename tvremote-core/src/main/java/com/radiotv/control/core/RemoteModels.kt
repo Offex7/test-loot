@@ -83,3 +83,6 @@ sealed interface RemoteStatus {
     data class Connected(val host: String) : RemoteStatus
     data class Error(val message: String) : RemoteStatus
 }
+
+
+data class BluetoothRemoteDevice(val name: String, val address: String)

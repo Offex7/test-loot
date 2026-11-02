@@ -117,6 +117,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -200,6 +201,12 @@ fun TvV8Screen(
     val focusRequester = FocusRequester()
     val keyboardController = LocalSoftwareKeyboardController.current
     val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
+    val logoImageLoader = androidx.compose.runtime.remember(context.applicationContext) {
+        ImageLoader.Builder(context.applicationContext)
+            .dispatcher(Dispatchers.IO.limitedParallelism(4))
+            .crossfade(false)
+            .build()
+    }
     var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Float>()) }
     var sourceReady by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var sourcePickerVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -1220,6 +1227,7 @@ private fun TvV9Logo(
         Text("NO\\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
         if (!url.isNullOrBlank()) {
             AsyncImage(
+                    imageLoader = logoImageLoader,
                 model = request,
                 contentDescription = null,
                 modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
@@ -2135,34 +2143,21 @@ private fun TvLoadingSplash(
             dots = if (dots >= 3) 1 else dots + 1
         }
     }
-    val transition = rememberInfiniteTransition(label = "tv-loading-squares")
+    val transition = rememberInfiniteTransition(label = "tv-loading-squares-v46")
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "tv-loading-assembly"
+        animationSpec = infiniteRepeatable(animation = tween(1800, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "tv-loading-assembly-v46"
     )
     Column(
-        modifier = Modifier
-            .widthIn(min = 180.dp, max = 260.dp)
-            .background(Color.Black.copy(alpha = .30f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 22.dp, vertical = 18.dp),
+        modifier = Modifier.widthIn(min = 104.dp, max = 148.dp).padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Text(
-            "Загрузка" + ".".repeat(dots),
-            color = Color.White,
-            fontSize = 17.sp,
-            lineHeight = 23.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        Canvas(Modifier.size(76.dp)) {
+        Canvas(Modifier.size(48.dp)) {
             val count = 12
-            val angleStep = (Math.PI * 2.0 / count)
+            val angleStep = Math.PI * 2.0 / count
             val swell = ((1.0 - kotlin.math.cos(phase * Math.PI * 2.0)) / 2.0).toFloat()
             val radius = size.minDimension * (0.12f + 0.30f * swell)
             val side = size.minDimension * (0.10f + 0.035f * (1f - swell))
@@ -2179,19 +2174,13 @@ private fun TvLoadingSplash(
                 )
             }
         }
-        Text(
-            if (waitingForNetwork) "Восстанавливаю соединение…" else "Пожалуйста, подождите",
-            color = TvV9Gray,
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            textAlign = TextAlign.Center
-        )
+        Text("Загрузка" + ".".repeat(dots), color = Color.White, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold)
         if (buffering || bufferPercent >= 100) {
             LinearProgressIndicator(
-                progress = { (bufferPercent.coerceIn(0, 100) / 100f) },
+                progress = { bufferPercent.coerceIn(0, 100) / 100f },
                 modifier = Modifier.fillMaxWidth()
             )
-            Text("Буферизация: " + bufferPercent.coerceIn(0, 100) + "%", color = Color.LightGray, fontSize = 11.sp)
+            Text("\${bufferPercent.coerceIn(0, 100)}%", color = Color.LightGray, fontSize = 10.sp)
         }
     }
 }

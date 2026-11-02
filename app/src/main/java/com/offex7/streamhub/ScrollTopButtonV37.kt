@@ -12,6 +12,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,7 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
@@ -48,88 +49,89 @@ fun ScrollTopButtonV37(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(false) }
-    var scrollSession by remember { mutableLongStateOf(0L) }
+    var userDragging by remember { mutableStateOf(false) }
+    var userSessionActive by remember { mutableStateOf(false) }
+    var userSessionId by remember { mutableLongStateOf(0L) }
     var lastScrollActivityAt by remember { mutableLongStateOf(0L) }
-    var scrollDirection by remember { mutableStateOf(0) }
     val ignoreProgrammaticScrollState by rememberUpdatedState(ignoreProgrammaticScroll)
 
     LaunchedEffect(listState) {
-        var wasScrolling = false
+        listState.interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> {
+                    if (ignoreProgrammaticScrollState) return@collect
+                    userDragging = true
+                    if (!userSessionActive) {
+                        userSessionActive = true
+                        userSessionId += 1L
+                    }
+                    lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
+                }
+                is DragInteraction.Stop, is DragInteraction.Cancel -> {
+                    userDragging = false
+                    if (userSessionActive) lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(listState) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
-            Triple(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-                listState.isScrollInProgress
-            )
+            Triple(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.isScrollInProgress)
         }.collect { (index, offset, scrolling) ->
             val awayFromTop = index > 0 || offset > 0
-            if (ignoreProgrammaticScrollState || !awayFromTop) {
-                visible = false
-                scrollSession = 0L
-                scrollDirection = 0
-                lastScrollActivityAt = 0L
-                wasScrolling = scrolling
-                previousIndex = index
-                previousOffset = offset
-                return@collect
-            }
-
-            val movedDown = index > previousIndex ||
-                (index == previousIndex && offset > previousOffset)
-            val movedUp = index < previousIndex ||
-                (index == previousIndex && offset < previousOffset)
-
-            if (scrolling && movedDown) {
-                lastScrollActivityAt = System.currentTimeMillis()
-                if (!wasScrolling || scrollDirection != 1) {
-                    scrollSession += 1L
+            val moved = index != previousIndex || offset != previousOffset
+            when {
+                !awayFromTop -> {
                     visible = false
+                    userSessionActive = false
+                    userSessionId += 1L
+                    lastScrollActivityAt = 0L
                 }
-                scrollDirection = 1
-            } else if (scrolling && movedUp) {
-                lastScrollActivityAt = System.currentTimeMillis()
-                scrollDirection = -1
-                scrollSession = 0L
-                visible = false
-            } else if (!scrolling && !wasScrolling) {
-                // No new user movement: leave the current five-second idle timer intact.
+                ignoreProgrammaticScrollState -> {
+                    visible = false
+                    userSessionActive = false
+                    userSessionId += 1L
+                    lastScrollActivityAt = 0L
+                }
+                userSessionActive && moved && scrolling -> {
+                    // Preserve the session start; update only the 5-second idle deadline.
+                    lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
+                }
             }
-
-            wasScrolling = scrolling
             previousIndex = index
             previousOffset = offset
         }
     }
 
-    LaunchedEffect(scrollSession) {
-        if (scrollSession <= 0L) return@LaunchedEffect
-        val session = scrollSession
+    LaunchedEffect(userSessionId) {
+        if (!userSessionActive || userSessionId <= 0L) return@LaunchedEffect
+        val session = userSessionId
         delay(2_000L)
-        val awayFromTop =
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        if (session == scrollSession && scrollDirection == 1 &&
-            lastScrollActivityAt > 0L && awayFromTop && !ignoreProgrammaticScrollState
-        ) {
+        val awayFromTop = listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+        if (session == userSessionId && userSessionActive && listState.isScrollInProgress && awayFromTop && !ignoreProgrammaticScrollState) {
             visible = true
         }
+    }
 
-        // One debounced timeout coroutine instead of restarting a delay on every scroll frame.
-        snapshotFlow { lastScrollActivityAt }.collectLatest { activityAt ->
-            if (activityAt <= 0L) return@collectLatest
-            delay(5_000L)
-            val stillAwayFromTop =
-                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-            if (session == scrollSession && activityAt == lastScrollActivityAt &&
-                stillAwayFromTop && listState.canScrollForward
-            ) {
+    LaunchedEffect(lastScrollActivityAt) {
+        val activityAt = lastScrollActivityAt
+        if (activityAt <= 0L) return@LaunchedEffect
+        delay(5_000L)
+        if (activityAt == lastScrollActivityAt && !userDragging && !listState.isScrollInProgress) {
+            if (listState.canScrollForward) {
                 visible = false
+                userSessionActive = false
+                userSessionId += 1L
+            } else {
+                visible = true
             }
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v45")
+    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v46")
     val pulse by pulseTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.045f,
@@ -137,34 +139,27 @@ fun ScrollTopButtonV37(
             animation = tween(850, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "scroll-top-v45-pulse"
+        label = "scroll-top-v46-pulse"
     )
 
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = slideInHorizontally(
-            initialOffsetX = { width -> width },
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
-        ) + fadeIn(animationSpec = tween(220)),
-        exit = slideOutHorizontally(
-            targetOffsetX = { width -> width },
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
-        ) + fadeOut(animationSpec = tween(220))
+        enter = slideInHorizontally(initialOffsetX = { width -> width }, animationSpec = tween(300, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
+        exit = slideOutHorizontally(targetOffsetX = { width -> width }, animationSpec = tween(300, easing = FastOutSlowInEasing)) + fadeOut(tween(220))
     ) {
         IconButton(
             onClick = {
                 InteractionFeedback.vibrate(context, hapticsEnabled, 52L, 165)
                 if (soundEnabled) InteractionFeedback.beep(context, true)
                 visible = false
-                scrollSession = 0L
-                scrollDirection = 0
+                userSessionActive = false
+                userDragging = false
+                userSessionId += 1L
+                lastScrollActivityAt = 0L
                 scope.launch { listState.animateScrollToItem(0) }
             },
-            modifier = Modifier
-                .size(52.dp)
-                .graphicsLayer(scaleX = pulse, scaleY = pulse)
-                .background(Color(0xFFE53935), CircleShape)
+            modifier = Modifier.size(52.dp).graphicsLayer(scaleX = pulse, scaleY = pulse).background(Color(0xFFE53935), CircleShape)
         ) {
             Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(36.dp))
         }

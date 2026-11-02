@@ -65,6 +65,7 @@ class SettingsStore(private val context: Context) {
     private val firstLaunchKey = booleanPreferencesKey("first_launch_v2")
     private val hiddenChannelsKey = stringSetPreferencesKey("hiddenChannels")
     private val tvSearchHistoryKey = stringPreferencesKey("search_history_tv_v1")
+    private val remoteKeyboardHistoryKey = stringPreferencesKey("remote_keyboard_history_v1")
     private val radioSearchHistoryKey = stringPreferencesKey("search_history_radio_v1")
     private val energySavingModeKey = stringPreferencesKey("energy_saving_mode_v1")
     private val hapticsKey = booleanPreferencesKey("haptics_enabled_v1")
@@ -680,6 +681,34 @@ class SettingsStore(private val context: Context) {
             map.forEach { (id, zoom) -> put(id, zoom.toDouble()) }
         }.toString()
 
+
+    fun remoteTextHistoryFlow(): Flow<List<String>> =
+        context.dataStore.data.map { decodeRemoteTextHistory(it[remoteKeyboardHistoryKey]) }
+
+    suspend fun remoteTextHistory(): List<String> =
+        decodeRemoteTextHistory(context.dataStore.data.first()[remoteKeyboardHistoryKey])
+
+    suspend fun rememberRemoteText(query: String) {
+        val clean = query.trim().replace(Regex("\\s+"), " ").take(80)
+        if (clean.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val updated = (decodeRemoteTextHistory(prefs[remoteKeyboardHistoryKey]).filterNot { it.equals(clean, true) } + clean).takeLast(3)
+            prefs[remoteKeyboardHistoryKey] = org.json.JSONArray(updated).toString()
+        }
+    }
+
+    private fun decodeRemoteTextHistory(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val json = org.json.JSONArray(raw)
+            buildList {
+                for (index in 0 until json.length()) {
+                    val value = json.optString(index).trim()
+                    if (value.isNotBlank()) add(value.take(80))
+                }
+            }.distinctBy { it.lowercase() }.takeLast(3)
+        }.getOrDefault(emptyList())
+    }
 
     suspend fun searchHistory(section: Section): List<String> {
         val key = if (section == Section.TV) tvSearchHistoryKey else radioSearchHistoryKey

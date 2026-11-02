@@ -71,7 +71,7 @@ class TvLogoCache(context: Context) {
         client.newCall(
             Request.Builder()
                 .url(url)
-                .header("User-Agent", "Radio.TV/9.0")
+                .header("User-Agent", "Radio.TV/4.6")
                 .build()
         ).execute().use { response ->
             if (!response.isSuccessful) error("HTTP " + response.code)

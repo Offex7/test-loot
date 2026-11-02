@@ -24,6 +24,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
@@ -185,6 +188,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -223,6 +227,8 @@ import com.radiotv.control.ui.RemoteFeatureAction
 import com.radiotv.control.ui.TvRemotePadScreen
 import com.radiotv.control.ui.TvRemoteSettingsScreen
 import com.radiotv.control.ui.TouchpadSurface
+import com.radiotv.control.ui.RemoteSavedDeviceUi
+import com.radiotv.control.ui.RemoteBluetoothDeviceUi
 import com.radiotv.control.core.RemoteKey
 import com.radiotv.control.core.RemoteStatus
 import com.radiotv.control.core.AdbRemoteStatus
@@ -339,6 +345,7 @@ class MainActivity : FragmentActivity() {
     internal var pipEnabled = true
     internal var tvViewing by mutableStateOf(false)
     internal var pipMode by mutableStateOf(false)
+    internal val isTelevisionDevice: Boolean get() = televisionDevice
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -362,6 +369,15 @@ class MainActivity : FragmentActivity() {
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
         setContent { AppTheme(store) { App(store, tv, radio, this) } }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::remoteRuntime.isInitialized) lifecycleScope.launch { runCatching { remoteRuntime.reconnectAfterResume() } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -500,6 +516,11 @@ private fun App(
             }
         }
     }
+    DisposableEffect(activity, pinUnlocked) {
+        val previousOrientation = activity.requestedOrientation
+        if (!pinUnlocked) activity.requestedOrientation = if (activity.isTelevisionDevice) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose { if (!pinUnlocked) activity.requestedOrientation = previousOrientation }
+    }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
         return
@@ -511,12 +532,11 @@ private fun App(
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var remoteTab by rememberSaveable { mutableStateOf(false) }
     var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
-    DisposableEffect(activity, remoteTab) {
+    DisposableEffect(activity, remoteTab, remoteSettingsVisible) {
         val previousOrientation = activity.requestedOrientation
-        if (remoteTab) activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose {
-            if (remoteTab) activity.requestedOrientation = previousOrientation
-        }
+        val lockRemotePadPortrait = remoteTab && !remoteSettingsVisible && !activity.isTelevisionDevice
+        if (lockRemotePadPortrait) activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose { if (lockRemotePadPortrait) activity.requestedOrientation = previousOrientation }
     }
     var remoteHost by rememberSaveable { mutableStateOf(activity.remoteRuntime.savedHost) }
     var remotePairingCode by rememberSaveable { mutableStateOf("") }
@@ -532,6 +552,12 @@ private fun App(
     val remoteVoiceStatus by activity.remoteRuntime.voice.status.collectAsState()
     var remoteKeyboardVisible by rememberSaveable { mutableStateOf(false) }
     var remoteTextInput by rememberSaveable { mutableStateOf("") }
+    var remoteSavedDevices by remember { mutableStateOf(activity.remoteRuntime.savedDevices()) }
+    var remoteBondedDevices by remember { mutableStateOf(emptyList<com.radiotv.control.core.BluetoothRemoteDevice>()) }
+    val remoteTextHistory by store.remoteTextHistoryFlow().collectAsState(emptyList())
+    val remoteKeyboardFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var activeSpeechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
@@ -565,14 +591,91 @@ private fun App(
         notificationToken += 1L
     }
 
+    fun refreshRemoteDevices() {
+        remoteSavedDevices = activity.remoteRuntime.savedDevices()
+        remoteBondedDevices = runCatching { activity.remoteRuntime.bondedBluetoothDevices() }.getOrDefault(emptyList())
+    }
+
+    fun startSystemSpeechInput() {
+        if (!SpeechRecognizer.isRecognitionAvailable(appContext) || !appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)) {
+            Toast.makeText(appContext, "Микрофон или системное распознавание речи недоступны.", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching {
+            activeSpeechRecognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
+            activeSpeechRecognizer = recognizer
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { notify("Говорите…", 2500L) }
+                override fun onBeginningOfSpeech() = Unit
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() = Unit
+                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+                override fun onResults(results: Bundle?) {
+                    val recognized = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                    activeSpeechRecognizer?.let { runCatching { it.destroy() } }
+                    activeSpeechRecognizer = null
+                    if (recognized.isBlank()) {
+                        notify("Не удалось распознать речь.", 3000L)
+                    } else {
+                        remoteTextInput = recognized
+                        scope.launch {
+                            runCatching { activity.remoteRuntime.sendText(recognized) }
+                                .recoverCatching {
+                                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendText(recognized)
+                                    else throw it
+                                }
+                                .onSuccess {
+                                    store.rememberRemoteText(recognized)
+                                    remoteKeyboardVisible = false
+                                    keyboardController?.hide()
+                                    notify("Голосовой текст отправлен", 2500L)
+                                }
+                                .onFailure { notify(it.message ?: "Не удалось отправить распознанный текст", 3500L) }
+                        }
+                    }
+                }
+                override fun onError(error: Int) {
+                    activeSpeechRecognizer?.let { runCatching { it.destroy() } }
+                    activeSpeechRecognizer = null
+                    notify("Распознавание речи не удалось (код $error).", 3000L)
+                }
+            })
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            recognizer.startListening(intent)
+            notify("Запущен голосовой ввод…", 2500L)
+        }.onFailure {
+            activeSpeechRecognizer?.let { runCatching { it.destroy() } }
+            activeSpeechRecognizer = null
+            notify(it.message ?: "Не удалось запустить распознавание речи.", 3500L)
+        }
+    }
+
+    DisposableEffect(activity) {
+        onDispose {
+            activeSpeechRecognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
+            activeSpeechRecognizer = null
+        }
+    }
+
     val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) scope.launch { runCatching { activity.remoteRuntime.toggleVoiceInput() }.onSuccess { notify(it, 3000L) }.onFailure { notify(it.message ?: "Голосовой ввод доступен через Android TV Remote v2", 4000L) } }
+        if (granted) startSystemSpeechInput()
         else notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
     }
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.all { it }) {
             runCatching { activity.remoteRuntime.startBluetoothHid() }
-                .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV в настройках телевизора.", 4000L) }
+                .onSuccess {
+                    refreshRemoteDevices()
+                    notify("Bluetooth HID запущен. Сопрягите телевизор в настройках Bluetooth ТВ.", 4000L)
+                }
                 .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
         } else notify("Разрешения Bluetooth не предоставлены", 3000L)
     }
@@ -602,11 +705,31 @@ private fun App(
                     else throw it
                 }
                 .onSuccess {
+                    store.rememberRemoteText(normalized)
                     remoteKeyboardVisible = false
+                    keyboardController?.hide()
                     remoteTextInput = ""
                     notify("Текст отправлен", 2000L)
                 }
                 .onFailure { notify(it.message ?: "Не удалось отправить текст", 3000L) }
+        }
+    }
+
+    val remoteKeyboardSuggestions = remember(remoteTextHistory) {
+        remoteTextHistory.map { query ->
+            val firstWord = query.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
+            if (firstWord.length < 4) query.take(10) else firstWord
+        }.distinct().take(3)
+    }
+
+    fun prepareBluetoothMode() {
+        val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+        if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+            bluetoothPermissionLauncher.launch(permissions)
+        } else {
+            runCatching { activity.remoteRuntime.startBluetoothHid() }
+                .onSuccess { refreshRemoteDevices(); notify("Bluetooth HID запущен.", 2500L) }
+                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 3500L) }
         }
     }
 
@@ -621,14 +744,32 @@ private fun App(
         }
     }
 
-    LaunchedEffect(remoteTab, companionStatus) {
+    LaunchedEffect(remoteTab) {
         if (!remoteTab) return@LaunchedEffect
-        val companionHost = (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty()
-        if (remoteHost.isBlank() && companionHost.isNotBlank()) remoteHost = companionHost
-        val target = remoteHost.ifBlank { activity.remoteRuntime.savedHost }
-        if (target.isNotBlank() && remoteV2Status !is RemoteStatus.Connected && remoteAdbStatus !is AdbRemoteStatus.Connected) {
-            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
-                .getOrElse { it.message ?: "Нет соединения" }
+        activity.companionClient.resume()
+        val result = runCatching { activity.remoteRuntime.reconnectAfterResume() }.getOrNull()
+        if (!result.isNullOrBlank()) remoteConnectionMessage = result
+        refreshRemoteDevices()
+    }
+
+    LaunchedEffect(companionStatus) {
+        val connected = companionStatus as? CompanionConnectionStatus.Connected ?: return@LaunchedEffect
+        activity.remoteRuntime.rememberCompanionDevice(connected.host, connected.serviceName)
+        remoteSavedDevices = activity.remoteRuntime.savedDevices()
+    }
+
+    LaunchedEffect(remoteTab, remoteSettingsVisible, remoteConnectionMethod) {
+        if (remoteTab && remoteSettingsVisible) refreshRemoteDevices()
+    }
+
+    LaunchedEffect(remoteKeyboardVisible) {
+        if (remoteKeyboardVisible) {
+            delay(180L)
+            runCatching { remoteKeyboardFocusRequester.requestFocus() }
+            delay(60L)
+            keyboardController?.show()
+        } else {
+            keyboardController?.hide()
         }
     }
 
@@ -917,7 +1058,10 @@ private fun App(
                         if (remoteSettingsVisible) {
                             TvRemoteSettingsScreen(
                                 host = remoteHost,
-                                onHostChange = { remoteHost = it.trim() },
+                                onHostChange = {
+                                    remoteHost = it.trim()
+                                    activity.remoteRuntime.saveManualHost(it)
+                                },
                                 pairingCode = remotePairingCode,
                                 onPairingCodeChange = { remotePairingCode = it },
                                 connectionStatus = remoteDeviceName,
@@ -930,7 +1074,10 @@ private fun App(
                                 },
                                 awaitingPairingCode = remoteV2Status is RemoteStatus.AwaitingCode,
                                 connectionMethod = remoteConnectionMethod,
-                                onConnectionMethodChange = { method -> scope.launch { store.setRemoteConnectionMethod(method) } },
+                                onConnectionMethodChange = { method ->
+                                    scope.launch { store.setRemoteConnectionMethod(method) }
+                                    if (method == "bluetooth") prepareBluetoothMode()
+                                },
                                 hapticsEnabled = hapticsEnabled,
                                 onHapticsChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
                                 soundEnabled = soundEnabled,
@@ -938,34 +1085,20 @@ private fun App(
                                 notificationsEnabled = notificationsEnabled,
                                 onNotificationsChange = { enabled -> scope.launch { store.setNotificationsEnabled(enabled) } },
                                 onConnect = {
-                                    if (remoteConnectionMethod == "bluetooth") {
-                                        val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
-                                        if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                                            bluetoothPermissionLauncher.launch(permissions)
-                                        } else {
-                                            runCatching { activity.remoteRuntime.startBluetoothHid() }
-                                                .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L) }
-                                                .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
-                                        }
-                                    } else {
-                                        scope.launch {
-                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, remoteConnectionMethod == "auto") }
-                                                .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
-                                            notify(remoteConnectionMessage, 3500L)
-                                        }
+                                    scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, false) }
+                                            .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
+                                        refreshRemoteDevices()
+                                        notify(remoteConnectionMessage, 3500L)
                                     }
                                 },
                                 onStartSearch = {
                                     activity.companionClient.resume()
-                                    val target = remoteHost.ifBlank { (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty() }
-                                    if (target.isBlank()) {
-                                        notify("Введите IP телевизора или выберите Bluetooth HID.", 3000L)
-                                    } else {
-                                        scope.launch {
-                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
-                                                .getOrElse { it.message ?: "Не удалось найти телевизор" }
-                                            notify(remoteConnectionMessage, 3500L)
-                                        }
+                                    scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
+                                            .getOrElse { it.message ?: "Телевизоры не найдены." }
+                                        refreshRemoteDevices()
+                                        notify(remoteConnectionMessage, 3500L)
                                     }
                                 },
                                 onCompletePairing = {
@@ -975,14 +1108,31 @@ private fun App(
                                         remotePairingCode = ""
                                     }
                                 },
-                                onStartBluetooth = {
-                                    val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
-                                    if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                                        bluetoothPermissionLauncher.launch(permissions)
-                                    } else {
-                                        runCatching { activity.remoteRuntime.startBluetoothHid() }
-                                            .onSuccess { notify("Bluetooth HID запущен. Сопрягите Radio.TV на телевизоре.", 4000L) }
-                                            .onFailure { notify(it.message ?: "Не удалось запустить Bluetooth HID", 4000L) }
+                                onStartBluetooth = { prepareBluetoothMode() },
+                                savedDevices = remoteSavedDevices.map { RemoteSavedDeviceUi(it.id, it.name, it.connectionType, it.host) },
+                                bondedDevices = remoteBondedDevices.map { RemoteBluetoothDeviceUi(it.name, it.address) },
+                                onSelectSavedDevice = { id ->
+                                    scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connectSavedDevice(id) }
+                                            .getOrElse { it.message ?: "Не удалось подключиться к телевизору." }
+                                        refreshRemoteDevices()
+                                        notify(remoteConnectionMessage, 3500L)
+                                    }
+                                },
+                                onRenameSavedDevice = { id, name ->
+                                    activity.remoteRuntime.renameSavedDevice(id, name)
+                                    refreshRemoteDevices()
+                                },
+                                onRemoveSavedDevice = { id ->
+                                    activity.remoteRuntime.removeSavedDevice(id)
+                                    refreshRemoteDevices()
+                                },
+                                onConnectBluetoothDevice = { address ->
+                                    scope.launch {
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connectBluetoothDevice(address) }
+                                            .getOrElse { it.message ?: "Не удалось подключить Bluetooth HID." }
+                                        refreshRemoteDevices()
+                                        notify(remoteConnectionMessage, 3500L)
                                     }
                                 },
                                 onBack = { remoteSettingsVisible = false },
@@ -993,27 +1143,34 @@ private fun App(
                                 modifier = Modifier.fillMaxSize(),
                                 enabled = remoteV2Status is RemoteStatus.Connected || remoteAdbStatus is AdbRemoteStatus.Connected || remoteBluetoothStatus is BluetoothHidStatus.Connected || companionStatus is CompanionConnectionStatus.Connected,
                                 energySaving = energySaving,
+                                hapticsEnabled = hapticsEnabled,
                                 deviceName = remoteDeviceName,
                                 onKey = { key ->
                                     scope.launch {
-                                        runCatching { activity.remoteRuntime.sendKey(key) }
+                                        val sent = runCatching { activity.remoteRuntime.sendKey(key) }
                                             .recoverCatching {
                                                 if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode())
                                                 else throw it
                                             }
-                                            .onFailure { notify(it.message ?: "Не удалось отправить команду", 3000L) }
+                                        if (key == RemoteKey.POWER) {
+                                            sent.onSuccess { Toast.makeText(appContext, "Команда отправлена", Toast.LENGTH_SHORT).show() }
+                                                .onFailure { Toast.makeText(appContext, it.message ?: "Не удалось отправить команду", Toast.LENGTH_LONG).show() }
+                                        } else {
+                                            sent.onFailure { notify(it.message ?: "Не удалось отправить команду", 3000L) }
+                                        }
                                     }
                                 },
                                 onBack = { remoteSettingsVisible = false; remoteTab = false },
                                 onSettings = { remoteSettingsVisible = true },
                                 onStartSearch = {
                                     activity.companionClient.resume()
-                                    val target = remoteHost.ifBlank { (companionStatus as? CompanionConnectionStatus.Connected)?.host.orEmpty() }
-                                    if (target.isNotBlank()) scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(target, false) }
+                                    scope.launch {
+                                        notify("Поиск телевизоров в локальной сети…", 2500L)
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
                                             .getOrElse { it.message ?: "Нет соединения" }
+                                        refreshRemoteDevices()
+                                        notify(remoteConnectionMessage, 3500L)
                                     }
-                                    notify("Поиск телевизоров в локальной сети…", 3000L)
                                 },
                                 onFeatureAction = { action ->
                                     when (action) {
@@ -1021,20 +1178,9 @@ private fun App(
                                         RemoteFeatureAction.APP_YOUTUBE -> sendRemoteLaunch("com.google.android.youtube")
                                         RemoteFeatureAction.APP_NETFLIX -> sendRemoteLaunch("com.netflix.ninja")
                                         RemoteFeatureAction.VOICE_INPUT -> {
-                                            val phoneMicRequired = remoteV2Status is RemoteStatus.Connected
-                                            val hasMicPermission = ContextCompat.checkSelfPermission(
-                                                appContext,
-                                                Manifest.permission.RECORD_AUDIO
-                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                            if (phoneMicRequired && !hasMicPermission) {
-                                                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                            } else {
-                                                scope.launch {
-                                                    runCatching { activity.remoteRuntime.toggleVoiceInput() }
-                                                        .onSuccess { notify(it, 3000L) }
-                                                        .onFailure { notify(it.message ?: "Голосовой ввод недоступен для выбранного транспорта", 4000L) }
-                                                }
-                                            }
+                                            val hasMicPermission = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                            if (!hasMicPermission) microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            else startSystemSpeechInput()
                                         }
                                         RemoteFeatureAction.AIR_MOUSE -> {
                                             if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
@@ -1249,7 +1395,7 @@ private fun App(
                                         .onFailure { notify(it.message ?: "Air Mouse недоступна", 3500L) }
                                 }
                             } else {
-                                val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_SCAN)
+                                val permissions = arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
                                 if (Build.VERSION.SDK_INT >= 31 && permissions.any { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }) bluetoothPermissionLauncher.launch(permissions)
                                 else {
                                     runCatching { activity.remoteRuntime.startBluetoothHid() }
@@ -1293,16 +1439,30 @@ private fun App(
 
     if (remoteKeyboardVisible) {
         AlertDialog(
-            onDismissRequest = { remoteKeyboardVisible = false },
+            onDismissRequest = { remoteKeyboardVisible = false; keyboardController?.hide() },
             title = { Text("Клавиатурный ввод") },
             text = {
-                OutlinedTextField(
-                    value = remoteTextInput,
-                    onValueChange = { remoteTextInput = it },
-                    label = { Text("Текст для телевизора") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (remoteKeyboardSuggestions.isNotEmpty()) {
+                        Text("ПОСЛЕДНИЕ ЗАПРОСЫ", color = Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            remoteKeyboardSuggestions.forEach { suggestion ->
+                                AssistChip(
+                                    onClick = { sendRemoteText(suggestion) },
+                                    label = { Text(suggestion, maxLines = 1) },
+                                    border = BorderStroke(1.dp, Color(0xFF666666))
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = remoteTextInput,
+                        onValueChange = { remoteTextInput = it },
+                        label = { Text("Текст для телевизора") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().focusRequester(remoteKeyboardFocusRequester)
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = { sendRemoteText(remoteTextInput) }) { Text("Отправить", color = Red) }
@@ -4293,7 +4453,7 @@ private suspend fun scanRadioAvailability(items: List<StreamItem>): Map<String, 
                         Request.Builder()
                             .url(item.url)
                             .header("Range", "bytes=0-1024")
-                            .header("User-Agent", "Radio.TV/4.5.1")
+                            .header("User-Agent", "Radio.TV/4.6")
                             .build()
                     ).execute().use { response ->
                         if (response.isSuccessful || response.code == 206 || response.code == 416) AvailabilityStatus.ONLINE
@@ -4544,7 +4704,7 @@ private suspend fun scanAvailability(
                         client.newCall(
                             Request.Builder().url(item.url)
                                 .header("Range", "bytes=0-1")
-                                .header("User-Agent", "Radio.TV/4.5.1")
+                                .header("User-Agent", "Radio.TV/4.6")
                                 .get().build()
                         ).execute().use {
                             if (it.isSuccessful || it.code in 300..399 || it.code == 416) AvailabilityStatus.ONLINE else AvailabilityStatus.OFFLINE
