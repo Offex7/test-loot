@@ -3,7 +3,7 @@ package com.radiotv.control.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -669,7 +669,7 @@ private fun RemoteSurfaceButton(
             .semantics { contentDescription = description }
             .clickable(
                 interactionSource = interactions,
-                indication = rememberRipple(bounded = true),
+                indication = ripple(bounded = true),
                 onClickLabel = description,
                 onClick = {
                     if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
