@@ -12,6 +12,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -102,6 +103,7 @@ fun ScrollTopButtonV37(
                         scrollSessionId += 1L
                         pinnedAtBottom = false
                     }
+                    if (pinnedAtBottom && sample.canScrollForward) pinnedAtBottom = false
                     if (visible && !sample.canScrollForward) pinnedAtBottom = true
                 }
                 !sample.isScrolling && userScrollActive -> {
@@ -113,6 +115,22 @@ fun ScrollTopButtonV37(
             }
             previousIndex = sample.index
             previousOffset = sample.offset
+        }
+    }
+
+    // A fresh touch-drag also releases the bottom pin, including a drag at the edge
+    // where the list cannot move far enough to produce a new position sample.
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { interaction ->
+            if (
+                interaction is DragInteraction.Start &&
+                !ignoreProgrammaticScrollState &&
+                !arrowScrollInProgress &&
+                pinnedAtBottom
+            ) {
+                pinnedAtBottom = false
+                idleToken += 1L
+            }
         }
     }
 
