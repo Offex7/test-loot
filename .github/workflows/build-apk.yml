@@ -285,8 +285,8 @@ jobs:
           body: |
             Radio.TV v4.6
 
-            versionCode: 19
-            versionName: 4.5.1
+            versionCode: 20
+            versionName: 4.6
             Package: com.offex7.streamhub
 
             APK is signed with the existing v4 signing key. The source archive is attached below.
