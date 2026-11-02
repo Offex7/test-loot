@@ -195,7 +195,7 @@ jobs:
               "remote_saved_device_history": "RemoteDeviceHistory" in remote_runtime and "connectSavedDevice" in remote_runtime and "ВЫБОР ТЕЛЕВИЗОРА" in remote_settings and "onRenameSavedDevice" in main and "onRemoveSavedDevice" in main,
               "auto_mdns_ssdp_discovery": "networkDiscovery.discover()" in remote_runtime and "_androidtvremote2._tcp." in (root / "src/main/java/com/offex7/streamhub/TvNetworkDiscovery.kt").read_text(encoding="utf-8") and "M-SEARCH * HTTP/1.1" in (root / "src/main/java/com/offex7/streamhub/TvNetworkDiscovery.kt").read_text(encoding="utf-8"),
               "bluetooth_permissions_on_mode_selection": "prepareBluetoothMode()" in main and "BLUETOOTH_ADVERTISE" in main and "BLUETOOTH_SCAN" not in main,
-              "remote_button_ripple_scale_haptics": "rememberRipple(bounded = true)" in remote_pad and "animateFloatAsState" in remote_pad and "LocalRemoteHaptics.current" in remote_pad and "hapticsEnabled = hapticsEnabled" in main,
+              "remote_button_ripple_scale_haptics": "ripple(bounded = true)" in remote_pad and "animateFloatAsState" in remote_pad and "LocalRemoteHaptics.current" in remote_pad and "hapticsEnabled = hapticsEnabled" in main,
               "power_toggle_feedback": 'key == RemoteKey.POWER' in main and "Команда отправлена" in main and "Не удалось отправить команду" in main,
               "remote_reconnect_on_resume": "reconnectAfterResume()" in main and "reconnectAfterResume()" in remote_runtime and "lastResumeReconnectAt" in remote_runtime,
               "manual_ip_first_pairing": "activity.remoteRuntime.connect(remoteHost, true)" in main,
