@@ -198,6 +198,8 @@ jobs:
               "remote_button_ripple_scale_haptics": "rememberRipple(bounded = true)" in remote_pad and "animateFloatAsState" in remote_pad and "LocalRemoteHaptics.current" in remote_pad and "hapticsEnabled = hapticsEnabled" in main,
               "power_toggle_feedback": 'key == RemoteKey.POWER' in main and "Команда отправлена" in main and "Не удалось отправить команду" in main,
               "remote_reconnect_on_resume": "reconnectAfterResume()" in main and "reconnectAfterResume()" in remote_runtime and "lastResumeReconnectAt" in remote_runtime,
+              "manual_ip_first_pairing": "activity.remoteRuntime.connect(remoteHost, true)" in main,
+              "auto_mode_search_on_selection": '"auto" -> scope.launch' in main and "activity.remoteRuntime.autoConnect()" in main,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():

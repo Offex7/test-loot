@@ -1076,7 +1076,15 @@ private fun App(
                                 connectionMethod = remoteConnectionMethod,
                                 onConnectionMethodChange = { method ->
                                     scope.launch { store.setRemoteConnectionMethod(method) }
-                                    if (method == "bluetooth") prepareBluetoothMode()
+                                    when (method) {
+                                        "bluetooth" -> prepareBluetoothMode()
+                                        "auto" -> scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
+                                                .getOrElse { it.message ?: "Телевизоры не найдены." }
+                                            refreshRemoteDevices()
+                                            notify(remoteConnectionMessage, 3500L)
+                                        }
+                                    }
                                 },
                                 hapticsEnabled = hapticsEnabled,
                                 onHapticsChange = { enabled -> scope.launch { store.setHapticsEnabled(enabled) } },
@@ -1086,7 +1094,7 @@ private fun App(
                                 onNotificationsChange = { enabled -> scope.launch { store.setNotificationsEnabled(enabled) } },
                                 onConnect = {
                                     scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, false) }
+                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, true) }
                                             .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
                                         refreshRemoteDevices()
                                         notify(remoteConnectionMessage, 3500L)
