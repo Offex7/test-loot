@@ -6,6 +6,8 @@
 
 package com.offex7.streamhub
 
+import android.content.Context
+
 import android.content.res.Configuration
 import android.view.KeyEvent
 import android.os.Build
@@ -151,6 +153,19 @@ import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
+
+private object TvLogoImageLoaderProvider {
+    @Volatile private var instance: ImageLoader? = null
+
+    fun get(context: Context): ImageLoader = instance ?: synchronized(this) {
+        instance ?: ImageLoader.Builder(context.applicationContext)
+            .dispatcher(Dispatchers.IO.limitedParallelism(4))
+            .crossfade(false)
+            .build()
+            .also { instance = it }
+    }
+}
+
 private val TvV9Red = Color(0xFFE53935)
 private val TvV9Panel = Color(0xFF1A1A1A)
 private val TvV9PanelAlt = Color(0xFF232323)
@@ -202,10 +217,7 @@ fun TvV8Screen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val logoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
     val logoImageLoader = androidx.compose.runtime.remember(context.applicationContext) {
-        ImageLoader.Builder(context.applicationContext)
-            .dispatcher(Dispatchers.IO.limitedParallelism(4))
-            .crossfade(false)
-            .build()
+        TvLogoImageLoaderProvider.get(context)
     }
     var savedZooms by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, Float>()) }
     var sourceReady by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -830,6 +842,7 @@ fun TvV8Screen(
                                 active = selectedIndex in channels.indices && channels[selectedIndex].key == channel.key,
                                 favorite = favorite,
                                 logoCache = logoCache,
+                                logoImageLoader = logoImageLoader,
                                 offline = offline,
                                 showHideIcon = showHideIcon,
                                 hapticsEnabled = hapticsEnabled,
@@ -1042,6 +1055,7 @@ private fun TvV9ChannelRow(
     active: Boolean,
     favorite: Boolean,
     logoCache: TvLogoCache,
+    logoImageLoader: ImageLoader,
     offline: Boolean,
     showHideIcon: Boolean,
     hapticsEnabled: Boolean,
@@ -1158,7 +1172,7 @@ private fun TvV9ChannelRow(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline)
+                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline, logoImageLoader)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -1209,7 +1223,8 @@ private fun TvV9Logo(
     cache: TvLogoCache,
     url: String?,
     size: Dp,
-    dimmed: Boolean
+    dimmed: Boolean,
+    logoImageLoader: ImageLoader
 ) {
     val context = LocalContext.current
     val request = remember(url, context) {
@@ -1375,6 +1390,9 @@ private fun TvV9Player(
     radioPlaying: Boolean
 ) {
     val context = LocalContext.current
+    val logoImageLoader = androidx.compose.runtime.remember(context.applicationContext) {
+        TvLogoImageLoaderProvider.get(context)
+    }
     val activity = context as? androidx.activity.ComponentActivity
     val insets = androidx.compose.runtime.remember(activity) {
         activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) }
@@ -1814,7 +1832,7 @@ private fun TvV9Player(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (!channel.logoUrl.isNullOrBlank()) {
-                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false)
+                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false, logoImageLoader)
                                     Spacer(Modifier.width(8.dp))
                                 }
                                 Text(
