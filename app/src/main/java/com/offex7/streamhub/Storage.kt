@@ -851,7 +851,6 @@ class SettingsStore(private val context: Context) {
         hiddenChannelsByPlaylistKey.name,
         tvFavoriteTimesKey.name,
         radioFavoriteTimesKey.name,
-        channelZoomsStorage.name,
         equalizerPresetKey.name,
         energySavingModeKey.name,
         remoteConnectionMethodKey.name
@@ -875,15 +874,6 @@ class SettingsStore(private val context: Context) {
         radioFavoritesKey.name,
         hiddenChannelsKey.name
     )
-    private val backupJsonObjectNames = setOf(
-        tvFavoritesByPlaylistKey.name,
-        tvFavoriteTimesByPlaylistKey.name,
-        hiddenChannelsByPlaylistKey.name,
-        tvFavoriteTimesKey.name,
-        radioFavoriteTimesKey.name,
-        channelZoomsStorage.name
-    )
-
     private fun validateBackupPlaylistJson(raw: String) {
         val array = org.json.JSONArray(raw)
         require(array.length() <= 5) { "В резервной копии больше 5 пользовательских плейлистов." }
@@ -898,22 +888,51 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    private fun validateBackupJsonMap(raw: String, setValues: Boolean) {
+    private fun validateBackupSetMap(raw: String) {
         val json = org.json.JSONObject(raw)
-        require(json.length() <= 32) { "Слишком много наборов данных в резервной копии." }
+        require(json.length() <= 32) { "Слишком много плейлистов в резервной копии." }
         val keys = json.keys()
         while (keys.hasNext()) {
-            val key = keys.next()
-            require(key.length <= 256) { "Некорректный идентификатор плейлиста." }
-            if (setValues) {
-                val array = json.optJSONArray(key) ?: error("Некорректный список каналов в резервной копии.")
-                require(array.length() <= 10000) { "Слишком много каналов в резервной копии." }
-                for (index in 0 until array.length()) {
-                    val value = array.optString(index)
-                    require(value.isNotBlank() && value.length <= 512) { "Некорректный идентификатор канала." }
+            val playlistId = keys.next()
+            require(playlistId.isNotBlank() && playlistId.length <= 256) { "Некорректный идентификатор плейлиста." }
+            val array = json.optJSONArray(playlistId) ?: error("Некорректный список каналов в резервной копии.")
+            require(array.length() <= 10000) { "Слишком много каналов в резервной копии." }
+            for (index in 0 until array.length()) {
+                val channelId = array.optString(index)
+                require(channelId.isNotBlank() && channelId.length <= 512) { "Некорректный идентификатор канала." }
+            }
+        }
+    }
+
+    private fun validateBackupPlaylistTimesMap(raw: String) {
+        val json = org.json.JSONObject(raw)
+        require(json.length() <= 32) { "Слишком много плейлистов в резервной копии." }
+        val playlists = json.keys()
+        while (playlists.hasNext()) {
+            val playlistId = playlists.next()
+            require(playlistId.isNotBlank() && playlistId.length <= 256) { "Некорректный идентификатор плейлиста." }
+            val times = json.optJSONObject(playlistId) ?: error("Некорректная карта времени избранного.")
+            require(times.length() <= 10000) { "Слишком много записей времени избранного." }
+            val channelIds = times.keys()
+            while (channelIds.hasNext()) {
+                val channelId = channelIds.next()
+                val timestamp = times.opt(channelId)
+                require(channelId.isNotBlank() && channelId.length <= 512 && timestamp is Number && timestamp.toLong() > 0L) {
+                    "Некорректная запись времени избранного."
                 }
-            } else {
-                require(json.optJSONObject(key) != null) { "Некорректная карта времени или масштаба." }
+            }
+        }
+    }
+
+    private fun validateBackupFavoriteTimes(raw: String) {
+        val times = org.json.JSONObject(raw)
+        require(times.length() <= 10000) { "Слишком много записей времени избранного." }
+        val channelIds = times.keys()
+        while (channelIds.hasNext()) {
+            val channelId = channelIds.next()
+            val timestamp = times.opt(channelId)
+            require(channelId.isNotBlank() && channelId.length <= 512 && timestamp is Number && timestamp.toLong() > 0L) {
+                "Некорректная запись времени избранного."
             }
         }
     }
@@ -964,10 +983,9 @@ class SettingsStore(private val context: Context) {
             require(value.length <= 256_000) { "Слишком большое значение параметра $name." }
             when (name) {
                 userPlaylistsStorage.name -> validateBackupPlaylistJson(value)
-                in backupJsonObjectNames -> validateBackupJsonMap(
-                    value,
-                    setValues = name == tvFavoritesByPlaylistKey.name || name == hiddenChannelsByPlaylistKey.name
-                )
+                tvFavoritesByPlaylistKey.name, hiddenChannelsByPlaylistKey.name -> validateBackupSetMap(value)
+                tvFavoriteTimesByPlaylistKey.name -> validateBackupPlaylistTimesMap(value)
+                tvFavoriteTimesKey.name, radioFavoriteTimesKey.name -> validateBackupFavoriteTimes(value)
                 energySavingModeKey.name -> require(value in setOf("OFF", "ON", "AUTO")) { "Некорректный режим энергосбережения." }
                 remoteConnectionMethodKey.name -> require(value in setOf("auto", "manual", "bluetooth")) { "Некорректный способ подключения пульта." }
                 equalizerPresetKey.name -> require(value.length <= 32) { "Некорректный пресет эквалайзера." }

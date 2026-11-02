@@ -190,6 +190,7 @@ jobs:
               "scroll_arrow_manual_only_2_5": "sample.isScrolling && moved" in arrows and "delay(2_000L)" in arrows and "delay(5_000L)" in arrows and "pinnedAtBottom" in arrows and "ignoreProgrammaticScrollState" in arrows,
               "orientation_system_managed": 'android:screenOrientation="unspecified"' in manifest and "SensorManager" not in main and "TYPE_ACCELEROMETER" not in main,
               "versioned_user_agent_all_clients": '"Radio.TV/4.8"' in main and '"Radio.TV/4.8"' in playlist and tv_playlist.count('"Radio.TV/4.8"') >= 2,
+              "settings_backup_typed_maps": "validateBackupSetMap" in storage and "validateBackupPlaylistTimesMap" in storage and "validateBackupFavoriteTimes" in storage and "channelZoomsStorage.name" not in storage[storage.index("private val backupStringNames"):storage.index("suspend fun exportSettingsBackup")],
               "per_playlist_favorites_and_hidden": "favorites_tv_by_playlist_v1" in storage and "hidden_channels_by_playlist_v1" in storage and "migrateLegacyPlaylistState" in storage and "store.favorites(Section.TV, sourceKey)" in tv and "store.addHiddenChannel(channel.key, sourceKey)" in tv,
               "coil_visible_list_logos": "coil.compose.AsyncImage" in tv and "CachePolicy.ENABLED" in tv and "AsyncImage(" in tv and "logoCache.prefetch(" not in tv,
               "single_transparent_buffer_overlay": "zIndex(2f)" in tv and "Color.Black.copy(alpha = .30f)" not in tv and "TvLoadingSplash(" in tv and ".size(48.dp)" in tv and '"Загрузка" + ".".repeat(dots)' in tv,

@@ -1439,7 +1439,7 @@ private fun TvV9Player(
 
 
     var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
-    var locked by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var locked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
