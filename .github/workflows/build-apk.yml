@@ -189,7 +189,7 @@ jobs:
               "remote_crash_guards": "guardedSync" in remote_runtime and "SecurityException" in remote_runtime and "guarded(\"голосовой ввод\")" in remote_runtime and "guarded(\"трансляция DLNA\")" in remote_runtime,
               "remote_energy_saving": "energySaving: Boolean = false" in remote_pad and "targetValue = if (energySaving) 1f else 1.05f" in remote_pad and "targetValue = if (energySaving) 0f else 1f" in remote_pad,
               "remote_orientation_lock": "SCREEN_ORIENTATION_PORTRAIT" in main and "activity.requestedOrientation = previousOrientation" in main,
-              "remote_settings_original_options": "onConnectionMethodChange" in remote_settings and "Bluetooth HID" in remote_settings and "RemoteSettingRow" in remote_settings,
+              "remote_settings_original_options": "onConnectionMethodChange" in remote_settings and ("Bluetooth HID" in remote_settings or "BLUETOOTH HID" in remote_settings) and "RemoteSettingRow" in remote_settings,
               "system_speech_recognizer": "SpeechRecognizer.createSpeechRecognizer" in main and "RecognizerIntent.ACTION_RECOGNIZE_SPEECH" in main and "startSystemSpeechInput()" in main,
               "remote_keyboard_history_and_autofocus": "remoteTextHistoryFlow()" in storage and "remoteKeyboardSuggestions" in main and "remoteKeyboardFocusRequester.requestFocus()" in main and "store.rememberRemoteText(normalized)" in main,
               "remote_saved_device_history": "RemoteDeviceHistory" in remote_runtime and "connectSavedDevice" in remote_runtime and "ВЫБОР ТЕЛЕВИЗОРА" in remote_settings and "onRenameSavedDevice" in main and "onRemoveSavedDevice" in main,
