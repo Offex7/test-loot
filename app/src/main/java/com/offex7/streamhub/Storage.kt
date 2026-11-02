@@ -1010,30 +1010,37 @@ class SettingsStore(private val context: Context) {
 
         context.dataStore.edit { preferences ->
             backupStringNames.forEach { name ->
-                if (values.has(name)) {
-                    val value = values.getString(name)
-                    preferences[stringPreferencesKey(name)] = value
-                }
+                val key = stringPreferencesKey(name)
+                if (values.has(name)) preferences[key] = values.getString(name)
+                else preferences.remove(key)
             }
             backupIntNames.forEach { name ->
+                val key = intPreferencesKey(name)
                 if (values.has(name)) {
                     val value = values.getInt(name)
                     val safeValue = when (name) {
                         sourceKey.name -> value.coerceIn(0, 100)
                         else -> value.coerceIn(-1500, 1500)
                     }
-                    preferences[intPreferencesKey(name)] = safeValue
+                    preferences[key] = safeValue
+                } else {
+                    preferences.remove(key)
                 }
             }
             backupBooleanNames.forEach { name ->
-                if (values.has(name)) preferences[booleanPreferencesKey(name)] = values.getBoolean(name)
+                val key = booleanPreferencesKey(name)
+                if (values.has(name)) preferences[key] = values.getBoolean(name)
+                else preferences.remove(key)
             }
             backupSetNames.forEach { name ->
+                val key = stringSetPreferencesKey(name)
                 if (values.has(name)) {
                     val array = values.getJSONArray(name)
-                    preferences[stringSetPreferencesKey(name)] = buildSet {
+                    preferences[key] = buildSet {
                         for (index in 0 until array.length()) add(array.getString(index))
                     }
+                } else {
+                    preferences.remove(key)
                 }
             }
         }
