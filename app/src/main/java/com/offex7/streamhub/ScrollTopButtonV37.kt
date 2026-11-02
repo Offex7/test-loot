@@ -12,8 +12,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -38,9 +38,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
+private data class ScrollTopSample(
+    val index: Int,
+    val offset: Int,
+    val isScrolling: Boolean,
+    val canScrollBackward: Boolean,
+    val canScrollForward: Boolean,
+    val ignored: Boolean
+)
+
 @Composable
 fun ScrollTopButtonV37(
-    listState: androidx.compose.foundation.lazy.LazyListState,
+    listState: LazyListState,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     modifier: Modifier = Modifier,
@@ -48,90 +57,102 @@ fun ScrollTopButtonV37(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var visible by remember { mutableStateOf(false) }
-    var userDragging by remember { mutableStateOf(false) }
-    var userSessionActive by remember { mutableStateOf(false) }
-    var userSessionId by remember { mutableLongStateOf(0L) }
-    var lastScrollActivityAt by remember { mutableLongStateOf(0L) }
+    var visible by remember(listState) { mutableStateOf(false) }
+    var userScrollActive by remember(listState) { mutableStateOf(false) }
+    var pinnedAtBottom by remember(listState) { mutableStateOf(false) }
+    var scrollSessionId by remember(listState) { mutableLongStateOf(0L) }
+    var idleToken by remember(listState) { mutableLongStateOf(0L) }
+    var arrowScrollInProgress by remember(listState) { mutableStateOf(false) }
     val ignoreProgrammaticScrollState by rememberUpdatedState(ignoreProgrammaticScroll)
 
-    LaunchedEffect(listState) {
-        listState.interactionSource.interactions.collect { interaction ->
-            when (interaction) {
-                is DragInteraction.Start -> {
-                    if (ignoreProgrammaticScrollState) return@collect
-                    userDragging = true
-                    if (!userSessionActive) {
-                        userSessionActive = true
-                        userSessionId += 1L
-                    }
-                    lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
-                }
-                is DragInteraction.Stop, is DragInteraction.Cancel -> {
-                    userDragging = false
-                    if (userSessionActive) lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
-                }
-            }
-        }
-    }
-
+    // Observe actual list movement. This also sees mouse wheel, D-pad/keyboard and accessibility scrolling,
+    // which do not necessarily emit DragInteraction.Start.
     LaunchedEffect(listState) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
-            Triple(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.isScrollInProgress)
-        }.collect { (index, offset, scrolling) ->
-            val awayFromTop = index > 0 || offset > 0
-            val moved = index != previousIndex || offset != previousOffset
+            ScrollTopSample(
+                index = listState.firstVisibleItemIndex,
+                offset = listState.firstVisibleItemScrollOffset,
+                isScrolling = listState.isScrollInProgress,
+                canScrollBackward = listState.canScrollBackward,
+                canScrollForward = listState.canScrollForward,
+                ignored = ignoreProgrammaticScrollState || arrowScrollInProgress
+            )
+        }.collect { sample ->
+            val moved = sample.index != previousIndex || sample.offset != previousOffset
             when {
-                !awayFromTop -> {
+                sample.ignored -> {
                     visible = false
-                    userSessionActive = false
-                    userSessionId += 1L
-                    lastScrollActivityAt = 0L
+                    pinnedAtBottom = false
+                    userScrollActive = false
+                    scrollSessionId += 1L
+                    idleToken += 1L
                 }
-                ignoreProgrammaticScrollState -> {
+                !sample.canScrollBackward -> {
                     visible = false
-                    userSessionActive = false
-                    userSessionId += 1L
-                    lastScrollActivityAt = 0L
+                    pinnedAtBottom = false
+                    userScrollActive = false
+                    scrollSessionId += 1L
+                    idleToken += 1L
                 }
-                userSessionActive && moved && scrolling -> {
-                    // Preserve the session start; update only the 5-second idle deadline.
-                    lastScrollActivityAt = android.os.SystemClock.elapsedRealtime()
+                sample.isScrolling && moved -> {
+                    if (!userScrollActive) {
+                        userScrollActive = true
+                        scrollSessionId += 1L
+                        pinnedAtBottom = false
+                    }
+                    if (visible && !sample.canScrollForward) pinnedAtBottom = true
+                }
+                !sample.isScrolling && userScrollActive -> {
+                    userScrollActive = false
+                    scrollSessionId += 1L
+                    idleToken += 1L
+                    if (visible && !sample.canScrollForward) pinnedAtBottom = true
                 }
             }
-            previousIndex = index
-            previousOffset = offset
+            previousIndex = sample.index
+            previousOffset = sample.offset
         }
     }
 
-    LaunchedEffect(userSessionId) {
-        if (!userSessionActive || userSessionId <= 0L) return@LaunchedEffect
-        val session = userSessionId
+    // Show only if the same user scroll has remained active for the full 2 seconds.
+    LaunchedEffect(scrollSessionId) {
+        val session = scrollSessionId
+        if (!userScrollActive || session <= 0L) return@LaunchedEffect
         delay(2_000L)
-        val awayFromTop = listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        if (session == userSessionId && userSessionActive && listState.isScrollInProgress && awayFromTop && !ignoreProgrammaticScrollState) {
+        if (
+            session == scrollSessionId &&
+            userScrollActive &&
+            listState.isScrollInProgress &&
+            listState.canScrollBackward &&
+            !ignoreProgrammaticScrollState &&
+            !arrowScrollInProgress
+        ) {
             visible = true
+            if (!listState.canScrollForward) pinnedAtBottom = true
         }
     }
 
-    LaunchedEffect(lastScrollActivityAt) {
-        val activityAt = lastScrollActivityAt
-        if (activityAt <= 0L) return@LaunchedEffect
+    // After motion stops, keep the arrow for 5 seconds. New motion cancels this timer.
+    LaunchedEffect(idleToken, visible, userScrollActive, pinnedAtBottom) {
+        if (!visible || userScrollActive || pinnedAtBottom) return@LaunchedEffect
+        val token = idleToken
         delay(5_000L)
-        if (activityAt == lastScrollActivityAt && !userDragging && !listState.isScrollInProgress) {
-            if (listState.canScrollForward) {
-                visible = false
-                userSessionActive = false
-                userSessionId += 1L
-            } else {
-                visible = true
-            }
+        if (
+            token == idleToken &&
+            visible &&
+            !userScrollActive &&
+            !pinnedAtBottom &&
+            !listState.isScrollInProgress &&
+            !ignoreProgrammaticScrollState &&
+            !arrowScrollInProgress
+        ) {
+            visible = false
         }
     }
 
-    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v46")
+    val pulseTransition = rememberInfiniteTransition(label = "scroll-top-v47")
     val pulse by pulseTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.045f,
@@ -139,7 +160,7 @@ fun ScrollTopButtonV37(
             animation = tween(850, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "scroll-top-v46-pulse"
+        label = "scroll-top-v47-pulse"
     )
 
     AnimatedVisibility(
@@ -153,13 +174,23 @@ fun ScrollTopButtonV37(
                 InteractionFeedback.vibrate(context, hapticsEnabled, 52L, 165)
                 if (soundEnabled) InteractionFeedback.beep(context, true)
                 visible = false
-                userSessionActive = false
-                userDragging = false
-                userSessionId += 1L
-                lastScrollActivityAt = 0L
-                scope.launch { listState.animateScrollToItem(0) }
+                pinnedAtBottom = false
+                userScrollActive = false
+                scrollSessionId += 1L
+                idleToken += 1L
+                arrowScrollInProgress = true
+                scope.launch {
+                    try {
+                        listState.animateScrollToItem(0)
+                    } finally {
+                        arrowScrollInProgress = false
+                    }
+                }
             },
-            modifier = Modifier.size(52.dp).graphicsLayer(scaleX = pulse, scaleY = pulse).background(Color(0xFFE53935), CircleShape)
+            modifier = Modifier
+                .size(52.dp)
+                .graphicsLayer(scaleX = pulse, scaleY = pulse)
+                .background(Color(0xFFE53935), CircleShape)
         ) {
             Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.White, modifier = Modifier.size(36.dp))
         }
