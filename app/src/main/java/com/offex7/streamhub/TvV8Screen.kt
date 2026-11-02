@@ -775,13 +775,7 @@ fun TvV8Screen(
                     refreshing = false
                 }
             },
-            onSettings = settings,
-            onVoiceSearch = {
-                requestVoiceSearch { recognized ->
-                    query = recognized
-                    searchStamp = System.currentTimeMillis()
-                }
-            }
+            onSettings = settings
         )
 
         if (searchOpen && query.isBlank()) {
