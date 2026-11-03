@@ -863,8 +863,8 @@ fun TvV8Screen(
                 voiceSearchActive = true
                 voiceSearchStamp += 1L
                 requestVoiceSearch(
-                    onPartial = { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = true) },
-                    onResult = { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = false) }
+                    { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = true) },
+                    { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = false) }
                 )
             },
             onRefresh = {
