@@ -152,7 +152,7 @@ jobs:
               "update_banner_bottom": main.rindex("ОБНОВИТЬ ПРИЛОЖЕНИЕ") > main.rindex("ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ"),
               "app_shortcuts": "android.app.shortcuts" in manifest and "open_radio" in shortcuts and "open_tv" in shortcuts and "open_remote" in shortcuts and 'android:value="REMOTE"' in shortcuts and "widget_section" in shortcuts,
               "TV_timers_2s_25s": "WEAK_NETWORK_NOTICE_MS = 2_000L" in player and "BUFFER_TIMEOUT_MS = 25_000L" in player and "Буферизация не завершилась за 25 секунд" in player,
-              "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "!silentSwitching" in tv and "attemptTimeoutMs = 25_000L" in tv,
+              "TV_fast_switch_silent": "suppressRecovery = fastSwitch" in tv and "silentSwitching" in tv and "showLoading = switching || waiting || error != null || buffering" in tv and "visible = !pipMode && showLoading" in tv and "attemptTimeoutMs = 25_000L" in tv,
               "TV_banner_after_settle": "LaunchedEffect(channel.key, switching, silentSwitching)" in tv and "channelNotice = silentSwitching" in tv and "delay(3000L)" in tv,
               "TV_candidate_stays_until_timeout": "selectedIndex = cursor" in tv and "attemptTimeoutMs = 25_000L" in tv and "suppressChannelNotice" not in tv,
               "TV_active_row_highlight": "active = selectedIndex in channels.indices && channels[selectedIndex].key == channel.key" in tv and "border = if (active) BorderStroke(2.dp, TvV9Red) else null" in tv,
