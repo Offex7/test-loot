@@ -215,7 +215,9 @@ internal fun TvRemotePad(
         val dpadHeight = okSize + arrowSize * 2 - arrowOverlap * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth + arrowOverlap).coerceAtLeast(0.dp)
+        // The D-pad container has 1 dp padding on both sides; use its actual inner width
+        // so side arrows overlap the center key instead of leaving horizontal black gaps.
+        val arrowInset = (((maxWidth - 2.dp - okSize) / 2) - arrowSideWidth + arrowOverlap).coerceAtLeast(0.dp)
         val rowSpacing = if (tight) 5.dp else 7.dp
         val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 22.dp +
             if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp

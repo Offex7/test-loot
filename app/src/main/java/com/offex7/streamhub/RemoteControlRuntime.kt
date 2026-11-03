@@ -44,16 +44,25 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         runtimeScope.launch {
             remoteV2.status.collect { status ->
                 LogExporter.log("Remote WebSocket status: " + status.javaClass.simpleName)
+                if (status is RemoteStatus.Error) {
+                    LogExporter.log("Remote WebSocket error: " + status.message)
+                }
             }
         }
         runtimeScope.launch {
             adb.status.collect { status ->
                 LogExporter.log("Remote ADB status: " + status.javaClass.simpleName)
+                if (status is AdbRemoteStatus.Error) {
+                    LogExporter.log("Remote ADB error: " + status.message)
+                }
             }
         }
         runtimeScope.launch {
             bluetooth.status.collect { status ->
                 LogExporter.log("Remote Bluetooth status: " + status.javaClass.simpleName)
+                if (status is BluetoothHidStatus.Error) {
+                    LogExporter.log("Remote Bluetooth error: " + status.message)
+                }
                 if (status is BluetoothHidStatus.Connected) {
                     deviceHistory.record(status.address, status.deviceName, "Bluetooth")
                     preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()

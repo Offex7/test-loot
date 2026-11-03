@@ -258,7 +258,6 @@ fun TvV8Screen(
     var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var voiceSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var voiceSearchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
@@ -387,20 +386,6 @@ fun TvV8Screen(
             searchOpen = false
             query = ""
             keyboardController?.hide()
-        }
-    }
-
-    LaunchedEffect(voiceSearchActive, voiceSearchStamp) {
-        if (!voiceSearchActive) return@LaunchedEffect
-        val stamp = voiceSearchStamp
-        delay(4_000L)
-        if (voiceSearchActive && stamp == voiceSearchStamp) {
-            voiceSearchActive = false
-            voiceTypingJob?.cancel()
-            if (query.isNotBlank()) {
-                store.rememberSearch(Section.TV, query)
-                searchHistory = store.searchHistory(Section.TV)
-            }
         }
     }
 
@@ -772,10 +757,8 @@ fun TvV8Screen(
             if (!resetSilenceTimer) voiceSearchActive = false
             return
         }
-        if (resetSilenceTimer) {
-            voiceSearchActive = true
-            voiceSearchStamp += 1L
-        }
+        // Partial hypotheses keep the microphone animation visible. The final result closes it.
+        voiceSearchActive = resetSilenceTimer
         voiceTypingJob?.cancel()
         voiceTypingJob = scope.launch {
             val current = query
@@ -792,6 +775,10 @@ fun TvV8Screen(
                 query += character
                 searchStamp = System.currentTimeMillis()
                 delay(24L)
+            }
+            if (!resetSilenceTimer && query.isNotBlank()) {
+                store.rememberSearch(Section.TV, query)
+                searchHistory = store.searchHistory(Section.TV)
             }
         }
     }
@@ -861,7 +848,6 @@ fun TvV8Screen(
                 searchOpen = true
                 searchStamp = System.currentTimeMillis()
                 voiceSearchActive = true
-                voiceSearchStamp += 1L
                 requestVoiceSearch(
                     { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = true) },
                     { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = false) }

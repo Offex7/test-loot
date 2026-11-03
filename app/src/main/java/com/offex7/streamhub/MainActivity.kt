@@ -708,7 +708,10 @@ private fun App(
                     restartSearchSilenceTimer()
                 }
                 override fun onBeginningOfSpeech() { restartSearchSilenceTimer() }
-                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onRmsChanged(rmsdB: Float) {
+                    // Keep the four-second silence timer alive while actual voice is reaching the recognizer.
+                    if (rmsdB > 2f) restartSearchSilenceTimer()
+                }
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() { restartSearchSilenceTimer() }
                 override fun onPartialResults(partialResults: Bundle?) {
