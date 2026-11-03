@@ -706,7 +706,7 @@ internal fun TvRemotePad(
 
         AnimatedVisibility(
             visible = voiceActive || !voiceTranscript.isNullOrBlank(),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, bottom = footerButtonSize + 12.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 14.dp, end = 14.dp, bottom = footerButtonSize + 12.dp),
             enter = fadeIn(tween(180)),
             exit = fadeOut(tween(1000))
         ) {
