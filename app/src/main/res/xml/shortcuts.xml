@@ -37,6 +37,7 @@
             android:targetPackage="com.offex7.streamhub"
             android:targetClass="com.offex7.streamhub.MainActivity">
             <extra android:name="widget_section" android:value="REMOTE" />
+            <extra android:name="action" android:value="OPEN_REMOTE" />
         </intent>
     </shortcut>
 </shortcuts>

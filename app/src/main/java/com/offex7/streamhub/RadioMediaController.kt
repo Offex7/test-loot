@@ -121,7 +121,11 @@ class RadioMediaController(context: Context) {
 
     private fun syncPlaybackState(target: MediaController) {
         _isPlaying.value = target.isPlaying
-        val selectedIndex = target.currentMediaItemIndex
+        val mediaIdIndex = target.currentMediaItem?.mediaId?.let { mediaId ->
+            RADIO_STATIONS.indexOfFirst { it.url == mediaId }
+        } ?: -1
+        val selectedIndex = target.currentMediaItemIndex.takeIf { it in RADIO_STATIONS.indices }
+            ?: mediaIdIndex
         if (
             selectedIndex in RADIO_STATIONS.indices &&
             (target.isPlaying || target.playWhenReady || target.playbackState != Player.STATE_IDLE)

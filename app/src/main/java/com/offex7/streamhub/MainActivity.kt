@@ -343,6 +343,8 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_WIDGET_SECTION = "widget_section"
+        const val EXTRA_ACTION = "action"
+        const val ACTION_OPEN_REMOTE = "OPEN_REMOTE"
         const val WIDGET_REMOTE_SECTION = "REMOTE"
     }
 
@@ -374,7 +376,7 @@ class MainActivity : FragmentActivity() {
             Section.TV.name -> Section.TV
             else -> null
         }
-        requestedRemotePad = widgetSection == WIDGET_REMOTE_SECTION
+        requestedRemotePad = isRemoteOpenIntent(intent)
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
         setContent { AppTheme(store) { App(store, tv, radio, this) } }
@@ -398,8 +400,13 @@ class MainActivity : FragmentActivity() {
             Section.TV.name -> Section.TV
             else -> null
         }
-        requestedRemotePad = widgetSection == WIDGET_REMOTE_SECTION
+        requestedRemotePad = isRemoteOpenIntent(intent)
     }
+
+    private fun isRemoteOpenIntent(intent: Intent): Boolean =
+        intent.getStringExtra(EXTRA_ACTION) == ACTION_OPEN_REMOTE ||
+            intent.action == ACTION_OPEN_REMOTE ||
+            intent.getStringExtra(EXTRA_WIDGET_SECTION) == WIDGET_REMOTE_SECTION
 
     override fun onStart() {
         super.onStart()
@@ -477,7 +484,11 @@ private fun App(
     val autoStartEnabled by store.autoStartFlow().collectAsState(true)
     val pinStore = remember(appContext) { PinSecurityStore(appContext) }
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
-    val appOrientation = LocalConfiguration.current.orientation
+    val appConfiguration = LocalConfiguration.current
+    val appOrientation = appConfiguration.orientation
+    val pinLandscape = activity.isTelevisionDevice ||
+        (appConfiguration.smallestScreenWidthDp >= 600 &&
+            appOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
     var lastAppOrientation by rememberSaveable { mutableIntStateOf(appOrientation) }
 
     suspend fun refreshPinReauth() {
@@ -527,9 +538,15 @@ private fun App(
             }
         }
     }
-    DisposableEffect(activity, pinUnlocked) {
+    DisposableEffect(activity, pinUnlocked, pinLandscape) {
         val previousOrientation = activity.requestedOrientation
-        if (!pinUnlocked) activity.requestedOrientation = if (activity.isTelevisionDevice) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        if (!pinUnlocked) {
+            activity.requestedOrientation = if (pinLandscape) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
         onDispose { if (!pinUnlocked) activity.requestedOrientation = previousOrientation }
     }
     if (!pinUnlocked) {
@@ -706,6 +723,7 @@ private fun App(
                     delay(4_000L)
                     if (activeSpeechRecognizer === recognizer) {
                         if (isRemoteDictation) remoteSpeechActive = false
+                        onRecognized?.invoke("")
                         LogExporter.log("Voice input: 4 seconds of silence; stopping recognizer")
                         runCatching { recognizer.stopListening() }
                     }
@@ -715,7 +733,6 @@ private fun App(
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     if (isRemoteDictation) remoteSpeechActive = true
-                    notify("Говорите…", 2500L)
                     restartSearchSilenceTimer()
                 }
                 override fun onBeginningOfSpeech() { restartSearchSilenceTimer() }
@@ -747,10 +764,8 @@ private fun App(
                         }
                         onRecognized?.invoke("")
                         onPartial?.invoke("")
-                        notify("Не удалось распознать речь.", 3000L)
                     } else if (onRecognized != null) {
                         onRecognized(recognized)
-                        notify("Поиск: $recognized", 2500L)
                     } else {
                         remoteSpeechActive = false
                         remoteSpeechTranscript = recognized
@@ -786,7 +801,6 @@ private fun App(
                     activeSpeechRecognizer = null
                     onRecognized?.invoke("")
                     onPartial?.invoke("")
-                    notify("Распознавание речи не удалось (код $error).", 3000L)
                 }
             })
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -799,7 +813,6 @@ private fun App(
             }
             recognizer.startListening(intent)
             LogExporter.log(if (onRecognized != null || onPartial != null) "TV voice search recognizer started" else "Remote text dictation started")
-            notify("Запущен голосовой ввод…", 2500L)
         }.onFailure {
             remoteSpeechActive = false
             remoteSpeechTranscript = ""
@@ -855,6 +868,20 @@ private fun App(
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
+    fun stopSystemSpeechInput() {
+        searchSpeechIdleJob?.cancel()
+        searchSpeechIdleJob = null
+        pendingSearchVoiceCallbacks = null
+        pendingRemoteSpeechStart = false
+        activeSpeechRecognizer?.let {
+            runCatching { it.cancel() }
+            runCatching { it.destroy() }
+        }
+        activeSpeechRecognizer = null
+        remoteSpeechActive = false
+        remoteSpeechTranscript = ""
+    }
+
     fun bluetoothPermissionsGranted(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || listOf(
             Manifest.permission.BLUETOOTH_CONNECT,
@@ -891,7 +918,7 @@ private fun App(
         runCatching { activity.remoteRuntime.startBluetoothHid() }
             .onSuccess {
                 refreshRemoteDevices()
-                notify("Bluetooth включён. Система приняла запрос на запуск HID; подтвердите сопряжение на телевизоре.", 4500L)
+                notify("Запрос Bluetooth HID отправлен. Подключение подтвердится после сопряжения с телевизором.", 4500L)
             }
             .onFailure { notify("Ошибка Bluetooth HID: " + (it.message ?: "не удалось запустить профиль"), 4500L) }
     }
@@ -1501,7 +1528,8 @@ private fun App(
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
                     radioPlaying = radio.isPlaying.collectAsState(false).value,
-                    requestVoiceSearch = ::startSearchVoiceInput
+                    requestVoiceSearch = ::startSearchVoiceInput,
+                    onStopVoiceSearch = ::stopSystemSpeechInput
                 )
                 else -> Radio(
                     player = radio,
@@ -2346,8 +2374,8 @@ private fun Radio(
         onDispose { radioActivity?.lifecycle?.removeObserver(observer) }
     }
 
-    LaunchedEffect(radioResumeEpoch, index) {
-        if (radioResumeEpoch <= 0 || index !in RADIO_STATIONS.indices) return@LaunchedEffect
+    LaunchedEffect(connected, radioResumeEpoch, index) {
+        if (!connected || index !in RADIO_STATIONS.indices) return@LaunchedEffect
         val activeStation = RADIO_STATIONS[index]
         val targetIndex = filteredStations.indexOfFirst { it.key == activeStation.key }
         if (targetIndex !in filteredStations.indices) return@LaunchedEffect

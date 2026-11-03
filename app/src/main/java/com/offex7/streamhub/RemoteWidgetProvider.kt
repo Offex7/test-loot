@@ -13,6 +13,8 @@ private fun remoteWidgetPendingIntent(
     appWidgetId: Int
 ): PendingIntent {
     val intent = Intent(context, MainActivity::class.java).apply {
+        action = MainActivity.ACTION_OPEN_REMOTE
+        putExtra(MainActivity.EXTRA_ACTION, MainActivity.ACTION_OPEN_REMOTE)
         putExtra(MainActivity.EXTRA_WIDGET_SECTION, MainActivity.WIDGET_REMOTE_SECTION)
         addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }

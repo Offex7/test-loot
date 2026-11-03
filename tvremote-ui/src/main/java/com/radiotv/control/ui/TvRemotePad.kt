@@ -1,5 +1,8 @@
 package com.radiotv.control.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -26,9 +29,6 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.padding
@@ -207,23 +207,25 @@ internal fun TvRemotePad(
             compact -> (maxHeight * 0.34f).coerceIn(190.dp, 232.dp)
             else -> (maxHeight * 0.35f).coerceIn(212.dp, 260.dp)
         }
-        val volumePillWidth = (maxWidth * 0.17f).coerceIn(if (tight) 50.dp else 54.dp, if (tight) 60.dp else 68.dp)
-        val dpadContentWidth = (maxWidth - volumePillWidth * 2).coerceAtLeast(180.dp)
-        val mediaButtonSize = (dpadContentWidth * 0.25f).coerceIn(if (tight) 50.dp else 56.dp, if (tight) 68.dp else 72.dp)
-        val secondRowButtonSize = (dpadContentWidth * 0.22f).coerceIn(if (tight) 46.dp else 50.dp, if (tight) 60.dp else 64.dp)
+        val volumePillWidth = (maxWidth * (if (tight) 0.21f else 0.23f)).coerceIn(if (tight) 60.dp else 76.dp, if (tight) 76.dp else 96.dp)
+        val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
+        val secondRowButtonSize = (maxWidth * 0.18f).coerceIn(if (tight) 50.dp else 62.dp, if (tight) 62.dp else 74.dp)
         val footerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
-        val arrowSize = (dpadContentWidth * 0.24f).coerceIn(if (tight) 50.dp else 54.dp, if (tight) 70.dp else 76.dp)
+        val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
         val arrowSideWidth = arrowSize * 1.28f
-        val okSize = (dpadContentWidth * 0.30f).coerceIn(if (tight) 64.dp else 68.dp, if (tight) 80.dp else 88.dp)
-        // Directional keys meet OK edge-to-edge: no overlap and no black seams.
-        val arrowOverlap = 0.dp
+        val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
+        // The directional buttons overlap the center key slightly, eliminating visible gaps.
+        val arrowOverlap = 3.dp
         val dpadHeight = okSize + arrowSize * 2 - arrowOverlap * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = ((dpadContentWidth - okSize) / 2 - arrowSideWidth).coerceAtLeast(0.dp)
-        val rowSpacing = 0.dp
-        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize +
-            (if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp)
+        // The D-pad is inside the column's 8 dp side padding and has 1 dp local padding.
+        // Use its actual inner width so the side arrows meet the center key without gaps.
+        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth + arrowOverlap).coerceAtLeast(0.dp)
+        val rowSpacing = if (tight) 5.dp else 7.dp
+        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 22.dp +
+            if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
+        val adaptiveLowerRowGap = ((maxHeight - requiredContentHeight).coerceAtLeast(0.dp)).coerceAtMost(14.dp)
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -241,8 +243,8 @@ internal fun TvRemotePad(
             label = "ok-pulse"
         )
         val voicePulse by transition.animateFloat(
-            initialValue = 0.90f,
-            targetValue = 1.12f,
+            initialValue = 1f,
+            targetValue = if (voiceActive && !energySaving) 1.12f else 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(650, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
@@ -281,7 +283,7 @@ internal fun TvRemotePad(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF000000))
-                .padding(0.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
                 .then(if (requiredContentHeight > maxHeight) Modifier.verticalScroll(rememberScrollState()) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(rowSpacing)
@@ -380,11 +382,11 @@ internal fun TvRemotePad(
                 }
             }
 
-            // VOL and CH span the media controls and D-pad as one dense, connected grid.
+            // Tall VOL/CH pills frame Play/Pause above Mute/MENU, matching the reference.
             Row(
-                modifier = Modifier.fillMaxWidth().height(topClusterHeight + dpadHeight),
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
-                verticalAlignment = Alignment.Top
+                modifier = Modifier.fillMaxWidth().height(topClusterHeight),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 WhiteVolumePill(
                     title = "VOL",
@@ -399,215 +401,76 @@ internal fun TvRemotePad(
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                    verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 10.dp, Alignment.CenterVertically)
                 ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().height(topClusterHeight),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 10.dp, Alignment.CenterVertically)
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                            verticalAlignment = Alignment.Top
-                                        ) {
-                                            RemoteSurfaceButton(
-                                                description = "Воспроизведение",
-                                                modifier = Modifier.size(mediaButtonSize),
-                                                shape = RoundedCornerShape(18.dp),
-                                                background = padButtonColor,
-                                                onClick = { onKey(RemoteKey.PLAY) }
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.PlayArrow,
-                                                    contentDescription = null,
-                                                    tint = padIconColor,
-                                                    modifier = Modifier.size(if (tight) 30.dp else 36.dp)
-                                                )
-                                            }
-                                            RemoteSurfaceButton(
-                                                description = "Пауза",
-                                                modifier = Modifier.size(mediaButtonSize),
-                                                shape = RoundedCornerShape(18.dp),
-                                                background = padButtonColor,
-                                                onClick = { onKey(RemoteKey.PAUSE) }
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Pause,
-                                                    contentDescription = null,
-                                                    tint = padIconColor,
-                                                    modifier = Modifier.size(if (tight) 27.dp else 32.dp)
-                                                )
-                                            }
-                                        }
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(if (tight) 14.dp else 22.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            RemoteSurfaceButton(
-                                                description = "Без звука",
-                                                modifier = Modifier.size(secondRowButtonSize),
-                                                shape = CircleShape,
-                                                background = if (muteActive) RadioTvPalette.Red else padButtonColor,
-                                                onClick = { onKey(RemoteKey.MUTE) }
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.VolumeOff,
-                                                    contentDescription = null,
-                                                    tint = if (muteActive) Color.White else padIconColor,
-                                                    modifier = Modifier.size(if (tight) 25.dp else 30.dp)
-                                                )
-                                            }
-                                            RemoteSurfaceButton(
-                                                description = "Меню",
-                                                modifier = Modifier.size(secondRowButtonSize),
-                                                shape = CircleShape,
-                                                background = padButtonColor,
-                                                onClick = { onKey(RemoteKey.MENU) }
-                                            ) {
-                                                Text(
-                                                    "MENU",
-                                                    color = padIconColor,
-                                                    fontSize = if (tight) 10.sp else if (compact) 14.sp else 18.sp,
-                                                    fontWeight = FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
-                                            }
-                                        }
-                                    }
-                                // The rainbow outline remains fixed; only a bright moving highlight travels over it.
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(dpadHeight)
-                                        .drawBehind {
-                                            val w = size.width
-                                            val h = size.height
-                                            // Compact organic clover contour. The narrow top/bottom lobes hug
-                                            // the arrow keys; the side lobes bulge only far enough to frame them.
-                                            val path = Path().apply {
-                                                moveTo(w * 0.38f, h * 0.01f)
-                                                cubicTo(w * 0.35f, h * 0.01f, w * 0.34f, h * 0.04f, w * 0.34f, h * 0.10f)
-                                                cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.35f, h * 0.285f)
-                                                cubicTo(w * 0.39f, h * 0.32f, w * 0.34f, h * 0.325f, w * 0.28f, h * 0.325f)
-                                                cubicTo(w * 0.18f, h * 0.325f, w * 0.12f, h * 0.36f, w * 0.12f, h * 0.43f)
-                                                lineTo(w * 0.12f, h * 0.57f)
-                                                cubicTo(w * 0.12f, h * 0.64f, w * 0.18f, h * 0.675f, w * 0.28f, h * 0.675f)
-                                                cubicTo(w * 0.36f, h * 0.675f, w * 0.39f, h * 0.68f, w * 0.35f, h * 0.715f)
-                                                cubicTo(w * 0.34f, h * 0.765f, w * 0.34f, h * 0.83f, w * 0.34f, h * 0.90f)
-                                                cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.99f, w * 0.38f, h * 0.99f)
-                                                lineTo(w * 0.62f, h * 0.99f)
-                                                cubicTo(w * 0.65f, h * 0.99f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
-                                                cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.65f, h * 0.715f)
-                                                cubicTo(w * 0.61f, h * 0.68f, w * 0.66f, h * 0.675f, w * 0.72f, h * 0.675f)
-                                                cubicTo(w * 0.82f, h * 0.675f, w * 0.88f, h * 0.64f, w * 0.88f, h * 0.57f)
-                                                lineTo(w * 0.88f, h * 0.43f)
-                                                cubicTo(w * 0.88f, h * 0.36f, w * 0.82f, h * 0.325f, w * 0.72f, h * 0.325f)
-                                                cubicTo(w * 0.64f, h * 0.325f, w * 0.575f, h * 0.32f, w * 0.61f, h * 0.285f)
-                                                cubicTo(w * 0.66f, h * 0.235f, w * 0.66f, h * 0.17f, w * 0.66f, h * 0.10f)
-                                                cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
-                                                close()
-                                            }
-                                            val fixedRainbowBrush = Brush.sweepGradient(
-                                                colors = rainbowColors,
-                                                center = Offset(w / 2f, h / 2f)
-                                            )
-                                            drawPath(
-                                                path,
-                                                brush = fixedRainbowBrush,
-                                                style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                            )
-                                            val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
-                                            val pathLength = measure.length
-                                            if (pathLength > 0f) {
-                                                val segmentLength = pathLength * 0.16f
-                                                val segmentStart = pathLength * rainbowOffset
-                                                val segmentEnd = segmentStart + segmentLength
-                                                val movingSegment = android.graphics.Path()
-                                                if (segmentEnd <= pathLength) {
-                                                    measure.getSegment(segmentStart, segmentEnd, movingSegment, true)
-                                                } else {
-                                                    measure.getSegment(segmentStart, pathLength, movingSegment, true)
-                                                    val wrappedSegment = android.graphics.Path()
-                                                    measure.getSegment(0f, segmentEnd - pathLength, wrappedSegment, true)
-                                                    movingSegment.addPath(wrappedSegment)
-                                                }
-                                                val snakePath = movingSegment.asComposePath()
-                                                drawPath(
-                                                    snakePath,
-                                                    color = Color.White.copy(alpha = 0.22f),
-                                                    style = Stroke(width = 13.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                                )
-                                                drawPath(
-                                                    snakePath,
-                                                    brush = fixedRainbowBrush,
-                                                    style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                                )
-                                                drawPath(
-                                                    snakePath,
-                                                    color = Color.White.copy(alpha = 0.90f),
-                                                    style = Stroke(width = 1.3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                                )
-                                            }
-                                        }
-                                ) {
-                                    RemoteSurfaceButton(
-                                        description = "Вверх",
-                                        modifier = Modifier.align(Alignment.TopCenter).size(arrowSize),
-                                        shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
-                                        background = padButtonColor,
-                                        onClick = { onKey(RemoteKey.UP) },
-                                        pressTiltX = 8f
-                                    ) {
-                                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
-                                    }
-                                    RemoteSurfaceButton(
-                                        description = "Влево",
-                                        modifier = Modifier.align(Alignment.CenterStart)
-                                            .padding(start = arrowInset)
-                                            .width(arrowSideWidth)
-                                            .height(arrowSize),
-                                        shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
-                                        background = padButtonColor,
-                                        onClick = { onKey(RemoteKey.LEFT) },
-                                        pressTiltY = -8f
-                                    ) {
-                                        Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
-                                    }
-                                    RemoteSurfaceButton(
-                                        description = "Вправо",
-                                        modifier = Modifier.align(Alignment.CenterEnd)
-                                            .padding(end = arrowInset)
-                                            .width(arrowSideWidth)
-                                            .height(arrowSize),
-                                        shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
-                                        background = padButtonColor,
-                                        onClick = { onKey(RemoteKey.RIGHT) },
-                                        pressTiltY = 8f
-                                    ) {
-                                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
-                                    }
-                                    RemoteSurfaceButton(
-                                        description = "Вниз",
-                                        modifier = Modifier.align(Alignment.BottomCenter).size(arrowSize),
-                                        shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
-                                        background = padButtonColor,
-                                        onClick = { onKey(RemoteKey.DOWN) },
-                                        pressTiltX = -8f
-                                    ) {
-                                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
-                                    }
-                                    RemoteSurfaceButton(
-                                        description = "ОК",
-                                        modifier = Modifier.align(Alignment.Center).size(okSize),
-                                        shape = RoundedCornerShape(if (tight) 22.dp else 28.dp),
-                                        background = RadioTvPalette.Red,
-                                        pulseScale = okPulse,
-                                        onClick = { onKey(RemoteKey.OK) }
-                                    ) {
-                                        Text("OK", color = Color.White, fontSize = if (tight) 22.sp else 27.sp, fontWeight = FontWeight.Normal)
-                                    }
-                                }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        RemoteSurfaceButton(
+                            description = "Воспроизведение",
+                            modifier = Modifier.size(mediaButtonSize),
+                            shape = RoundedCornerShape(18.dp),
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.PLAY) }
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = padIconColor,
+                                modifier = Modifier.size(if (tight) 30.dp else 36.dp)
+                            )
+                        }
+                        RemoteSurfaceButton(
+                            description = "Пауза",
+                            modifier = Modifier.size(mediaButtonSize),
+                            shape = RoundedCornerShape(18.dp),
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.PAUSE) }
+                        ) {
+                            Icon(
+                                Icons.Filled.Pause,
+                                contentDescription = null,
+                                tint = padIconColor,
+                                modifier = Modifier.size(if (tight) 27.dp else 32.dp)
+                            )
+                        }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(if (tight) 14.dp else 22.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RemoteSurfaceButton(
+                            description = "Без звука",
+                            modifier = Modifier.size(secondRowButtonSize),
+                            shape = CircleShape,
+                            background = if (muteActive) RadioTvPalette.Red else padButtonColor,
+                            onClick = { onKey(RemoteKey.MUTE) }
+                        ) {
+                            Icon(
+                                Icons.Filled.VolumeOff,
+                                contentDescription = null,
+                                tint = if (muteActive) Color.White else padIconColor,
+                                modifier = Modifier.size(if (tight) 25.dp else 30.dp)
+                            )
+                        }
+                        RemoteSurfaceButton(
+                            description = "Меню",
+                            modifier = Modifier.size(secondRowButtonSize),
+                            shape = CircleShape,
+                            background = padButtonColor,
+                            onClick = { onKey(RemoteKey.MENU) }
+                        ) {
+                            Text(
+                                "MENU",
+                                color = padIconColor,
+                                fontSize = if (tight) 10.sp else if (compact) 14.sp else 18.sp,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
                 }
                 WhiteVolumePill(
                     title = "CH",
@@ -619,6 +482,141 @@ internal fun TvRemotePad(
                     onTop = { onKey(RemoteKey.CHANNEL_UP) },
                     onBottom = { onKey(RemoteKey.CHANNEL_DOWN) }
                 )
+            }
+
+            // The rainbow outline remains fixed; only a bright moving highlight travels over it.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(dpadHeight)
+                    .padding(horizontal = 1.dp)
+                    .drawBehind {
+                        val w = size.width
+                        val h = size.height
+                        // Compact organic clover contour. The narrow top/bottom lobes hug
+                        // the arrow keys; the side lobes bulge only far enough to frame them.
+                        val path = Path().apply {
+                            moveTo(w * 0.38f, h * 0.01f)
+                            cubicTo(w * 0.35f, h * 0.01f, w * 0.34f, h * 0.04f, w * 0.34f, h * 0.10f)
+                            cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.35f, h * 0.285f)
+                            cubicTo(w * 0.39f, h * 0.32f, w * 0.34f, h * 0.325f, w * 0.28f, h * 0.325f)
+                            cubicTo(w * 0.18f, h * 0.325f, w * 0.12f, h * 0.36f, w * 0.12f, h * 0.43f)
+                            lineTo(w * 0.12f, h * 0.57f)
+                            cubicTo(w * 0.12f, h * 0.64f, w * 0.18f, h * 0.675f, w * 0.28f, h * 0.675f)
+                            cubicTo(w * 0.36f, h * 0.675f, w * 0.39f, h * 0.68f, w * 0.35f, h * 0.715f)
+                            cubicTo(w * 0.34f, h * 0.765f, w * 0.34f, h * 0.83f, w * 0.34f, h * 0.90f)
+                            cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.99f, w * 0.38f, h * 0.99f)
+                            lineTo(w * 0.62f, h * 0.99f)
+                            cubicTo(w * 0.65f, h * 0.99f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
+                            cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.65f, h * 0.715f)
+                            cubicTo(w * 0.61f, h * 0.68f, w * 0.66f, h * 0.675f, w * 0.72f, h * 0.675f)
+                            cubicTo(w * 0.82f, h * 0.675f, w * 0.88f, h * 0.64f, w * 0.88f, h * 0.57f)
+                            lineTo(w * 0.88f, h * 0.43f)
+                            cubicTo(w * 0.88f, h * 0.36f, w * 0.82f, h * 0.325f, w * 0.72f, h * 0.325f)
+                            cubicTo(w * 0.64f, h * 0.325f, w * 0.575f, h * 0.32f, w * 0.61f, h * 0.285f)
+                            cubicTo(w * 0.66f, h * 0.235f, w * 0.66f, h * 0.17f, w * 0.66f, h * 0.10f)
+                            cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
+                            close()
+                        }
+                        val fixedRainbowBrush = Brush.sweepGradient(
+                            colors = rainbowColors,
+                            center = Offset(w / 2f, h / 2f)
+                        )
+                        drawPath(
+                            path,
+                            brush = fixedRainbowBrush,
+                            style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                        )
+                        val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
+                        val pathLength = measure.length
+                        if (pathLength > 0f) {
+                            val segmentLength = pathLength * 0.16f
+                            val segmentStart = pathLength * rainbowOffset
+                            val segmentEnd = segmentStart + segmentLength
+                            val movingSegment = android.graphics.Path()
+                            if (segmentEnd <= pathLength) {
+                                measure.getSegment(segmentStart, segmentEnd, movingSegment, true)
+                            } else {
+                                measure.getSegment(segmentStart, pathLength, movingSegment, true)
+                                val wrappedSegment = android.graphics.Path()
+                                measure.getSegment(0f, segmentEnd - pathLength, wrappedSegment, true)
+                                movingSegment.addPath(wrappedSegment)
+                            }
+                            val snakePath = movingSegment.asComposePath()
+                            drawPath(
+                                snakePath,
+                                color = Color.White.copy(alpha = 0.22f),
+                                style = Stroke(width = 13.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                            drawPath(
+                                snakePath,
+                                brush = fixedRainbowBrush,
+                                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                            drawPath(
+                                snakePath,
+                                color = Color.White.copy(alpha = 0.90f),
+                                style = Stroke(width = 1.3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                        }
+                    }
+            ) {
+                RemoteSurfaceButton(
+                    description = "Вверх",
+                    modifier = Modifier.align(Alignment.TopCenter).size(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
+                    background = padButtonColor,
+                    onClick = { onKey(RemoteKey.UP) },
+                    pressTiltX = 8f
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
+                }
+                RemoteSurfaceButton(
+                    description = "Влево",
+                    modifier = Modifier.align(Alignment.CenterStart)
+                        .padding(start = arrowInset)
+                        .width(arrowSideWidth)
+                        .height(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
+                    background = padButtonColor,
+                    onClick = { onKey(RemoteKey.LEFT) },
+                    pressTiltY = -8f
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
+                }
+                RemoteSurfaceButton(
+                    description = "Вправо",
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                        .padding(end = arrowInset)
+                        .width(arrowSideWidth)
+                        .height(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
+                    background = padButtonColor,
+                    onClick = { onKey(RemoteKey.RIGHT) },
+                    pressTiltY = 8f
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
+                }
+                RemoteSurfaceButton(
+                    description = "Вниз",
+                    modifier = Modifier.align(Alignment.BottomCenter).size(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
+                    background = padButtonColor,
+                    onClick = { onKey(RemoteKey.DOWN) },
+                    pressTiltX = -8f
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
+                }
+                RemoteSurfaceButton(
+                    description = "ОК",
+                    modifier = Modifier.align(Alignment.Center).size(okSize),
+                    shape = RoundedCornerShape(if (tight) 22.dp else 28.dp),
+                    background = RadioTvPalette.Red,
+                    pulseScale = okPulse,
+                    onClick = { onKey(RemoteKey.OK) }
+                ) {
+                    Text("OK", color = Color.White, fontSize = if (tight) 22.sp else 27.sp, fontWeight = FontWeight.Normal)
+                }
             }
 
             // EXIT uses its own key where the connected TV protocol supports it.
@@ -648,6 +646,7 @@ internal fun TvRemotePad(
             }
 
             // Leave only a compact gap between EXIT/Cast and the four lower quick actions.
+            Spacer(modifier = Modifier.height(adaptiveLowerRowGap))
             // The four lower quick actions match the reference image.
             Row(
                 modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
@@ -705,48 +704,48 @@ internal fun TvRemotePad(
         }
 
         AnimatedVisibility(
-            visible = voiceActive || !voiceTranscript.isNullOrBlank(),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 14.dp, end = 14.dp, bottom = footerButtonSize + 12.dp),
+            visible = voiceActive,
+            modifier = Modifier.align(Alignment.Center).padding(12.dp),
             enter = fadeIn(tween(180)),
             exit = fadeOut(tween(1000))
         ) {
-            Row(
+            Box(
+                modifier = Modifier.size(132.dp)
+                    .background(Color(0xEE171717), CircleShape)
+                    .border(2.dp, RadioTvPalette.Red, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Mic,
+                    contentDescription = "Голосовой ввод",
+                    tint = RadioTvPalette.Red,
+                    modifier = Modifier.size(58.dp).graphicsLayer {
+                        scaleX = voicePulse
+                        scaleY = voicePulse
+                    }
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = !voiceTranscript.isNullOrBlank(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(start = 18.dp, end = 18.dp, bottom = 96.dp),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(650))
+        ) {
+            Text(
+                voiceTranscript.orEmpty(),
                 modifier = Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xE51A1A1A))
-                    .border(1.dp, RadioTvPalette.Red.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                AnimatedVisibility(
-                    visible = voiceActive,
-                    enter = fadeIn(tween(180)),
-                    exit = fadeOut(tween(1000))
-                ) {
-                    Icon(
-                        Icons.Filled.Mic,
-                        contentDescription = null,
-                        tint = RadioTvPalette.Red,
-                        modifier = Modifier.size(24.dp).graphicsLayer {
-                            val pulse = if (voiceActive) voicePulse else 1f
-                            scaleX = pulse
-                            scaleY = pulse
-                        }
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (voiceActive) "СЛУШАЮ…" else "РАСПОЗНАНО",
-                        color = RadioTvPalette.Red,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (!voiceTranscript.isNullOrBlank()) {
-                        Text(voiceTranscript, color = Color.White, fontSize = 14.sp)
-                    }
-                }
-            }
+                    .background(Color(0xEA171717))
+                    .border(1.dp, RadioTvPalette.Red.copy(alpha = 0.7f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                color = Color.White,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
     }

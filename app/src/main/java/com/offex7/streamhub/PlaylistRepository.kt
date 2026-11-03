@@ -146,7 +146,7 @@ class PlaylistRepository(
             when {
                 line.startsWith("#EXTINF", true) -> {
                     val fallbackName = line.substringAfterLast(",", "Без названия").trim().ifBlank { "Без названия" }
-                    name = attr(line, "tvg-name", baseUrl)?.trim()?.takeIf { it.isNotBlank() } ?: fallbackName
+                    name = attrRaw(line, "tvg-name")?.trim()?.takeIf { it.isNotBlank() } ?: fallbackName
                     logo = attr(line, "tvg-logo", baseUrl)
                     epg = attr(line, "epg-logo", baseUrl) ?: attr(line, "logo", baseUrl)
                 }
@@ -164,18 +164,20 @@ class PlaylistRepository(
         return result
     }
 
-    private fun attr(line: String, key: String, baseUrl: String): String? {
+    private fun attr(line: String, key: String, baseUrl: String): String? =
+        attrRaw(line, key)?.let { resolveUrl(baseUrl, it) }
+
+    private fun attrRaw(line: String, key: String): String? {
         val regex = Regex(
             """(?:^|\s)$key\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))""",
             RegexOption.IGNORE_CASE
         )
         val match = regex.find(line) ?: return null
-        val raw = listOf(
+        return listOf(
             match.groupValues.getOrNull(1),
             match.groupValues.getOrNull(2),
             match.groupValues.getOrNull(3)
-        ).firstOrNull { !it.isNullOrBlank() } ?: return null
-        return resolveUrl(baseUrl, raw)
+        ).firstOrNull { !it.isNullOrBlank() }
     }
 
     private fun resolveUrl(baseUrl: String, candidate: String): String =

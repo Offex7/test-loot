@@ -205,7 +205,8 @@ fun TvV8Screen(
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     radioPlaying: Boolean,
-    requestVoiceSearch: (onPartial: (String) -> Unit, onResult: (String) -> Unit) -> Unit
+    requestVoiceSearch: (onPartial: (String) -> Unit, onResult: (String) -> Unit) -> Unit,
+    onStopVoiceSearch: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -737,20 +738,22 @@ fun TvV8Screen(
         keyboardController?.hide()
     }
 
-    val ordered = channels
-        .filterNot { hiddenChannels.contains(it.key) }
-        .sortedWith(
-            compareByDescending<StreamItem> { favorites.contains(it.key) }
-                .thenByDescending { favoriteTimes[it.key] ?: 0L }
-                .thenBy { it.name.lowercase(Locale.ROOT) }
-        )
+    val ordered = remember(channels, hiddenChannels, favorites, favoriteTimes) {
+        channels
+            .filterNot { hiddenChannels.contains(it.key) }
+            .sortedWith(
+                compareByDescending<StreamItem> { favorites.contains(it.key) }
+                    .thenByDescending { favoriteTimes[it.key] ?: 0L }
+                    .thenBy { it.name.lowercase(Locale.ROOT) }
+            )
+    }
     var filtered by remember(ordered) { mutableStateOf(ordered) }
     LaunchedEffect(ordered, query) {
         val searchQuery = query
         if (searchQuery.isBlank()) {
             filtered = ordered
         } else {
-            delay(180L)
+            delay(300L)
             val result = withContext(Dispatchers.Default) {
                 tvSearchFilter(ordered, searchQuery)
             }
@@ -758,22 +761,25 @@ fun TvV8Screen(
         }
     }
     val queryIsRussian = query.any { it in '\u0400'..'\u04FF' }
-    val primaryResults = if (query.isBlank()) filtered else filtered.filter { item ->
-        val hasRussian = tvHasCyrillic(item.name)
-        val hasEnglish = tvHasLatin(item.name)
-        if (queryIsRussian) hasRussian || !hasEnglish else hasEnglish || !hasRussian
+    val primaryResults = remember(filtered, query, queryIsRussian) {
+        if (query.isBlank()) filtered else filtered.filter { item ->
+            val hasRussian = tvHasCyrillic(item.name)
+            val hasEnglish = tvHasLatin(item.name)
+            if (queryIsRussian) hasRussian || !hasEnglish else hasEnglish || !hasRussian
+        }
     }
-    val primaryKeys = primaryResults.mapTo(HashSet()) { it.key }
-    val secondaryResults = filtered.filterNot { it.key in primaryKeys }
+    val primaryKeys = remember(primaryResults) { primaryResults.mapTo(HashSet()) { it.key } }
+    val secondaryResults = remember(filtered, primaryKeys) { filtered.filterNot { it.key in primaryKeys } }
+    val isListScrolling by remember(list) { derivedStateOf { list.isScrollInProgress } }
 
-    fun updateVoiceQuery(recognized: String, resetSilenceTimer: Boolean) {
+    fun updateVoiceQuery(recognized: String, isFinalResult: Boolean) {
         val target = recognized.trim()
         if (target.isBlank()) {
-            if (!resetSilenceTimer) voiceSearchActive = false
+            if (isFinalResult) voiceSearchActive = false
             return
         }
-        // Partial hypotheses keep the microphone animation visible. The final result closes it.
-        voiceSearchActive = resetSilenceTimer
+        // Partial hypotheses keep the microphone visible; a final result fades it out.
+        voiceSearchActive = !isFinalResult
         voiceTypingJob?.cancel()
         voiceTypingJob = scope.launch {
             val current = query
@@ -791,7 +797,7 @@ fun TvV8Screen(
                 searchStamp = System.currentTimeMillis()
                 delay(24L)
             }
-            if (!resetSilenceTimer && query.isNotBlank()) {
+            if (isFinalResult && query.isNotBlank()) {
                 store.rememberSearch(Section.TV, query)
                 searchHistory = store.searchHistory(Section.TV)
             }
@@ -812,6 +818,7 @@ fun TvV8Screen(
             hapticsEnabled = hapticsEnabled,
             soundEnabled = soundEnabled,
             allowSound = !player.isPlaying.value && !radioPlaying,
+            isListScrolling = isListScrolling,
             onPlay = {
                 channels.indexOfFirst { it.key == channel.key }
                     .takeIf { it >= 0 }
@@ -864,8 +871,8 @@ fun TvV8Screen(
                 searchStamp = System.currentTimeMillis()
                 voiceSearchActive = true
                 requestVoiceSearch(
-                    { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = true) },
-                    { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = false) }
+                    { recognized -> updateVoiceQuery(recognized, isFinalResult = false) },
+                    { recognized -> updateVoiceQuery(recognized, isFinalResult = true) }
                 )
             },
             onRefresh = {
@@ -951,7 +958,7 @@ fun TvV8Screen(
                         contentPadding = PaddingValues(10.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        items(primaryResults, key = { it.key }) { channel ->
+                        items(primaryResults, key = { it.key }, contentType = { "tv-channel" }) { channel ->
                             renderChannel(channel)
                         }
                         if (secondaryResults.isNotEmpty()) {
@@ -965,7 +972,7 @@ fun TvV8Screen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            items(secondaryResults, key = { it.key }) { channel ->
+                            items(secondaryResults, key = { it.key }, contentType = { "tv-channel" }) { channel ->
                                 renderChannel(channel)
                             }
                         }
@@ -1010,27 +1017,49 @@ fun TvV8Screen(
         )
         Popup(
             alignment = Alignment.Center,
-            properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false)
+            onDismissRequest = {
+                voiceSearchActive = false
+                voiceTypingJob?.cancel()
+                onStopVoiceSearch()
+            },
+            properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
         ) {
             Column(
-                modifier = Modifier.size(156.dp)
-                    .background(Color(0xEE171717), CircleShape)
-                    .border(2.dp, TvV9Red, CircleShape)
+                modifier = Modifier.widthIn(min = 220.dp, max = 300.dp)
+                    .background(Color(0xEE171717), RoundedCornerShape(24.dp))
+                    .border(2.dp, TvV9Red, RoundedCornerShape(24.dp))
                     .padding(18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Icon(
-                    Icons.Default.Mic,
-                    contentDescription = "Голосовой поиск",
-                    tint = TvV9Red,
-                    modifier = Modifier.size(58.dp).graphicsLayer(
-                        scaleX = microphonePulse,
-                        scaleY = microphonePulse
+                Box(
+                    modifier = Modifier.size(104.dp)
+                        .background(Color(0xFF242424), CircleShape)
+                        .border(2.dp, TvV9Red.copy(alpha = 0.75f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = "Голосовой поиск",
+                        tint = TvV9Red,
+                        modifier = Modifier.size(58.dp).graphicsLayer(
+                            scaleX = microphonePulse,
+                            scaleY = microphonePulse
+                        )
                     )
-                )
-                Text("СЛУШАЮ…", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text("Пауза 4 секунды — поиск", color = TvV9Gray, fontSize = 10.sp, textAlign = TextAlign.Center)
+                }
+                Button(
+                    onClick = {
+                        voiceSearchActive = false
+                        voiceTypingJob?.cancel()
+                        onStopVoiceSearch()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = TvV9Red, contentColor = Color.White)
+                ) {
+                    Text("ЗАКРЫТЬ", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -1203,6 +1232,7 @@ private fun TvV9ChannelRow(
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     allowSound: Boolean,
+    isListScrolling: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
     onHide: () -> Unit
@@ -1314,7 +1344,7 @@ private fun TvV9ChannelRow(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline, logoImageLoader)
+                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline, logoImageLoader, isListScrolling)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -1366,7 +1396,8 @@ private fun TvV9Logo(
     url: String?,
     size: Dp,
     dimmed: Boolean,
-    logoImageLoader: ImageLoader
+    logoImageLoader: ImageLoader,
+    isListScrolling: Boolean = false
 ) {
     val context = LocalContext.current
     val request = remember(url, context) {
@@ -1395,8 +1426,9 @@ private fun TvV9Logo(
                     imageLoader = logoImageLoader,
                 model = request,
                 contentDescription = null,
-                modifier = Modifier.size(size).alpha(if (dimmed) .4f else 1f),
+                modifier = Modifier.size(size.coerceAtMost(96.dp)).alpha(if (dimmed) .4f else 1f),
                 contentScale = ContentScale.Fit,
+                filterQuality = if (isListScrolling) androidx.compose.ui.graphics.FilterQuality.Low else androidx.compose.ui.graphics.FilterQuality.Medium,
                 onState = { state -> logoLoaded = state is AsyncImagePainter.State.Success }
             )
         }
