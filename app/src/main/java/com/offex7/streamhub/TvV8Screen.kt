@@ -30,6 +30,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -118,6 +119,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import coil.ImageLoader
@@ -149,6 +151,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
@@ -741,7 +744,19 @@ fun TvV8Screen(
                 .thenByDescending { favoriteTimes[it.key] ?: 0L }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
-    val filtered = remember(ordered, query) { tvSearchFilter(ordered, query) }
+    var filtered by remember(ordered) { mutableStateOf(ordered) }
+    LaunchedEffect(ordered, query) {
+        val searchQuery = query
+        if (searchQuery.isBlank()) {
+            filtered = ordered
+        } else {
+            delay(180L)
+            val result = withContext(Dispatchers.Default) {
+                tvSearchFilter(ordered, searchQuery)
+            }
+            filtered = result
+        }
+    }
     val queryIsRussian = query.any { it in '\u0400'..'\u04FF' }
     val primaryResults = if (query.isBlank()) filtered else filtered.filter { item ->
         val hasRussian = tvHasCyrillic(item.name)
@@ -1368,7 +1383,12 @@ private fun TvV9Logo(
         contentAlignment = Alignment.Center
     ) {
         if (!logoLoaded) {
-            Text("NO\\nImage", color = TvV9Gray, fontSize = 8.sp, textAlign = TextAlign.Center)
+            Image(
+                painter = painterResource(id = R.drawable.ic_app_icon),
+                contentDescription = "Radio.TV",
+                modifier = Modifier.size(size * 0.72f).alpha(if (dimmed) .4f else 1f),
+                contentScale = ContentScale.Fit
+            )
         }
         if (!url.isNullOrBlank()) {
             AsyncImage(
@@ -1837,7 +1857,7 @@ private fun TvV9Player(
                 }
         )
 
-        val showLoading = !silentSwitching && (switching || waiting || error != null || buffering)
+        val showLoading = switching || waiting || error != null || buffering
 
         if (locked && !pipMode) {
             IconButton(
@@ -2173,7 +2193,7 @@ private fun TvV9Player(
             }
         }
         AnimatedVisibility(
-            visible = !pipMode && !silentSwitching && showLoading,
+            visible = !pipMode && showLoading,
             modifier = Modifier.align(Alignment.Center).zIndex(2f),
             enter = fadeIn(animationSpec = tween(260)),
             exit = fadeOut(animationSpec = tween(300))

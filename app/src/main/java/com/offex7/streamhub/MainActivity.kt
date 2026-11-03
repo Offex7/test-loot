@@ -588,6 +588,9 @@ private fun App(
         mutableStateOf<Pair<(String) -> Unit, (String) -> Unit>?>(null)
     }
     var searchSpeechIdleJob by remember { mutableStateOf<Job?>(null) }
+    var remoteSpeechActive by remember { mutableStateOf(false) }
+    var remoteSpeechTranscript by rememberSaveable { mutableStateOf("") }
+    var pendingRemoteSpeechStart by remember { mutableStateOf(false) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
@@ -679,6 +682,8 @@ private fun App(
         onPartial: ((String) -> Unit)? = null
     ) {
         if (!SpeechRecognizer.isRecognitionAvailable(appContext) || !appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)) {
+            remoteSpeechActive = false
+            remoteSpeechTranscript = ""
             onRecognized?.invoke("")
             onPartial?.invoke("")
             Toast.makeText(appContext, "Микрофон или системное распознавание речи недоступны.", Toast.LENGTH_LONG).show()
@@ -689,14 +694,19 @@ private fun App(
             searchSpeechIdleJob?.cancel()
             val recognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
             activeSpeechRecognizer = recognizer
+            val isRemoteDictation = onRecognized == null && onPartial == null
+            if (isRemoteDictation) {
+                remoteSpeechTranscript = ""
+                remoteSpeechActive = true
+            }
 
             fun restartSearchSilenceTimer() {
-                if (onRecognized == null && onPartial == null) return
                 searchSpeechIdleJob?.cancel()
                 searchSpeechIdleJob = scope.launch {
                     delay(4_000L)
                     if (activeSpeechRecognizer === recognizer) {
-                        LogExporter.log("TV voice search: 4 seconds of silence; stopping recognizer")
+                        if (isRemoteDictation) remoteSpeechActive = false
+                        LogExporter.log("Voice input: 4 seconds of silence; stopping recognizer")
                         runCatching { recognizer.stopListening() }
                     }
                 }
@@ -704,6 +714,7 @@ private fun App(
 
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
+                    if (isRemoteDictation) remoteSpeechActive = true
                     notify("Говорите…", 2500L)
                     restartSearchSilenceTimer()
                 }
@@ -716,8 +727,9 @@ private fun App(
                 override fun onEndOfSpeech() { restartSearchSilenceTimer() }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-                    if (partial.isNotBlank() && onPartial != null) {
-                        onPartial(partial)
+                    if (partial.isNotBlank()) {
+                        if (onPartial != null) onPartial(partial)
+                        else if (isRemoteDictation) remoteSpeechTranscript = partial
                         restartSearchSilenceTimer()
                     }
                 }
@@ -729,6 +741,10 @@ private fun App(
                     activeSpeechRecognizer?.let { runCatching { it.destroy() } }
                     activeSpeechRecognizer = null
                     if (recognized.isBlank()) {
+                        if (isRemoteDictation) {
+                            remoteSpeechActive = false
+                            scope.launch { delay(1_000L); remoteSpeechTranscript = "" }
+                        }
                         onRecognized?.invoke("")
                         onPartial?.invoke("")
                         notify("Не удалось распознать речь.", 3000L)
@@ -736,8 +752,12 @@ private fun App(
                         onRecognized(recognized)
                         notify("Поиск: $recognized", 2500L)
                     } else {
+                        remoteSpeechActive = false
+                        remoteSpeechTranscript = recognized
                         remoteTextInput = recognized
                         scope.launch {
+                            // Allow the microphone animation to fade for one second before sending.
+                            delay(1_000L)
                             runCatching { activity.remoteRuntime.sendText(recognized) }
                                 .recoverCatching {
                                     if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendText(recognized)
@@ -750,12 +770,18 @@ private fun App(
                                     notify("Голосовой текст отправлен", 2500L)
                                 }
                                 .onFailure { notify(it.message ?: "Не удалось отправить распознанный текст", 3500L) }
+                            if (remoteSpeechTranscript == recognized) remoteSpeechTranscript = ""
                         }
                     }
                 }
                 override fun onError(error: Int) {
                     searchSpeechIdleJob?.cancel()
                     searchSpeechIdleJob = null
+                    if (isRemoteDictation) {
+                        remoteSpeechActive = false
+                        val transcript = remoteSpeechTranscript
+                        scope.launch { delay(1_000L); if (remoteSpeechTranscript == transcript) remoteSpeechTranscript = "" }
+                    }
                     activeSpeechRecognizer?.let { runCatching { it.destroy() } }
                     activeSpeechRecognizer = null
                     onRecognized?.invoke("")
@@ -766,7 +792,7 @@ private fun App(
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null || isRemoteDictation)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
@@ -775,6 +801,8 @@ private fun App(
             LogExporter.log(if (onRecognized != null || onPartial != null) "TV voice search recognizer started" else "Remote text dictation started")
             notify("Запущен голосовой ввод…", 2500L)
         }.onFailure {
+            remoteSpeechActive = false
+            remoteSpeechTranscript = ""
             searchSpeechIdleJob?.cancel()
             searchSpeechIdleJob = null
             activeSpeechRecognizer?.let { runCatching { it.destroy() } }
@@ -798,11 +826,17 @@ private fun App(
         val callbacks = pendingSearchVoiceCallbacks
         pendingSearchVoiceCallbacks = null
         if (granted) {
-            if (callbacks != null) startSystemSpeechInput(
-                onRecognized = callbacks.second,
-                onPartial = callbacks.first
-            )
+            if (callbacks != null) {
+                startSystemSpeechInput(
+                    onRecognized = callbacks.second,
+                    onPartial = callbacks.first
+                )
+            } else if (pendingRemoteSpeechStart) {
+                pendingRemoteSpeechStart = false
+                startSystemSpeechInput()
+            }
         } else {
+            pendingRemoteSpeechStart = false
             callbacks?.second?.invoke("")
             callbacks?.first?.invoke("")
             notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
@@ -1401,8 +1435,10 @@ private fun App(
                                         RemoteFeatureAction.APP_NETFLIX -> sendRemoteLaunch("com.netflix.ninja")
                                         RemoteFeatureAction.VOICE_INPUT -> {
                                             val hasMicPermission = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                            if (!hasMicPermission) microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                            else startSystemSpeechInput()
+                                            if (!hasMicPermission) {
+                                                pendingRemoteSpeechStart = true
+                                                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            } else startSystemSpeechInput()
                                         }
                                         RemoteFeatureAction.AIR_MOUSE -> {
                                             if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
@@ -1422,7 +1458,8 @@ private fun App(
                                 },
                                 touchpadActive = remoteBluetoothStatus is BluetoothHidStatus.Connected,
                                 airMouseActive = remoteAirMouseStatus is AirMouseStatus.Active,
-                                voiceActive = remoteVoiceStatus is VoiceInputStatus.Recording,
+                                voiceActive = remoteVoiceStatus is VoiceInputStatus.Recording || remoteSpeechActive,
+                                voiceTranscript = remoteSpeechTranscript,
                                 featureMessage = remoteDeviceName
                             )
                         }
@@ -2408,7 +2445,7 @@ private fun Radio(
                         searchStamp = System.currentTimeMillis()
                     }
                 },
-                showSearch = true,
+                showSearch = false,
                 showTimer = false
             )
 

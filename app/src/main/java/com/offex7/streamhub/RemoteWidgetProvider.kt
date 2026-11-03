@@ -29,7 +29,7 @@ class RemoteWidgetProvider : AppWidgetProvider() {
     ) {
         appWidgetIds.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.widget_remote)
-            views.setTextViewText(R.id.widget_icon, "🎛")
+            views.setImageViewResource(R.id.widget_icon, R.drawable.widget_remote_icon)
             views.setOnClickPendingIntent(R.id.widget_root, remoteWidgetPendingIntent(context, id))
             appWidgetManager.updateAppWidget(id, views)
         }

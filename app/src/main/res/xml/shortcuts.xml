@@ -26,4 +26,17 @@
             <extra android:name="widget_section" android:value="TV" />
         </intent>
     </shortcut>
+    <shortcut
+        android:shortcutId="open_remote"
+        android:enabled="true"
+        android:icon="@drawable/widget_remote_icon"
+        android:shortcutShortLabel="@string/shortcut_remote_short"
+        android:shortcutLongLabel="@string/shortcut_remote_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.offex7.streamhub"
+            android:targetClass="com.offex7.streamhub.MainActivity">
+            <extra android:name="widget_section" android:value="REMOTE" />
+        </intent>
+    </shortcut>
 </shortcuts>

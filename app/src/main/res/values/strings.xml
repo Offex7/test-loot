@@ -5,4 +5,6 @@
     <string name="shortcut_tv_short">Телевизор</string>
     <string name="shortcut_tv_long">Открыть раздел Телевизор</string>
     <string name="widget_remote_label">Пульт</string>
+    <string name="shortcut_remote_short">Пульт</string>
+    <string name="shortcut_remote_long">Открыть пульт управления телевизором</string>
 </resources>
