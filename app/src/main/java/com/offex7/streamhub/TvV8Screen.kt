@@ -202,7 +202,7 @@ fun TvV8Screen(
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     radioPlaying: Boolean,
-    requestVoiceSearch: ((String) -> Unit) -> Unit
+    requestVoiceSearch: (onPartial: (String) -> Unit, onResult: (String) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -257,6 +257,9 @@ fun TvV8Screen(
     var fullscreen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    var voiceSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var voiceSearchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -350,7 +353,7 @@ fun TvV8Screen(
         } else if (hadPlaybackInCurrentSession && !isSwitching && !signalLossNotified && (waiting || !network || error != null || buffering)) {
             notify("Сигнал утерян, перепроверьте подключение к сети", 3000L)
             signalLossNotified = true
-            if (signalLossStartedAt == 0L) signalLossStartedAt = System.currentTimeMillis()
+            if (signalLossStartedAt == 0L) signalLossStartedAt = android.os.SystemClock.elapsedRealtime()
         }
     }
 
@@ -384,6 +387,20 @@ fun TvV8Screen(
             searchOpen = false
             query = ""
             keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(voiceSearchActive, voiceSearchStamp) {
+        if (!voiceSearchActive) return@LaunchedEffect
+        val stamp = voiceSearchStamp
+        delay(4_000L)
+        if (voiceSearchActive && stamp == voiceSearchStamp) {
+            voiceSearchActive = false
+            voiceTypingJob?.cancel()
+            if (query.isNotBlank()) {
+                store.rememberSearch(Section.TV, query)
+                searchHistory = store.searchHistory(Section.TV)
+            }
         }
     }
 
@@ -613,7 +630,7 @@ fun TvV8Screen(
     LaunchedEffect(signalLossStartedAt, isPlaying, waiting, network, error, buffering, isSwitching, selectedIndex) {
         val lostAt = signalLossStartedAt
         if (lostAt <= 0L || isPlaying || isSwitching || !hadPlaybackInCurrentSession) return@LaunchedEffect
-        val remaining = (25_000L - (System.currentTimeMillis() - lostAt)).coerceAtLeast(0L)
+        val remaining = (25_000L - (android.os.SystemClock.elapsedRealtime() - lostAt)).coerceAtLeast(0L)
         if (remaining > 0L) delay(remaining)
         if (signalLossStartedAt == lostAt && !isPlaying && !isSwitching &&
             (waiting || !network || error != null || buffering) && selectedIndex in channels.indices
@@ -739,7 +756,83 @@ fun TvV8Screen(
                 .thenByDescending { favoriteTimes[it.key] ?: 0L }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         )
-    val filtered = fuzzyFilter(ordered, query)
+    val filtered = remember(ordered, query) { tvSearchFilter(ordered, query) }
+    val queryIsRussian = query.any { it in '\u0400'..'\u04FF' }
+    val primaryResults = if (query.isBlank()) filtered else filtered.filter { item ->
+        val hasRussian = tvHasCyrillic(item.name)
+        val hasEnglish = tvHasLatin(item.name)
+        if (queryIsRussian) hasRussian || !hasEnglish else hasEnglish || !hasRussian
+    }
+    val primaryKeys = primaryResults.mapTo(HashSet()) { it.key }
+    val secondaryResults = filtered.filterNot { it.key in primaryKeys }
+
+    fun updateVoiceQuery(recognized: String, resetSilenceTimer: Boolean) {
+        val target = recognized.trim()
+        if (target.isBlank()) {
+            if (!resetSilenceTimer) voiceSearchActive = false
+            return
+        }
+        if (resetSilenceTimer) {
+            voiceSearchActive = true
+            voiceSearchStamp += 1L
+        }
+        voiceTypingJob?.cancel()
+        voiceTypingJob = scope.launch {
+            val current = query
+            val commonLimit = minOf(current.length, target.length)
+            var commonPrefix = 0
+            while (commonPrefix < commonLimit && current[commonPrefix] == target[commonPrefix]) {
+                commonPrefix++
+            }
+            if (commonPrefix < current.length) {
+                query = current.substring(0, commonPrefix)
+                searchStamp = System.currentTimeMillis()
+            }
+            for (character in target.drop(commonPrefix)) {
+                query += character
+                searchStamp = System.currentTimeMillis()
+                delay(24L)
+            }
+        }
+    }
+
+    val renderChannel: @Composable (StreamItem) -> Unit = { channel ->
+        val favorite = favorites.contains(channel.key)
+        val offline = health[channel.url] == AvailabilityStatus.OFFLINE
+        TvV9ChannelRow(
+            item = channel,
+            active = selectedIndex in channels.indices && channels[selectedIndex].key == channel.key,
+            favorite = favorite,
+            logoCache = logoCache,
+            logoImageLoader = logoImageLoader,
+            offline = offline,
+            showHideIcon = showHideIcon,
+            hapticsEnabled = hapticsEnabled,
+            soundEnabled = soundEnabled,
+            allowSound = !player.isPlaying.value && !radioPlaying,
+            onPlay = {
+                channels.indexOfFirst { it.key == channel.key }
+                    .takeIf { it >= 0 }
+                    ?.let { index -> startPlayback(index, favorite) }
+            },
+            onFavorite = {
+                scope.launch {
+                    val newFavorite = !favorite
+                    store.setFavorite(Section.TV, channel.key, newFavorite, sourceKey)
+                    favorites = store.favorites(Section.TV, sourceKey)
+                    favoriteTimes = store.favoriteAddedAt(Section.TV, sourceKey)
+                    notify(if (newFavorite) "Канал добавлен в избранное" else "Канал удалён из избранного", 3000L)
+                }
+            },
+            onHide = {
+                scope.launch {
+                    store.addHiddenChannel(channel.key, sourceKey)
+                    hiddenChannels = store.hiddenChannels(sourceKey)
+                    notify("Канал скрыт", 3000L)
+                }
+            }
+        )
+    }
 
     Column(Modifier.fillMaxSize().background(TvV9Bg)) {
         TvV9Header(
@@ -763,10 +856,16 @@ fun TvV8Screen(
                 keyboardController?.hide()
             },
             onVoiceSearch = {
-                requestVoiceSearch { recognized ->
-                    query = recognized
-                    searchStamp = System.currentTimeMillis()
-                }
+                voiceTypingJob?.cancel()
+                query = ""
+                searchOpen = true
+                searchStamp = System.currentTimeMillis()
+                voiceSearchActive = true
+                voiceSearchStamp += 1L
+                requestVoiceSearch(
+                    onPartial = { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = true) },
+                    onResult = { recognized -> updateVoiceQuery(recognized, resetSilenceTimer = false) }
+                )
             },
             onRefresh = {
                 scope.launch {
@@ -851,42 +950,23 @@ fun TvV8Screen(
                         contentPadding = PaddingValues(10.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        items(filtered, key = { it.key }) { channel ->
-                            val favorite = favorites.contains(channel.key)
-                            val offline = health[channel.url] == AvailabilityStatus.OFFLINE
-                            TvV9ChannelRow(
-                                item = channel,
-                                active = selectedIndex in channels.indices && channels[selectedIndex].key == channel.key,
-                                favorite = favorite,
-                                logoCache = logoCache,
-                                logoImageLoader = logoImageLoader,
-                                offline = offline,
-                                showHideIcon = showHideIcon,
-                                hapticsEnabled = hapticsEnabled,
-                                soundEnabled = soundEnabled,
-                                allowSound = !player.isPlaying.value && !radioPlaying,
-                                onPlay = {
-                                    channels.indexOfFirst { it.key == channel.key }
-                                        .takeIf { it >= 0 }
-                                        ?.let { index -> startPlayback(index, favorite) }
-                                },
-                                onFavorite = {
-                                    scope.launch {
-                                        val newFavorite = !favorite
-                                        store.setFavorite(Section.TV, channel.key, newFavorite, sourceKey)
-                                        favorites = store.favorites(Section.TV, sourceKey)
-                                        favoriteTimes = store.favoriteAddedAt(Section.TV, sourceKey)
-                                        notify(if (newFavorite) "Канал добавлен в избранное" else "Канал удалён из избранного", 3000L)
-                                    }
-                                },
-                                onHide = {
-                                    scope.launch {
-                                        store.addHiddenChannel(channel.key, sourceKey)
-                                        hiddenChannels = store.hiddenChannels(sourceKey)
-                                        notify("Канал скрыт", 3000L)
-                                    }
-                                }
-                            )
+                        items(primaryResults, key = { it.key }) { channel ->
+                            renderChannel(channel)
+                        }
+                        if (secondaryResults.isNotEmpty()) {
+                            item(key = "tv-search-secondary-language-heading") {
+                                Text(
+                                    if (queryIsRussian) "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА АНГЛИЙСКОМ"
+                                    else "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА РУССКОМ",
+                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 3.dp),
+                                    color = TvV9Gray,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            items(secondaryResults, key = { it.key }) { channel ->
+                                renderChannel(channel)
+                            }
                         }
                     }
                 }
@@ -912,6 +992,44 @@ fun TvV8Screen(
                         .background(Color.Black.copy(alpha = .45f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
+            }
+        }
+    }
+
+    if (voiceSearchActive) {
+        val microphoneTransition = rememberInfiniteTransition(label = "tv-voice-search-mic")
+        val microphonePulse by microphoneTransition.animateFloat(
+            initialValue = 0.90f,
+            targetValue = 1.12f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(650, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "tv-voice-search-mic-pulse"
+        )
+        Popup(
+            alignment = Alignment.Center,
+            properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Column(
+                modifier = Modifier.size(156.dp)
+                    .background(Color(0xEE171717), CircleShape)
+                    .border(2.dp, TvV9Red, CircleShape)
+                    .padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.Mic,
+                    contentDescription = "Голосовой поиск",
+                    tint = TvV9Red,
+                    modifier = Modifier.size(58.dp).graphicsLayer(
+                        scaleX = microphonePulse,
+                        scaleY = microphonePulse
+                    )
+                )
+                Text("СЛУШАЮ…", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Пауза 4 секунды — поиск", color = TvV9Gray, fontSize = 10.sp, textAlign = TextAlign.Center)
             }
         }
     }
@@ -1447,7 +1565,7 @@ private fun TvV9Player(
         }
         onDispose {
             if (locked && activity != null) {
-                activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             }
         }
     }
@@ -1586,13 +1704,13 @@ private fun TvV9Player(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(controls, locked, menuInteractionToken) {
+    androidx.compose.runtime.LaunchedEffect(controls, locked, menuInteractionToken, channel.key) {
         insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (locked || !controls) insets?.hide(WindowInsetsCompat.Type.systemBars())
         else insets?.show(WindowInsetsCompat.Type.systemBars())
         if (controls && !locked) {
             val token = menuInteractionToken
-            delay(4_000L)
+            delay(10_000L)
             if (token == menuInteractionToken) {
                 controls = false
                 favoriteMenu = false
@@ -1738,6 +1856,7 @@ private fun TvV9Player(
         if (locked && !pipMode) {
             IconButton(
                 onClick = {
+                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
                     locked = false
                     controls = false
                     favoriteMenu = false
@@ -2139,6 +2258,64 @@ private fun formatTvV9Sleep(milliseconds: Long): String {
         "%02d:%02d".format(totalSeconds / 3600L, (totalSeconds / 60L) % 60L)
     } else {
         "%02d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+    }
+}
+
+private val TV_SEARCH_LANGUAGE_ALIASES = listOf(
+    "news" to listOf("новост", "новости"),
+    "sport" to listOf("спорт"),
+    "sports" to listOf("спорт"),
+    "movie" to listOf("фильм", "кино"),
+    "movies" to listOf("фильм", "кино"),
+    "film" to listOf("фильм", "кино"),
+    "music" to listOf("музык", "музыка"),
+    "radio" to listOf("радио"),
+    "kids" to listOf("детск", "детское"),
+    "children" to listOf("детск", "детское"),
+    "documentary" to listOf("документ", "познавател"),
+    "science" to listOf("наук", "познавател"),
+    "entertainment" to listOf("развлекател")
+)
+
+private val TV_SEARCH_CYRILLIC_TO_LATIN = mapOf(
+    'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
+    'е' to "e", 'ё' to "yo", 'ж' to "zh", 'з' to "z", 'и' to "i",
+    'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n",
+    'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+    'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch",
+    'ш' to "sh", 'щ' to "shch", 'ъ' to "", 'ы' to "y", 'ь' to "",
+    'э' to "e", 'ю' to "yu", 'я' to "ya"
+)
+
+private fun tvSearchFold(value: String): String = buildString {
+    value.lowercase(Locale.ROOT).forEach { character ->
+        append(TV_SEARCH_CYRILLIC_TO_LATIN[character] ?: character.toString())
+    }
+}
+
+private fun tvHasCyrillic(value: String): Boolean =
+    value.any { it.code in 0x0400..0x04FF }
+
+private fun tvHasLatin(value: String): Boolean =
+    value.any { it in 'a'..'z' || it in 'A'..'Z' }
+
+private fun tvSearchFilter(items: List<StreamItem>, query: String): List<StreamItem> {
+    val normalizedQuery = query.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+    if (normalizedQuery.isBlank()) return items
+
+    val variants = linkedSetOf(normalizedQuery, tvSearchFold(normalizedQuery))
+    TV_SEARCH_LANGUAGE_ALIASES.forEach { (english, russian) ->
+        if (normalizedQuery.contains(english)) variants.addAll(russian)
+        if (russian.any { normalizedQuery.contains(it) }) variants.add(english)
+    }
+
+    return items.filter { item ->
+        listOf(item.name, item.groupTitle.orEmpty()).any { candidate ->
+            variants.any { variant ->
+                fuzzyMatch(variant, candidate) ||
+                    fuzzyMatch(tvSearchFold(variant), tvSearchFold(candidate))
+            }
+        }
     }
 }
 

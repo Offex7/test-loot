@@ -22,8 +22,8 @@ object LogExporter {
                 .use { it.readText() }
         }.getOrDefault("")
 
-        val fallbackLines = synchronized(this) { recentLines.toList() }
-        val logLines = (capturedLogcat.ifBlank { fallbackLines.joinToString("\n") })
+        val internalLines = synchronized(this) { recentLines.toList() }.takeLast(100)
+        val logLines = (capturedLogcat.ifBlank { internalLines.joinToString("\n") })
             .lineSequence()
             .filter { it.isNotBlank() }
             .toList()
@@ -78,6 +78,10 @@ object LogExporter {
             appendLine("[last_100_logcat_lines]")
             if (logLines.isEmpty()) appendLine("No logcat lines available")
             else logLines.forEach(::appendLine)
+            appendLine()
+            appendLine("[last_100_radio_tv_internal_logs]")
+            if (internalLines.isEmpty()) appendLine("No internal app logs available")
+            else internalLines.forEach(::appendLine)
         }
     }
 

@@ -584,7 +584,10 @@ private fun App(
         }
     }
     var activeSpeechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
-    var pendingSearchVoiceCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var pendingSearchVoiceCallbacks by remember {
+        mutableStateOf<Pair<(String) -> Unit, (String) -> Unit>?>(null)
+    }
+    var searchSpeechIdleJob by remember { mutableStateOf<Job?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var disclaimer by rememberSaveable { mutableStateOf(false) }
     var exit by rememberSaveable { mutableStateOf(false) }
@@ -637,40 +640,94 @@ private fun App(
         activity.companionClient.resume()
         remoteAutoSearching = true
         remoteConnectionMessage = "Поиск телевизоров в локальной сети…"
+        LogExporter.log("Remote auto-search started; 10-second discovery window")
         scope.launch {
+            val startedAt = android.os.SystemClock.elapsedRealtime()
             try {
-                remoteConnectionMessage = runCatching { activity.remoteRuntime.autoConnect() }
-                    .getOrElse { it.message ?: "Телевизоры не найдены." }
+                val result = runCatching {
+                    kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                        activity.remoteRuntime.autoConnect()
+                    }
+                }.getOrElse { it.message ?: "Не удалось выполнить поиск телевизоров." }
+
+                val targetFound =
+                    activity.remoteRuntime.remoteV2.status.value is RemoteStatus.Connected ||
+                    activity.remoteRuntime.remoteV2.status.value is RemoteStatus.AwaitingCode ||
+                    activity.remoteRuntime.adb.status.value is AdbRemoteStatus.Connected ||
+                    activity.remoteRuntime.bluetooth.status.value is BluetoothHidStatus.Connected ||
+                    companionStatus is CompanionConnectionStatus.Connected
+
+                if (targetFound) {
+                    remoteConnectionMessage = result ?: "Телевизор найден. Завершите сопряжение."
+                    LogExporter.log("Remote auto-search finished: TV found")
+                } else {
+                    val remaining = (10_000L - (android.os.SystemClock.elapsedRealtime() - startedAt)).coerceAtLeast(0L)
+                    if (remaining > 0L) delay(remaining)
+                    remoteConnectionMessage = "Телевизоры не обнаружены. Проверьте, что вы в одной Wi-Fi сети, или возможно на ТВ старый протокол подключения"
+                    LogExporter.log("Remote auto-search timed out: no compatible TV found")
+                }
                 refreshRemoteDevices()
-                notify(remoteConnectionMessage, 3500L)
+                notify(remoteConnectionMessage, 5000L)
             } finally {
                 remoteAutoSearching = false
             }
         }
     }
 
-    fun startSystemSpeechInput(onRecognized: ((String) -> Unit)? = null) {
+    fun startSystemSpeechInput(
+        onRecognized: ((String) -> Unit)? = null,
+        onPartial: ((String) -> Unit)? = null
+    ) {
         if (!SpeechRecognizer.isRecognitionAvailable(appContext) || !appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)) {
+            onRecognized?.invoke("")
+            onPartial?.invoke("")
             Toast.makeText(appContext, "Микрофон или системное распознавание речи недоступны.", Toast.LENGTH_LONG).show()
             return
         }
         runCatching {
             activeSpeechRecognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
+            searchSpeechIdleJob?.cancel()
             val recognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
             activeSpeechRecognizer = recognizer
+
+            fun restartSearchSilenceTimer() {
+                if (onRecognized == null && onPartial == null) return
+                searchSpeechIdleJob?.cancel()
+                searchSpeechIdleJob = scope.launch {
+                    delay(4_000L)
+                    if (activeSpeechRecognizer === recognizer) {
+                        LogExporter.log("TV voice search: 4 seconds of silence; stopping recognizer")
+                        runCatching { recognizer.stopListening() }
+                    }
+                }
+            }
+
             recognizer.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { notify("Говорите…", 2500L) }
-                override fun onBeginningOfSpeech() = Unit
+                override fun onReadyForSpeech(params: Bundle?) {
+                    notify("Говорите…", 2500L)
+                    restartSearchSilenceTimer()
+                }
+                override fun onBeginningOfSpeech() { restartSearchSilenceTimer() }
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() = Unit
-                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEndOfSpeech() { restartSearchSilenceTimer() }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                    if (partial.isNotBlank() && onPartial != null) {
+                        onPartial(partial)
+                        restartSearchSilenceTimer()
+                    }
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 override fun onResults(results: Bundle?) {
+                    searchSpeechIdleJob?.cancel()
+                    searchSpeechIdleJob = null
                     val recognized = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                     activeSpeechRecognizer?.let { runCatching { it.destroy() } }
                     activeSpeechRecognizer = null
                     if (recognized.isBlank()) {
+                        onRecognized?.invoke("")
+                        onPartial?.invoke("")
                         notify("Не удалось распознать речь.", 3000L)
                     } else if (onRecognized != null) {
                         onRecognized(recognized)
@@ -694,50 +751,70 @@ private fun App(
                     }
                 }
                 override fun onError(error: Int) {
+                    searchSpeechIdleJob?.cancel()
+                    searchSpeechIdleJob = null
                     activeSpeechRecognizer?.let { runCatching { it.destroy() } }
                     activeSpeechRecognizer = null
+                    onRecognized?.invoke("")
+                    onPartial?.invoke("")
                     notify("Распознавание речи не удалось (код $error).", 3000L)
                 }
             })
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
             }
             recognizer.startListening(intent)
+            LogExporter.log(if (onRecognized != null || onPartial != null) "TV voice search recognizer started" else "Remote text dictation started")
             notify("Запущен голосовой ввод…", 2500L)
         }.onFailure {
+            searchSpeechIdleJob?.cancel()
+            searchSpeechIdleJob = null
             activeSpeechRecognizer?.let { runCatching { it.destroy() } }
             activeSpeechRecognizer = null
+            onRecognized?.invoke("")
+            onPartial?.invoke("")
             notify(it.message ?: "Не удалось запустить распознавание речи.", 3500L)
         }
     }
 
     DisposableEffect(activity) {
         onDispose {
+            searchSpeechIdleJob?.cancel()
+            searchSpeechIdleJob = null
             activeSpeechRecognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
             activeSpeechRecognizer = null
         }
     }
 
     val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val callbacks = pendingSearchVoiceCallbacks
+        pendingSearchVoiceCallbacks = null
         if (granted) {
-            val callback = pendingSearchVoiceCallback
-            pendingSearchVoiceCallback = null
-            startSystemSpeechInput(callback)
+            if (callbacks != null) startSystemSpeechInput(
+                onRecognized = callbacks.second,
+                onPartial = callbacks.first
+            )
         } else {
-            pendingSearchVoiceCallback = null
+            callbacks?.second?.invoke("")
+            callbacks?.first?.invoke("")
             notify("Для голосового ввода нужно разрешение на микрофон", 3000L)
         }
     }
-    fun startSearchVoiceInput(onResult: (String) -> Unit) {
+    fun startSearchVoiceInput(
+        onPartial: (String) -> Unit,
+        onResult: (String) -> Unit
+    ) {
         val granted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         if (granted) {
-            startSystemSpeechInput(onResult)
+            startSystemSpeechInput(onRecognized = onResult, onPartial = onPartial)
         } else {
-            pendingSearchVoiceCallback = onResult
+            pendingSearchVoiceCallbacks = onPartial to onResult
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
@@ -796,6 +873,7 @@ private fun App(
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.all { it } && bluetoothPermissionsGranted()) {
+            LogExporter.log("Bluetooth runtime permissions granted")
             val adapter = currentBluetoothAdapter()
             when {
                 adapter == null -> notify("Ошибка Bluetooth: адаптер не найден на этом устройстве.", 4000L)
@@ -803,7 +881,17 @@ private fun App(
                 else -> bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
             }
         } else {
-            notify("Ошибка Bluetooth: необходимые разрешения не предоставлены.", 4000L)
+            LogExporter.log("Bluetooth runtime permission request denied")
+            val missing = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+                .filter { ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+            val permanentlyDenied = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                missing.any { !activity.shouldShowRequestPermissionRationale(it) }
+            val message = if (permanentlyDenied) {
+                "Разрешение Bluetooth заблокировано Android. Откройте Настройки приложения → Разрешения → Устройства поблизости и включите доступ."
+            } else {
+                "Разрешение Bluetooth отклонено. Нажмите вкладку Bluetooth ещё раз, чтобы повторить системный запрос."
+            }
+            notify(message, 5000L)
         }
     }
     val castFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -851,6 +939,7 @@ private fun App(
 
     fun prepareBluetoothMode() {
         if (!bluetoothPermissionsGranted()) {
+            LogExporter.log("Bluetooth tab opened without runtime permission; requesting again")
             bluetoothPermissionLauncher.launch(
                 arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
             )
@@ -1283,6 +1372,7 @@ private fun App(
                                 energySaving = energySaving,
                                 hapticsEnabled = hapticsEnabled,
                                 deviceName = remoteDeviceName,
+                                searching = remoteAutoSearching,
                                 onKey = { key ->
                                     scope.launch {
                                         val sent = runCatching { activity.remoteRuntime.sendKey(key) }
@@ -1393,7 +1483,7 @@ private fun App(
                     hapticsEnabled = hapticsEnabled,
                     soundEnabled = soundEnabled,
                     onQuickLock = { if(pinStore.isEnabled()){pinUnlocked=false;activity.moveTaskToBack(true)}else quickLockSetup=true },
-                    requestVoiceSearch = ::startSearchVoiceInput
+                    requestVoiceSearch = { onResult -> startSearchVoiceInput(onPartial = {}, onResult = onResult) }
                 )
             }
 
@@ -3340,7 +3430,12 @@ private fun Settings(
             ) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("СОХРАНИТЬ НАСТРОЙКИ", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.Share, "Поделиться настройками", tint = Red)
+                    Icon(
+                        Icons.Default.Share,
+                        "Поделиться настройками",
+                        tint = Red,
+                        modifier = Modifier.graphicsLayer(scaleX = logShareScale, scaleY = logShareScale)
+                    )
                 }
             }
         }

@@ -175,6 +175,7 @@ internal fun TvRemotePad(
     energySaving: Boolean = false,
     hapticsEnabled: Boolean = true,
     deviceName: String = "Телевизор не подключён",
+    searching: Boolean = false,
     onSettings: () -> Unit = {},
     onBack: () -> Unit = { onKey(RemoteKey.BACK) },
     onStartSearch: () -> Unit = {}
@@ -196,12 +197,11 @@ internal fun TvRemotePad(
         val headerHeight = if (tight) 42.dp else if (compact) 50.dp else 56.dp
         val headerButtonSize = if (tight) 34.dp else if (compact) 40.dp else 44.dp
         val powerSize = if (tight) 40.dp else if (compact) 46.dp else 52.dp
-        // The reference's VOL/CH pills span the full upper control block; media and mute/menu sit inside it.
-        // Button diameters follow width; vertical groups grow moderately on taller phones.
+        // Side pills are deliberately tall; they frame the media keys and reach the D-pad.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.30f).coerceIn(150.dp, 170.dp)
-            compact -> (maxHeight * 0.30f).coerceIn(180.dp, 205.dp)
-            else -> (maxHeight * 0.30f).coerceIn(205.dp, 225.dp)
+            tight -> (maxHeight * 0.32f).coerceIn(156.dp, 184.dp)
+            compact -> (maxHeight * 0.34f).coerceIn(190.dp, 232.dp)
+            else -> (maxHeight * 0.35f).coerceIn(212.dp, 260.dp)
         }
         val volumePillWidth = (maxWidth * (if (tight) 0.21f else 0.23f)).coerceIn(if (tight) 60.dp else 76.dp, if (tight) 76.dp else 96.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
@@ -210,16 +210,16 @@ internal fun TvRemotePad(
         val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
         val arrowSideWidth = arrowSize * 1.28f
         val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
-        val arrowVerticalInset = if (tight) 7.dp else if (compact) 8.dp else 10.dp
-        // Fit the four directional keys snugly around OK: the center-to-edge gap is ~4 dp.
-        val dpadHeight = okSize + (arrowSize + arrowVerticalInset + 4.dp) * 2
+        // The directional buttons overlap the center key slightly, eliminating visible gaps.
+        val arrowOverlap = 3.dp
+        val dpadHeight = okSize + arrowSize * 2 - arrowOverlap * 2
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        val arrowInset = (((maxWidth - 16.dp - okSize) / 2) - arrowSideWidth - 4.dp).coerceIn(8.dp, 82.dp)
+        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth + arrowOverlap).coerceAtLeast(0.dp)
         val rowSpacing = if (tight) 5.dp else 7.dp
-        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 8.dp +
+        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 22.dp +
             if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
-        val adaptiveLowerRowGap = ((maxHeight - requiredContentHeight).coerceAtLeast(0.dp)) / 2
+        val adaptiveLowerRowGap = ((maxHeight - requiredContentHeight).coerceAtLeast(0.dp)).coerceAtMost(14.dp)
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -312,23 +312,45 @@ internal fun TvRemotePad(
                         modifier = Modifier.size(25.dp)
                     )
                 }
-                Text(
-                    text = deviceName.ifBlank { "Нет подключения" },
+                Row(
                     modifier = Modifier.weight(1f)
                         .padding(horizontal = 3.dp)
                         .graphicsLayer {
-                            val scale = if (deviceName == "Начать поиск") searchPulse else 1f
+                            val scale = if (deviceName == "Начать поиск" && !searching) searchPulse else 1f
                             scaleX = scale
                             scaleY = scale
                         }
-                        .clickable(enabled = !enabled, onClick = onStartSearch),
-                    color = if (deviceName == "Начать поиск") RadioTvPalette.Red else Color.White,
-                    fontSize = if (tight) 16.sp else 19.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                        .clickable(enabled = !enabled && !searching, onClick = onStartSearch),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (searching) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = RadioTvPalette.Red,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "ИЩЕМ ТЕЛЕВИЗОРЫ…",
+                            color = Color.White,
+                            fontSize = if (tight) 12.sp else 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                        Text(
+                            text = deviceName.ifBlank { "Нет подключения" },
+                            color = if (deviceName == "Начать поиск") RadioTvPalette.Red else Color.White,
+                            fontSize = if (tight) 16.sp else 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 RemoteSurfaceButton(
                     description = "Питание",
                     modifier = Modifier.size(powerSize),
@@ -447,7 +469,7 @@ internal fun TvRemotePad(
                 )
             }
 
-            // Keep the outline geometry fixed; animate only the gradient travelling along it.
+            // The rainbow outline remains fixed; only a bright moving highlight travels over it.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -481,9 +503,13 @@ internal fun TvRemotePad(
                             cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
                             close()
                         }
+                        val fixedRainbowBrush = Brush.sweepGradient(
+                            colors = rainbowColors,
+                            center = Offset(w / 2f, h / 2f)
+                        )
                         drawPath(
                             path,
-                            color = Color(0xFF202020),
+                            brush = fixedRainbowBrush,
                             style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
                         val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
@@ -504,28 +530,29 @@ internal fun TvRemotePad(
                             val snakePath = movingSegment.asComposePath()
                             drawPath(
                                 snakePath,
-                                brush = Brush.sweepGradient(
-                                    colors = rainbowColors,
-                                    center = Offset(w / 2f, h / 2f)
-                                ),
+                                color = Color.White.copy(alpha = 0.22f),
+                                style = Stroke(width = 13.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                            drawPath(
+                                snakePath,
+                                brush = fixedRainbowBrush,
                                 style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                             drawPath(
                                 snakePath,
-                                color = Color.White.copy(alpha = 0.72f),
-                                style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                color = Color.White.copy(alpha = 0.90f),
+                                style = Stroke(width = 1.3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                         }
                     }
             ) {
                 RemoteSurfaceButton(
                     description = "Вверх",
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .padding(top = arrowVerticalInset)
-                        .size(arrowSize),
-                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).size(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.UP) }
+                    onClick = { onKey(RemoteKey.UP) },
+                    pressTiltX = 8f
                 ) {
                     Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
@@ -535,9 +562,10 @@ internal fun TvRemotePad(
                         .padding(start = arrowInset)
                         .width(arrowSideWidth)
                         .height(arrowSize),
-                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.LEFT) }
+                    onClick = { onKey(RemoteKey.LEFT) },
+                    pressTiltY = -8f
                 ) {
                     Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
@@ -547,20 +575,20 @@ internal fun TvRemotePad(
                         .padding(end = arrowInset)
                         .width(arrowSideWidth)
                         .height(arrowSize),
-                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.RIGHT) }
+                    onClick = { onKey(RemoteKey.RIGHT) },
+                    pressTiltY = 8f
                 ) {
                     Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
                 RemoteSurfaceButton(
                     description = "Вниз",
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(bottom = if (tight) 0.dp else 1.dp)
-                        .size(arrowSize),
-                    shape = RoundedCornerShape(if (tight) 20.dp else if (compact) 24.dp else 27.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).size(arrowSize),
+                    shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
-                    onClick = { onKey(RemoteKey.DOWN) }
+                    onClick = { onKey(RemoteKey.DOWN) },
+                    pressTiltX = -8f
                 ) {
                     Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = padIconColor, modifier = Modifier.size(if (tight) 33.dp else if (compact) 48.dp else 56.dp))
                 }
@@ -602,8 +630,7 @@ internal fun TvRemotePad(
                 }
             }
 
-            // Use only half of spare height here: balance the gap below EXIT/Source with
-            // bottom breathing room instead of creating a large empty band between button rows.
+            // Leave only a compact gap between EXIT/Cast and the four lower quick actions.
             Spacer(modifier = Modifier.height(adaptiveLowerRowGap))
             // The four lower quick actions match the reference image.
             Row(

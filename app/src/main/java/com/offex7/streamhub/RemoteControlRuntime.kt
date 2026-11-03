@@ -42,7 +42,18 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
 
     init {
         runtimeScope.launch {
+            remoteV2.status.collect { status ->
+                LogExporter.log("Remote WebSocket status: " + status.javaClass.simpleName)
+            }
+        }
+        runtimeScope.launch {
+            adb.status.collect { status ->
+                LogExporter.log("Remote ADB status: " + status.javaClass.simpleName)
+            }
+        }
+        runtimeScope.launch {
             bluetooth.status.collect { status ->
+                LogExporter.log("Remote Bluetooth status: " + status.javaClass.simpleName)
                 if (status is BluetoothHidStatus.Connected) {
                     deviceHistory.record(status.address, status.deviceName, "Bluetooth")
                     preferences.edit().putBoolean(KEY_HAS_CONNECTED, true).apply()
@@ -92,10 +103,13 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: SecurityException) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         } catch (error: UnsupportedOperationException) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         } catch (error: Exception) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         }
     }
@@ -104,15 +118,19 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         try {
             return action()
         } catch (error: SecurityException) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         } catch (error: UnsupportedOperationException) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         } catch (error: Exception) {
+            LogExporter.log("Remote $operation failed (" + error.javaClass.simpleName + "): " + (error.message ?: "no detail"))
             throw IllegalStateException(messageFor(operation, error), error)
         }
     }
 
     suspend fun connect(host: String, allowPairing: Boolean): String = connectionMutex.withLock {
+        LogExporter.log("Remote connection started")
         val target = host.trim().ifBlank { savedHost }
         require(target.isNotBlank()) { "Введите IP-адрес телевизора." }
         preferences.edit().putString("last_remote_host", target).apply()
@@ -126,6 +144,8 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
             guarded("подключение Android TV Remote v2") { remoteV2.connect(target) }
             rememberWifiDevice(target, "Android TV")
             return@withLock "Подключено: Android TV Remote v2"
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             remoteError = error
         }
@@ -134,6 +154,8 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
             try {
                 guarded("сопряжение Android TV Remote v2") { remoteV2.beginPairing(target) }
                 return@withLock "На экране телевизора появится шестизначный код сопряжения."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 remoteError = error
             }
@@ -143,6 +165,8 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
             guarded("подключение ADB") { adb.connect(target) }
             rememberWifiDevice(target, "Android TV")
             return@withLock "Подключено: ADB"
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             if (bluetooth.status.value is BluetoothHidStatus.Connected) return@withLock "Подключено: Bluetooth HID"
             val detail = error.message ?: remoteError?.let { messageFor("подключение", it) }
@@ -152,6 +176,7 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
     }
 
     suspend fun autoConnect(hostHint: String = ""): String {
+        LogExporter.log("Remote automatic discovery started")
         val hint = hostHint.trim()
         if (hint.isNotBlank()) return connect(hint, false)
 
@@ -162,8 +187,15 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
         }
 
         val discovered = networkDiscovery.discover()
+        LogExporter.log("Remote automatic discovery found " + discovered.size + " candidate(s)")
         for (device in discovered) {
-            val result = runCatching { connect(device.host, true) }.getOrElse { it.message ?: "Не удалось подключиться." }
+            val result = try {
+                connect(device.host, true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                error.message ?: "Не удалось подключиться."
+            }
             if (remoteV2.status.value is RemoteStatus.AwaitingCode) return result
             if (remoteV2.status.value is RemoteStatus.Connected || adb.status.value is AdbRemoteStatus.Connected) {
                 deviceHistory.record(device.host, device.name, "Wi-Fi")
@@ -172,13 +204,16 @@ internal class RemoteControlRuntime(context: Context) : Closeable {
             }
         }
         return if (discovered.isEmpty()) {
+            LogExporter.log("Remote automatic discovery finished: no TVs found")
             "Телевизоры не найдены. Проверьте Wi-Fi и разрешение локальной сети."
         } else {
+            LogExporter.log("Remote automatic discovery finished: found TVs, but connection failed")
             "Не удалось подключиться к найденным телевизорам. Попробуйте ручной IP или Bluetooth HID."
         }
     }
 
     suspend fun connectBluetoothDevice(address: String): String = guarded("подключение Bluetooth HID") {
+        LogExporter.log("Remote Bluetooth HID connection requested")
         bluetooth.connectToBondedDevice(address)
         val outcome = withTimeoutOrNull(15_000L) {
             bluetooth.status.first { it is BluetoothHidStatus.Connected || it is BluetoothHidStatus.Error }

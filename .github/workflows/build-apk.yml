@@ -53,11 +53,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.8 source version
+      - name: Verify committed v4.9 source version
         run: |
           set -e
-          grep -q 'versionCode = 22' app/build.gradle.kts
-          grep -q 'versionName = "4.8"' app/build.gradle.kts
+          grep -q 'versionCode = 23' app/build.gradle.kts
+          grep -q 'versionName = "4.9"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -67,11 +67,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.8): install verified local Unistar logo"
+            git commit -m "fix(v4.9): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.8 sources
+      - name: Validate Radio.TV v4.9 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -102,7 +102,7 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 22" in gradle and 'versionName = "4.8"' in gradle,
+              "version": "versionCode = 23" in gradle and 'versionName = "4.9"' in gradle,
               "remote_modules": all((Path(name) / "build.gradle.kts").is_file() for name in ("tvremote-ui", "tvremote-core", "tvremote-companion", "tvremote-cast")),
               "remote_tab": "TvRemotePadScreen" in main and 'Text("ПУЛЬТ"' in main and "onOpenRemote" in main,
               "companion_lifecycle": "companionClient.pause()" in main and "companionClient.resume()" in main and "companionClient.close()" in main,
@@ -131,7 +131,7 @@ jobs:
               "widget_tv_label_preview": 'android:label="@string/widget_tv_label"' in tv_widget and 'android:previewImage="@drawable/start_tv_final"' in tv_widget and '<string name="widget_tv_label">Телевизор</string>' in strings,
               "widget_receivers": ".RadioWidgetProvider" in manifest and ".TvWidgetProvider" in manifest,
               "remote_widget_declared": ".RemoteWidgetProvider" in manifest and "widget_remote_info" in manifest and "widget_remote_label" in strings and "android:previewImage=\"@drawable/widget_remote_icon\"" in remote_widget,
-              "remote_widget_opens_remote_pad": "WIDGET_REMOTE_SECTION" in remote_widget_provider and "R.drawable.widget_remote_icon" in remote_widget_provider and "TvRemotePadScreen" in main and "requestedRemotePad" in main and "remoteTab = true" in main,
+              "remote_widget_opens_remote_pad": "WIDGET_REMOTE_SECTION" in remote_widget_provider and "setTextViewText" in remote_widget_provider and "🎛" in remote_widget_provider and "TvRemotePadScreen" in main and "requestedRemotePad" in main and "remoteTab = true" in main,
               "remote_widget_layout_has_root_click_target": "widget_root" in remote_widget_layout and "widget_icon" in remote_widget_layout,
               "remote_widget_vector_icon": "<vector" in remote_widget_icon and "#E53935" in remote_widget_icon,
               "TV_reset_copy": "Счётчик Телевизора сброшен" in main and "Счётчик ТВ сброшен" not in main,
@@ -160,14 +160,14 @@ jobs:
               "TV_ready_signal_prevents_false_failover": "currentPlayer.playbackState == Player.STATE_READY" in player and "if (currentPlayer.isPlaying)" in player and "Буфер заполнен на 100%" in player,
               "TV_fast_switch_state": "fullscreen && (player.isPlaying.value || player.player.playWhenReady)" in tv,
               "TV_automatic_recovery": "automaticRecovery = true" in tv and "Канал ${failed.name} недоступен, переключаю на ${channels[next].name}" in tv and "autoRecoveryTargets" in tv,
-              "tv_orientation_lock": "SCREEN_ORIENTATION_LOCKED" in tv and "SCREEN_ORIENTATION_UNSPECIFIED" in tv,
+              "tv_orientation_lock": "SCREEN_ORIENTATION_LOCKED" in tv and "SCREEN_ORIENTATION_FULL_SENSOR" in tv,
               "TV_active_channel_for_stats": "setActiveChannelId(candidate.name)" in tv and "activeChannelId" in player,
               "radio_active_restore": "fun refreshPlaybackState()" in radio_controller and "Lifecycle.Event.ON_RESUME" in main and "animateScrollToItem(targetIndex)" in main and "activeStationFocusRequester.requestFocus()" in main,
               "radio_controller_release_safe": "handler.post" in radio_controller and "pendingFuture?.cancel(false)" in radio_controller and "if (released) return" in radio_controller,
               "TV_neighbor_precheck_types": "val pending = neighbors.filter { health[it.url] == null }" in tv,
               "autostart_and_keep_screen_on": "autoStartKey" in storage and "FLAG_KEEP_SCREEN_ON" in main,
           }
-          # v4.8 feature-specific regression checks.
+          # v4.9 feature-specific regression checks.
           remote_runtime = Path("app/src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8")
           remote_settings = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemoteSettingsScreen.kt").read_text(encoding="utf-8")
           updater = (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8")
@@ -182,7 +182,7 @@ jobs:
               "TV_loading_splash": "TvLoadingSplash" in tv and "rememberInfiniteTransition" in tv and "drawRoundRect" in tv and '"Загрузка" + ".".repeat(dots)' in tv,
               "TV_buffer_percentage_interpolates": 'Text(text = "${bufferPercent.coerceIn(0, 100)}%"' in tv and "maxLines = 1" in tv,
               "TV_waits_for_buffer_100": "val showLoading = !silentSwitching && (switching || waiting || error != null || buffering)" in tv and "bufferPercent.coerceIn(0, 100)" in tv and "stopBuffering(completed = true)" in player and "_bufferPercent.value = if (completed) 100 else 0" in player,
-              "TV_signal_lost_and_25s_recovery": "Сигнал утерян, перепроверьте подключение к сети" in tv and "signalLossStartedAt" in tv and "25_000L - (System.currentTimeMillis() - lostAt)" in tv and "startPlayback(next, automaticRecovery = true)" in tv,
+              "TV_signal_lost_and_25s_recovery": "Сигнал утерян, перепроверьте подключение к сети" in tv and "signalLossStartedAt" in tv and "25_000L - (android.os.SystemClock.elapsedRealtime() - lostAt)" in tv and "startPlayback(next, automaticRecovery = true)" in tv,
               "TV_source_dialog_back_and_disabled_sources": "BackHandler(enabled = sourcePickerVisible)" in tv and "onDismissRequest = { sourcePickerVisible = false }" in tv and "Range" in tv and "bytes=0-0" in tv and "enabled = available" in tv and "Color(0xFF78909C)" in tv,
               "updater_resumable_and_retry": 'header("Range", "bytes=" + offset + "-")' in updater and "MAX_DOWNLOAD_ATTEMPTS = 3" in updater and "Content-Range" in updater,
               "updater_integrity_before_install": "ZipFile(apk)" in updater and "GET_SIGNING_CERTIFICATES" in updater and "archive.packageName == context.packageName" in updater and "temp.renameTo(target)" in updater,
@@ -217,13 +217,24 @@ jobs:
               "remote_auto_search_visible_and_guarded": "isSearching: Boolean = false" in remote_settings and "CircularProgressIndicator" in remote_settings and "enabled = !isSearching" in remote_settings and "isSearching = remoteAutoSearching" in main,
               "remote_bluetooth_real_state_and_permissions": "bluetoothPermissionsGranted()" in main and "BluetoothAdapter.ACTION_REQUEST_ENABLE" in main and "adapter.isEnabled" in main and "BLUETOOTH_CONNECT" in bluetooth_controller and "BLUETOOTH_ADVERTISE" in bluetooth_controller and "adapter.isEnabled" in bluetooth_controller and "throw IllegalStateException(message)" in bluetooth_controller,
               "remote_buttons_full_surface_press": "Box(Modifier.fillMaxSize()" in remote_pad and "role = androidx.compose.ui.semantics.Role.Button" in remote_pad and "ripple(bounded = true)" in remote_pad and "collectIsPressedAsState()" in remote_pad and "animateFloatAsState" in remote_pad,
+              "v49_remote_widget_emoji": 'android:text="🎛"' in remote_widget_layout and 'setTextViewText(R.id.widget_icon, "🎛")' in remote_widget_provider,
+              "remote_pad_zero_gap_dpad": "arrowOverlap = 3.dp" in remote_pad and "okSize + arrowSize * 2 - arrowOverlap * 2" in remote_pad and "pressTiltX = 8f" in remote_pad and "pressTiltY = -8f" in remote_pad,
+              "remote_pad_fixed_gradient_snake": "fixedRainbowBrush" in remote_pad and "rainbowOffset" in remote_pad and "drawPath(" in remote_pad,
+              "remote_search_ten_second_no_tv_notice": "withTimeoutOrNull(10_000L)" in main and "10_000L - " in main and "старый протокол подключения" in main,
+              "bluetooth_permission_retry_after_denial": "Bluetooth tab opened without runtime permission; requesting again" in main and "Нажмите вкладку Bluetooth ещё раз" in main,
+              "voice_search_partial_edittext_and_silence": "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null" in main and "EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000" in main and "updateVoiceQuery" in tv and "delay(24L)" in tv,
+              "tv_search_language_priority": "tvSearchFilter" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА АНГЛИЙСКОМ" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА РУССКОМ" in tv,
+              "tv_player_idle_autohide_ten_seconds": "delay(10_000L)" in tv and "menuInteractionToken, channel.key" in tv,
+              "tv_unlock_follows_current_orientation": "SCREEN_ORIENTATION_FULL_SENSOR" in tv and "SCREEN_ORIENTATION_LOCKED" in tv,
+              "remote_logs_exported_with_logcat": "last_100_radio_tv_internal_logs" in (root / "src/main/java/com/offex7/streamhub/LogExporter.kt").read_text(encoding="utf-8") and "Remote WebSocket status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote ADB status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote Bluetooth status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8"),
+              "save_settings_icon_uses_log_pulse": "Поделиться настройками" in main and "scaleX = logShareScale" in main,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.8 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.8 source checks passed.")
+              raise SystemExit("v4.9 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.9 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -245,7 +256,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.8-debug-build-log
+          name: Radio-TV-v4.9-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -257,35 +268,35 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.8.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.8.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.8.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.9.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.9.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.9.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.8.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.9.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='22'"
-          echo "$BADGING" | grep -q "versionName='4.8'"
-          sha256sum Radio-TV-v4.8.apk
-          ls -lh Radio-TV-v4.8.apk
+          echo "$BADGING" | grep -q "versionCode='23'"
+          echo "$BADGING" | grep -q "versionName='4.9'"
+          sha256sum Radio-TV-v4.9.apk
+          ls -lh Radio-TV-v4.9.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.8-APK
-          path: Radio-TV-v4.8.apk
+          name: Radio-TV-v4.9-APK
+          path: Radio-TV-v4.9.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.8-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.9-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.8-Source
-          path: Radio-TV-v4.8-source.zip
+          name: Radio-TV-v4.9-Source
+          path: Radio-TV-v4.9-source.zip
           if-no-files-found: error
 
       - name: Publish direct APK and source download links
@@ -293,8 +304,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v4.8
-          name: Radio.TV v4.8
+          tag_name: v4.9
+          name: Radio.TV v4.9
           # Release metadata below mirrors the APK manifest: code 22, version 4.8.
           target_commitish: ${{ github.sha }}
           draft: false
@@ -302,7 +313,7 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           body: |
-            Radio.TV v4.8
+            Radio.TV v4.9
 
             versionCode: 22
             versionName: 4.8
@@ -310,5 +321,5 @@ jobs:
 
             APK is signed with the existing v4 signing key. The source archive is attached below.
           files: |
-            Radio-TV-v4.8.apk
-            Radio-TV-v4.8-source.zip
+            Radio-TV-v4.9.apk
+            Radio-TV-v4.9-source.zip

@@ -27,6 +27,7 @@ fun TvRemotePadScreen(
     energySaving: Boolean = false,
     hapticsEnabled: Boolean = true,
     deviceName: String = "Телевизор не подключён",
+    searching: Boolean = false,
     onSettings: () -> Unit = {},
     onStartSearch: () -> Unit = {}
 ) {
@@ -45,6 +46,7 @@ fun TvRemotePadScreen(
         energySaving = energySaving,
         hapticsEnabled = hapticsEnabled,
         deviceName = deviceName,
+        searching = searching,
         onSettings = onSettings,
         onBack = onBack,
         onStartSearch = onStartSearch

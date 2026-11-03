@@ -250,7 +250,7 @@ class PlayerController(context: Context) {
     private fun beginBuffering(player: ExoPlayer) {
         bufferingGeneration++
         val generation = bufferingGeneration
-        bufferingStartedAt = System.currentTimeMillis()
+        bufferingStartedAt = android.os.SystemClock.elapsedRealtime()
         lastBufferProgressAt = bufferingStartedAt
         lastBufferedPosition = player.bufferedPosition
         val wasActive = hasStartedPlayback && !userPaused && !userStopped
@@ -267,7 +267,7 @@ class PlayerController(context: Context) {
                 generation == bufferingGeneration &&
                 player === currentPlayer &&
                 player.playbackState == Player.STATE_BUFFERING &&
-                System.currentTimeMillis() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS &&
+                android.os.SystemClock.elapsedRealtime() - bufferingStartedAt >= WEAK_NETWORK_NOTICE_MS &&
                 wasActive &&
                 !suppressBufferRecovery
             ) {
@@ -287,7 +287,7 @@ class PlayerController(context: Context) {
                 generation == bufferingGeneration &&
                 player === currentPlayer &&
                 player.playbackState == Player.STATE_BUFFERING &&
-                System.currentTimeMillis() - bufferingStartedAt >= BUFFER_TIMEOUT_MS
+                android.os.SystemClock.elapsedRealtime() - bufferingStartedAt >= BUFFER_TIMEOUT_MS
             ) {
                 resumeAfterInterruption = false
                 _error.value = "Буферизация не завершилась за 25 секунд. Переключите канал."
@@ -313,7 +313,7 @@ class PlayerController(context: Context) {
                     !_buffering.value ||
                     player.playbackState != Player.STATE_BUFFERING
                 ) return
-                val now = System.currentTimeMillis()
+                val now = android.os.SystemClock.elapsedRealtime()
                 val bufferedPosition = player.bufferedPosition
                 if (bufferedPosition > lastBufferedPosition) {
                     lastBufferedPosition = bufferedPosition
@@ -457,10 +457,11 @@ class PlayerController(context: Context) {
                 }.isSuccess
                 if (!started) continue
 
-                val until = System.currentTimeMillis() + attemptTimeoutMs.coerceAtLeast(300L)
+                val timeoutMs = attemptTimeoutMs.coerceAtLeast(300L)
+                val attemptStartedAt = android.os.SystemClock.elapsedRealtime()
                 var readyWithoutPlaybackAt = 0L
                 while (
-                    System.currentTimeMillis() < until &&
+                    android.os.SystemClock.elapsedRealtime() - attemptStartedAt < timeoutMs &&
                     generation == playbackGeneration &&
                     !released
                 ) {
@@ -468,10 +469,11 @@ class PlayerController(context: Context) {
                         if (currentPlayer.isPlaying) {
                             _error.value = null
                             internalRetryEnabled = true
+                            LogExporter.log("TV channel became ready after " + (android.os.SystemClock.elapsedRealtime() - attemptStartedAt) + "ms")
                             return index
                         }
-                        if (readyWithoutPlaybackAt == 0L) readyWithoutPlaybackAt = System.currentTimeMillis()
-                        else if (System.currentTimeMillis() - readyWithoutPlaybackAt >= 2_000L) {
+                        if (readyWithoutPlaybackAt == 0L) readyWithoutPlaybackAt = android.os.SystemClock.elapsedRealtime()
+                        else if (android.os.SystemClock.elapsedRealtime() - readyWithoutPlaybackAt >= 2_000L) {
                             _error.value = "Буфер заполнен на 100%, но воспроизведение не началось."
                             break
                         }
@@ -482,6 +484,11 @@ class PlayerController(context: Context) {
                     delay(100L)
                 }
                 if (generation != playbackGeneration || released) return -1
+                if (android.os.SystemClock.elapsedRealtime() - attemptStartedAt >= timeoutMs) {
+                    LogExporter.log("TV channel load timeout after " + timeoutMs + "ms; moving to next candidate")
+                } else {
+                    LogExporter.log("TV channel candidate failed before timeout: " + ( _error.value ?: "playback did not start"))
+                }
                 runCatching {
                     currentPlayer.playWhenReady = false
                     currentPlayer.stop()
