@@ -315,7 +315,7 @@ jobs:
           token: ${{ github.token }}
           tag_name: v4.11
           name: Radio.TV v4.11
-          # Release metadata mirrors the APK manifest: code 24, version 4.10.
+          # Release metadata mirrors the APK manifest: code 25, version 4.11.
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
@@ -325,7 +325,7 @@ jobs:
             Radio.TV v4.11
 
             versionCode: 25
-            versionName: 4.10
+            versionName: 4.11
             Package: com.offex7.streamhub
 
             APK is signed with the existing v4 signing key. The source archive is attached below.
