@@ -198,34 +198,40 @@ internal fun TvRemotePad(
     ) {
         val tight = maxHeight < 520.dp
         val compact = maxHeight < 840.dp
-        val headerHeight = if (tight) 42.dp else if (compact) 50.dp else 56.dp
-        val headerButtonSize = if (tight) 34.dp else if (compact) 40.dp else 44.dp
-        val powerSize = if (tight) 40.dp else if (compact) 46.dp else 52.dp
-        // Side pills are deliberately tall; they frame the media keys and reach the D-pad.
+        val headerHeight = if (tight) 44.dp else if (compact) 58.dp else 62.dp
+        val headerButtonSize = if (tight) 36.dp else if (compact) 44.dp else 48.dp
+        val powerSize = if (tight) 42.dp else if (compact) 50.dp else 56.dp
+        // Match the reference: tall side rails, with the D-pad contour overlapping their lower edge.
         val topClusterHeight = when {
-            tight -> (maxHeight * 0.32f).coerceIn(156.dp, 184.dp)
-            compact -> (maxHeight * 0.34f).coerceIn(190.dp, 232.dp)
-            else -> (maxHeight * 0.35f).coerceIn(212.dp, 260.dp)
+            tight -> (maxHeight * 0.34f).coerceIn(160.dp, 190.dp)
+            compact -> (maxHeight * 0.39f).coerceIn(230.dp, 260.dp)
+            else -> (maxHeight * 0.36f).coerceIn(250.dp, 285.dp)
         }
-        val volumePillWidth = (maxWidth * (if (tight) 0.21f else 0.23f)).coerceIn(if (tight) 60.dp else 76.dp, if (tight) 76.dp else 96.dp)
+        val volumePillWidth = (maxWidth * (if (tight) 0.21f else 0.22f)).coerceIn(if (tight) 62.dp else 72.dp, if (tight) 78.dp else 86.dp)
         val mediaButtonSize = (maxWidth * 0.195f).coerceIn(if (tight) 58.dp else 70.dp, if (tight) 72.dp else 80.dp)
         val secondRowButtonSize = (maxWidth * 0.18f).coerceIn(if (tight) 50.dp else 62.dp, if (tight) 62.dp else 74.dp)
         val footerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val arrowSize = (maxWidth * 0.20f).coerceIn(if (tight) 62.dp else 70.dp, if (tight) 72.dp else 82.dp)
-        val arrowSideWidth = arrowSize * 1.28f
+        val arrowSideWidth = arrowSize * 1.10f
         val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
-        // The directional buttons overlap the center key slightly, eliminating visible gaps.
-        val arrowOverlap = 3.dp
-        val dpadHeight = okSize + arrowSize * 2 - arrowOverlap * 2
+        val dpadTopInset = if (tight) 10.dp else 16.dp
+        val dpadBottomInset = if (tight) 10.dp else 16.dp
+        val dpadVerticalGap = if (tight) 10.dp else 18.dp
+        val dpadHeight = dpadTopInset + arrowSize + dpadVerticalGap + okSize +
+            dpadVerticalGap + arrowSize + dpadBottomInset
+        val dpadOverlap = (arrowSize * if (tight) 0.58f else 0.92f)
+            .coerceAtMost(if (tight) 44.dp else 76.dp)
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
-        // The D-pad is inside the column's 8 dp side padding and has 1 dp local padding.
-        // Use its actual inner width so the side arrows meet the center key without gaps.
-        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth + arrowOverlap).coerceAtLeast(0.dp)
+        // D-pad side keys sit just outside the OK key; their width stays close to the reference.
+        val sideArrowGap = if (tight) 6.dp else 12.dp
+        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth - sideArrowGap).coerceAtLeast(0.dp)
         val rowSpacing = if (tight) 5.dp else 7.dp
-        val requiredContentHeight = headerHeight + topClusterHeight + dpadHeight + footerButtonSize + lowerButtonSize + rowSpacing * 4 + 22.dp +
+        val footerGap = if (tight) 8.dp else 10.dp
+        val remoteControlsHeight = topClusterHeight + dpadHeight - dpadOverlap
+        val requiredContentHeight = headerHeight + remoteControlsHeight + footerGap +
+            footerButtonSize + rowSpacing * 2 + 16.dp +
             if (!featureMessage.isNullOrBlank()) 28.dp else 0.dp
-        val adaptiveLowerRowGap = ((maxHeight - requiredContentHeight).coerceAtLeast(0.dp)).coerceAtMost(14.dp)
         val padButtonColor = Color(0xFFF8F8F5)
         val padIconColor = Color(0xFF252A29)
         val headerColor = Color(0xFF151515)
@@ -382,9 +388,13 @@ internal fun TvRemotePad(
                 }
             }
 
+            // The top controls and D-pad share one measured area, matching the compact reference layout.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(remoteControlsHeight)
+            ) {
             // Tall VOL/CH pills frame Play/Pause above Mute/MENU, matching the reference.
             Row(
-                modifier = Modifier.fillMaxWidth().height(topClusterHeight),
+                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(topClusterHeight),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -487,6 +497,8 @@ internal fun TvRemotePad(
             // The rainbow outline remains fixed; only a bright moving highlight travels over it.
             Box(
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = topClusterHeight - dpadOverlap)
                     .fillMaxWidth()
                     .height(dpadHeight)
                     .padding(horizontal = 1.dp)
@@ -525,7 +537,7 @@ internal fun TvRemotePad(
                         drawPath(
                             path,
                             brush = fixedRainbowBrush,
-                            style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
                         val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
                         val pathLength = measure.length
@@ -546,24 +558,24 @@ internal fun TvRemotePad(
                             drawPath(
                                 snakePath,
                                 color = Color.White.copy(alpha = 0.22f),
-                                style = Stroke(width = 13.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                             drawPath(
                                 snakePath,
                                 brush = fixedRainbowBrush,
-                                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                             drawPath(
                                 snakePath,
                                 color = Color.White.copy(alpha = 0.90f),
-                                style = Stroke(width = 1.3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                         }
                     }
             ) {
                 RemoteSurfaceButton(
                     description = "Вверх",
-                    modifier = Modifier.align(Alignment.TopCenter).size(arrowSize),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = dpadTopInset).size(arrowSize),
                     shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.UP) },
@@ -599,7 +611,7 @@ internal fun TvRemotePad(
                 }
                 RemoteSurfaceButton(
                     description = "Вниз",
-                    modifier = Modifier.align(Alignment.BottomCenter).size(arrowSize),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = dpadBottomInset).size(arrowSize),
                     shape = RoundedCornerShape(if (tight) 14.dp else if (compact) 18.dp else 20.dp),
                     background = padButtonColor,
                     onClick = { onKey(RemoteKey.DOWN) },
@@ -621,7 +633,7 @@ internal fun TvRemotePad(
 
             // EXIT uses its own key where the connected TV protocol supports it.
             Row(
-                modifier = Modifier.fillMaxWidth().height(lowerButtonSize).padding(horizontal = sideInset),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(lowerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -645,11 +657,11 @@ internal fun TvRemotePad(
                 }
             }
 
-            // Leave only a compact gap between EXIT/Cast and the four lower quick actions.
-            Spacer(modifier = Modifier.height(adaptiveLowerRowGap))
-            // The four lower quick actions match the reference image.
+            }
+
+            // The lower quick-action row follows the D-pad at the same compact spacing as the reference.
             Row(
-                modifier = Modifier.fillMaxWidth().height(footerButtonSize).padding(horizontal = sideInset),
+                modifier = Modifier.fillMaxWidth().padding(top = footerGap).height(footerButtonSize).padding(horizontal = sideInset),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
