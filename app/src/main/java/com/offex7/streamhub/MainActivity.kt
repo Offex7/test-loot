@@ -486,9 +486,7 @@ private fun App(
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
     val appConfiguration = LocalConfiguration.current
     val appOrientation = appConfiguration.orientation
-    val pinLandscape = activity.isTelevisionDevice ||
-        (appConfiguration.smallestScreenWidthDp >= 600 &&
-            appOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+    val pinLandscape = activity.isTelevisionDevice
     var lastAppOrientation by rememberSaveable { mutableIntStateOf(appOrientation) }
 
     suspend fun refreshPinReauth() {
@@ -557,13 +555,15 @@ private fun App(
     var notification by rememberSaveable { mutableStateOf<String?>(null) }
     var notificationDuration by remember { mutableLongStateOf(5000L) }
     var notificationToken by remember { mutableLongStateOf(0L) }
+    // Explicit initial route for a widget/deep-link launch; this app uses Compose screen state, not NavHost.
+    val launchRemoteImmediately = activity.requestedRemotePad
     var section by rememberSaveable { mutableStateOf<Section?>(null) }
     var remoteTab by rememberSaveable { mutableStateOf(activity.requestedRemotePad) }
     var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
     var remoteAutoSearching by remember { mutableStateOf(false) }
     DisposableEffect(activity, remoteTab, remoteSettingsVisible) {
         val previousOrientation = activity.requestedOrientation
-        val lockRemotePadPortrait = remoteTab && !remoteSettingsVisible && !activity.isTelevisionDevice
+        val lockRemotePadPortrait = remoteTab && !remoteSettingsVisible
         if (lockRemotePadPortrait) activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose { if (lockRemotePadPortrait) activity.requestedOrientation = previousOrientation }
     }
@@ -722,10 +722,27 @@ private fun App(
                 searchSpeechIdleJob = scope.launch {
                     delay(4_000L)
                     if (activeSpeechRecognizer === recognizer) {
-                        if (isRemoteDictation) remoteSpeechActive = false
-                        onRecognized?.invoke("")
-                        LogExporter.log("Voice input: 4 seconds of silence; stopping recognizer")
+                        // Ask for final recognition first; a short grace period prevents dropping it.
                         runCatching { recognizer.stopListening() }
+                        delay(800L)
+                        if (activeSpeechRecognizer === recognizer) {
+                            activeSpeechRecognizer = null
+                            if (isRemoteDictation) {
+                                remoteSpeechActive = false
+                                val transcript = remoteSpeechTranscript
+                                if (transcript.isNotBlank()) {
+                                    scope.launch {
+                                        delay(650L)
+                                        if (remoteSpeechTranscript == transcript) remoteSpeechTranscript = ""
+                                    }
+                                }
+                            }
+                            onRecognized?.invoke("")
+                            onPartial?.invoke("")
+                            LogExporter.log("Voice input: 4 seconds of silence; closing voice UI")
+                            runCatching { recognizer.cancel() }
+                            runCatching { recognizer.destroy() }
+                        }
                     }
                 }
             }
@@ -743,35 +760,43 @@ private fun App(
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() { restartSearchSilenceTimer() }
                 override fun onPartialResults(partialResults: Bundle?) {
+                    if (activeSpeechRecognizer !== recognizer) return
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                     if (partial.isNotBlank()) {
                         if (onPartial != null) onPartial(partial)
                         else if (isRemoteDictation) remoteSpeechTranscript = partial
+                        // Reset the four-second inactivity deadline after every new word/phrase.
                         restartSearchSilenceTimer()
                     }
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 override fun onResults(results: Bundle?) {
+                    if (activeSpeechRecognizer !== recognizer) return
                     searchSpeechIdleJob?.cancel()
                     searchSpeechIdleJob = null
                     val recognized = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-                    activeSpeechRecognizer?.let { runCatching { it.destroy() } }
                     activeSpeechRecognizer = null
+                    runCatching { recognizer.destroy() }
                     if (recognized.isBlank()) {
                         if (isRemoteDictation) {
                             remoteSpeechActive = false
-                            scope.launch { delay(1_000L); remoteSpeechTranscript = "" }
+                            scope.launch { delay(650L); remoteSpeechTranscript = "" }
                         }
                         onRecognized?.invoke("")
                         onPartial?.invoke("")
                     } else if (onRecognized != null) {
+                        // Render the final transcript first, then fade the TV voice popup.
                         onRecognized(recognized)
+                        scope.launch {
+                            delay(1_500L)
+                            onRecognized("")
+                        }
                     } else {
-                        remoteSpeechActive = false
+                        remoteSpeechActive = true
                         remoteSpeechTranscript = recognized
                         remoteTextInput = recognized
                         scope.launch {
-                            // Allow the microphone animation to fade for one second before sending.
+                            // Keep the final transcript visible while text is delivered to the TV.
                             delay(1_000L)
                             runCatching { activity.remoteRuntime.sendText(recognized) }
                                 .recoverCatching {
@@ -785,11 +810,14 @@ private fun App(
                                     notify("Голосовой текст отправлен", 2500L)
                                 }
                                 .onFailure { notify(it.message ?: "Не удалось отправить распознанный текст", 3500L) }
+                            remoteSpeechActive = false
+                            delay(650L)
                             if (remoteSpeechTranscript == recognized) remoteSpeechTranscript = ""
                         }
                     }
                 }
                 override fun onError(error: Int) {
+                    if (activeSpeechRecognizer !== recognizer) return
                     searchSpeechIdleJob?.cancel()
                     searchSpeechIdleJob = null
                     if (isRemoteDictation) {
@@ -1147,11 +1175,19 @@ private fun App(
     LaunchedEffect(Unit) {
         pip = store.pipEnabled()
         activity.pipEnabled = pip
-        val last = store.lastExitTime()
-        val savedSection = store.lastSection()
-        if (savedSection != null && last > 0L && System.currentTimeMillis() - last < RESTORE_WINDOW) {
-            section = savedSection
-            restore = if (savedSection == Section.TV) store.lastStream(savedSection) else null
+        if (launchRemoteImmediately) {
+            // OPEN_REMOTE wins over the saved TV/radio section on a cold process start.
+            section = null
+            restore = null
+            remoteSettingsVisible = false
+            remoteTab = true
+        } else {
+            val last = store.lastExitTime()
+            val savedSection = store.lastSection()
+            if (savedSection != null && last > 0L && System.currentTimeMillis() - last < RESTORE_WINDOW) {
+                section = savedSection
+                restore = if (savedSection == Section.TV) store.lastStream(savedSection) else null
+            }
         }
     }
 
@@ -2217,6 +2253,13 @@ private fun Radio(
         searchHistory = store.searchHistory(Section.RADIO)
         val saved = store.scrollPosition(Section.RADIO)
         list.scrollToItem(saved.first.coerceAtMost(RADIO_STATIONS.lastIndex), saved.second)
+        val savedStationId = timerStore.lastStationId()
+        if (player.currentIndex.value !in RADIO_STATIONS.indices && savedStationId != null) {
+            val savedIndex = RADIO_STATIONS.indexOfFirst {
+                it.url == savedStationId || it.key == savedStationId
+            }
+            if (savedIndex in RADIO_STATIONS.indices) player.restoreSelectedIndex(savedIndex)
+        }
         val timer = timerStore.state()
         timerElapsedMs = timer.elapsedMs
         timerStartedAtMs = timer.startedAtMs
@@ -2374,19 +2417,17 @@ private fun Radio(
         onDispose { radioActivity?.lifecycle?.removeObserver(observer) }
     }
 
-    LaunchedEffect(connected, radioResumeEpoch, index) {
+    LaunchedEffect(connected, radioResumeEpoch, index, filteredStations) {
         if (!connected || index !in RADIO_STATIONS.indices) return@LaunchedEffect
         val activeStation = RADIO_STATIONS[index]
         val targetIndex = filteredStations.indexOfFirst { it.key == activeStation.key }
         if (targetIndex !in filteredStations.indices) return@LaunchedEffect
-        val alreadyVisible = list.layoutInfo.visibleItemsInfo.any { it.key == activeStation.key }
-        if (!alreadyVisible) {
-            isRestoringActiveScroll = true
-            try {
-                list.animateScrollToItem(targetIndex)
-            } finally {
-                isRestoringActiveScroll = false
-            }
+        // Always prioritize the currently playing station over a previously saved scroll offset.
+        isRestoringActiveScroll = true
+        try {
+            list.animateScrollToItem(targetIndex)
+        } finally {
+            isRestoringActiveScroll = false
         }
         if (radioIsTelevision) {
             runCatching { activeStationFocusRequester.requestFocus() }

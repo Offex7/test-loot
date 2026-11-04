@@ -141,6 +141,20 @@ class RadioMediaController(context: Context) {
         }
     }
 
+    /** Restores the list selection from DataStore when the MediaSession is idle after a cold start. */
+    fun restoreSelectedIndex(index: Int) {
+        if (index !in RADIO_STATIONS.indices || released) return
+        handler.post {
+            if (released || _currentIndex.value in RADIO_STATIONS.indices) return@post
+            val target = controller
+            val sessionHasActiveSelection = target?.let {
+                it.currentMediaItem != null &&
+                    (it.isPlaying || it.playWhenReady || it.playbackState != Player.STATE_IDLE)
+            } == true
+            if (!sessionHasActiveSelection) _currentIndex.value = index
+        }
+    }
+
     private fun executePlay(index: Int) {
         if (released) return
         val target = controller ?: return

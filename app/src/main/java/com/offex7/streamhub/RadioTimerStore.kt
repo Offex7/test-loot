@@ -25,6 +25,10 @@ class RadioTimerStore(private val context: Context) {
         )
     }
 
+    /** Returns the last station persisted by the playback service across process death. */
+    suspend fun lastStationId(): String? =
+        context.radioTimerDataStore.data.first()[stationKey]?.takeIf { it.isNotBlank() }
+
     /**
      * Starts (or resumes) only when the active station matches the persisted station.
      * An existing start timestamp is kept intact across Activity/process recreation.

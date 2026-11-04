@@ -66,11 +66,9 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
     suspend fun cached(activeSourceKey: String): TvLoadedPlaylist? = withContext(Dispatchers.IO) {
         val source = sources().firstOrNull { it.key == activeSourceKey } ?: return@withContext null
         val file = cacheFile(source)
-        val stamp = timestampFile(source)
-        if (!file.exists() || !stamp.exists()) return@withContext null
-
-        val ts = stamp.readText().toLongOrNull() ?: return@withContext null
-        if (System.currentTimeMillis() - ts !in 0L..86_400_000L) return@withContext null
+        // A valid local playlist remains usable even when it is older than 24 hours.
+        // The fresh network parse below updates it in the background.
+        if (!file.isFile) return@withContext null
 
         val items = runCatching { parse(file.readText(), source.url) }.getOrNull().orEmpty()
         items.takeIf { it.isNotEmpty() }?.let {

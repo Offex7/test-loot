@@ -111,6 +111,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -262,6 +264,7 @@ fun TvV8Screen(
     var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var voiceSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var voiceSearchPopupExit by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
@@ -272,10 +275,11 @@ fun TvV8Screen(
     var zoomSaveJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
 
     suspend fun reload() {
-        loading = true
+        // Existing content stays on screen while a playlist refresh is running.
+        if (channels.isEmpty()) loading = true
         loadError = null
-        runCatching { repo.cached(sourceKey) }.getOrNull()?.let {
-            channels = it.items
+        runCatching { repo.cached(sourceKey) }.getOrNull()?.let { cached ->
+            channels = cached.items
             loading = false
         }
         repo.load(sourceKey)
@@ -286,10 +290,17 @@ fun TvV8Screen(
                 health = emptyMap()
                 sourcePickerVisible = false
             }
-            .onFailure {
+            .onFailure { error ->
                 loading = false
-                loadError = "Источник по умолчанию недоступен. Выберите другой источник"
-                sourcePickerVisible = true
+                if (channels.isEmpty()) {
+                    loadError = "Источник по умолчанию недоступен. Выберите другой источник"
+                    sourcePickerVisible = true
+                } else {
+                    // Keep the last successful cached list visible when the source is offline.
+                    loadError = null
+                    sourcePickerVisible = false
+                    LogExporter.log("TV playlist refresh failed; showing cached channels: " + (error.message ?: "unknown error"))
+                }
             }
     }
 
@@ -385,7 +396,7 @@ fun TvV8Screen(
     LaunchedEffect(searchOpen, query, searchStamp) {
         if (!searchOpen) return@LaunchedEffect
         val stamp = searchStamp
-        delay(if (query.isBlank()) 5000L else 15000L)
+        delay(60_000L)
         if (stamp == searchStamp) {
             searchOpen = false
             query = ""
@@ -772,14 +783,23 @@ fun TvV8Screen(
     val secondaryResults = remember(filtered, primaryKeys) { filtered.filterNot { it.key in primaryKeys } }
     val isListScrolling by remember(list) { derivedStateOf { list.isScrollInProgress } }
 
+    fun finishVoiceSearchPopup() {
+        voiceSearchActive = false
+        voiceSearchPopupExit = true
+        scope.launch {
+            delay(350L)
+            voiceSearchPopupExit = false
+        }
+    }
+
     fun updateVoiceQuery(recognized: String, isFinalResult: Boolean) {
         val target = recognized.trim()
         if (target.isBlank()) {
-            if (isFinalResult) voiceSearchActive = false
+            if (isFinalResult) finishVoiceSearchPopup()
             return
         }
-        // Partial hypotheses keep the microphone visible; a final result fades it out.
-        voiceSearchActive = !isFinalResult
+        // Keep the microphone popup visible until the final transcript is shown and faded.
+        voiceSearchActive = true
         voiceTypingJob?.cancel()
         voiceTypingJob = scope.launch {
             val current = query
@@ -1004,7 +1024,7 @@ fun TvV8Screen(
         }
     }
 
-    if (voiceSearchActive) {
+    if (voiceSearchActive || voiceSearchPopupExit) {
         val microphoneTransition = rememberInfiniteTransition(label = "tv-voice-search-mic")
         val microphonePulse by microphoneTransition.animateFloat(
             initialValue = 0.90f,
@@ -1018,12 +1038,17 @@ fun TvV8Screen(
         Popup(
             alignment = Alignment.Center,
             onDismissRequest = {
-                voiceSearchActive = false
+                finishVoiceSearchPopup()
                 voiceTypingJob?.cancel()
                 onStopVoiceSearch()
             },
             properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
         ) {
+            AnimatedVisibility(
+                visible = voiceSearchActive,
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(300))
+            ) {
             Column(
                 modifier = Modifier.widthIn(min = 220.dp, max = 300.dp)
                     .background(Color(0xEE171717), RoundedCornerShape(24.dp))
@@ -1048,9 +1073,21 @@ fun TvV8Screen(
                         )
                     )
                 }
+                if (query.isNotBlank()) {
+                    Text(
+                        query,
+                        modifier = Modifier.fillMaxWidth()
+                            .background(Color(0xFF242424), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 3
+                    )
+                }
                 Button(
                     onClick = {
-                        voiceSearchActive = false
+                        finishVoiceSearchPopup()
                         voiceTypingJob?.cancel()
                         onStopVoiceSearch()
                     },
@@ -1060,6 +1097,7 @@ fun TvV8Screen(
                 ) {
                     Text("ЗАКРЫТЬ", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
+            }
             }
         }
     }
@@ -1473,6 +1511,21 @@ private fun TvV9ScrollActionButton(
 
 @Composable
 private fun TvV9Skeleton() {
+    val transition = rememberInfiniteTransition(label = "tv-skeleton-shimmer")
+    val shimmerOffset by transition.animateFloat(
+        initialValue = -320f,
+        targetValue = 760f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tv-skeleton-shimmer-offset"
+    )
+    val shimmerBrush = Brush.linearGradient(
+        colors = listOf(TvV9PanelAlt, Color(0xFF383838), TvV9PanelAlt),
+        start = Offset(shimmerOffset, 0f),
+        end = Offset(shimmerOffset + 240f, 82f)
+    )
     LazyColumn(
         contentPadding = PaddingValues(10.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -1482,7 +1535,7 @@ private fun TvV9Skeleton() {
                 Modifier
                     .fillMaxWidth()
                     .height(78.dp)
-                    .background(TvV9PanelAlt, RoundedCornerShape(12.dp))
+                    .background(shimmerBrush, RoundedCornerShape(12.dp))
             )
         }
     }
@@ -1596,17 +1649,6 @@ private fun TvV9Player(
     var menuInteractionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var formatMode by androidx.compose.runtime.remember(channel.key, initialZoom) { androidx.compose.runtime.mutableIntStateOf(if (initialZoom != null) 5 else 0) }
     val orientation = LocalConfiguration.current.orientation
-    DisposableEffect(activity, locked) {
-        if (locked && activity != null) {
-            // Freeze the exact current rotation, including reverse landscape.
-            activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
-        }
-        onDispose {
-            if (locked && activity != null) {
-                activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            }
-        }
-    }
     var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
     var channelNotice by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     val channelLogoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
@@ -1894,7 +1936,6 @@ private fun TvV9Player(
         if (locked && !pipMode) {
             IconButton(
                 onClick = {
-                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
                     locked = false
                     controls = false
                     favoriteMenu = false
