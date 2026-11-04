@@ -239,7 +239,7 @@ jobs:
               "voice_search_partial_edittext_and_silence": "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null" in main and "EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000" in main and "updateVoiceQuery" in tv and "delay(24L)" in tv,
               "tv_search_language_priority": "tvSearchFilter" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА АНГЛИЙСКОМ" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА РУССКОМ" in tv,
               "tv_player_idle_autohide_ten_seconds": "delay(10_000L)" in tv and "menuInteractionToken, channel.key" in tv,
-              "tv_unlock_follows_current_orientation": "SCREEN_ORIENTATION_FULL_SENSOR" in tv and "SCREEN_ORIENTATION_LOCKED" in tv,
+              "tv_player_lock_does_not_change_orientation": "SCREEN_ORIENTATION_FULL_SENSOR" not in tv and "SCREEN_ORIENTATION_LOCKED" not in tv and "locked = false" in tv,
               "remote_logs_exported_with_logcat": "last_100_radio_tv_internal_logs" in (root / "src/main/java/com/offex7/streamhub/LogExporter.kt").read_text(encoding="utf-8") and "Remote WebSocket status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote ADB status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote Bluetooth status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8"),
               "save_settings_icon_uses_log_pulse": "Поделиться настройками" in main and "scaleX = logShareScale" in main,
           })
