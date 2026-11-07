@@ -60,7 +60,6 @@ class PlaylistRepository(
         val source = allSources().firstOrNull { it.key == sourceKey } ?: return@withContext null
         val playlist = cacheFile(source)
         val stamp = stampFile(source)
-        if (!playlist.exists() || !stamp.exists()) return@withContext null
         val ts = runCatching { readCacheAtomically(stamp).toLongOrNull() }.getOrNull()
             ?: return@withContext null
         if (System.currentTimeMillis() - ts in 0..86_400_000L) {
