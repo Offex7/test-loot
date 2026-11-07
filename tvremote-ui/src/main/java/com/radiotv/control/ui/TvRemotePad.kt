@@ -216,7 +216,7 @@ internal fun TvRemotePad(
         val okSize = (maxWidth * 0.24f).coerceIn(if (tight) 70.dp else 86.dp, if (tight) 88.dp else 100.dp)
         val dpadTopInset = if (tight) 10.dp else 16.dp
         val dpadBottomInset = if (tight) 10.dp else 16.dp
-        val dpadVerticalGap = if (tight) 10.dp else 18.dp
+        val dpadVerticalGap = if (tight) 2.dp else 3.dp
         val dpadHeight = dpadTopInset + arrowSize + dpadVerticalGap + okSize +
             dpadVerticalGap + arrowSize + dpadBottomInset
         val dpadOverlap = (arrowSize * if (tight) 0.58f else 0.92f)
@@ -224,7 +224,7 @@ internal fun TvRemotePad(
         val lowerButtonSize = (maxWidth * 0.19f).coerceIn(if (tight) 56.dp else 66.dp, if (tight) 68.dp else 78.dp)
         val sideInset = (maxWidth * (if (tight) 0.045f else 0.06f)).coerceIn(12.dp, 26.dp)
         // D-pad side keys sit just outside the OK key; their width stays close to the reference.
-        val sideArrowGap = if (tight) 6.dp else 12.dp
+        val sideArrowGap = if (tight) 1.dp else 2.dp
         val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth - sideArrowGap).coerceAtLeast(0.dp)
         val rowSpacing = if (tight) 5.dp else 7.dp
         val footerGap = if (tight) 8.dp else 10.dp
@@ -503,11 +503,12 @@ internal fun TvRemotePad(
                     .height(dpadHeight)
                     .padding(horizontal = 1.dp)
                     .drawBehind {
-                        val w = size.width
-                        val h = size.height
+                        val inset = 6.dp.toPx()
+                        val w = (size.width - inset * 2f).coerceAtLeast(0f)
+                        val h = (size.height - inset * 2f).coerceAtLeast(0f)
                         // Compact organic clover contour. The narrow top/bottom lobes hug
                         // the arrow keys; the side lobes bulge only far enough to frame them.
-                        val path = Path().apply {
+                        val rawPath = Path().apply {
                             moveTo(w * 0.38f, h * 0.01f)
                             cubicTo(w * 0.35f, h * 0.01f, w * 0.34f, h * 0.04f, w * 0.34f, h * 0.10f)
                             cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.35f, h * 0.285f)
@@ -530,9 +531,11 @@ internal fun TvRemotePad(
                             cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
                             close()
                         }
+                        // Keep the full outline and its moving highlight inside the draw bounds.
+                        val path = Path().apply { addPath(rawPath, Offset(inset, inset)) }
                         val fixedRainbowBrush = Brush.sweepGradient(
                             colors = rainbowColors,
-                            center = Offset(w / 2f, h / 2f)
+                            center = Offset(size.width / 2f, size.height / 2f)
                         )
                         drawPath(
                             path,
@@ -834,18 +837,17 @@ private fun WhiteVolumePill(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(32.dp))
-            .background(white)
-            .padding(horizontal = 2.dp, vertical = 5.dp),
+            .background(white),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         RemoteSurfaceButton(
             description = topDescription,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            shape = CircleShape,
+            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
             background = white,
             onClick = onTop,
-            pressTiltX = 7f
+            pressTiltX = 0f
         ) {
             if (title == "VOL") {
                 Text(topLabel, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Normal)
@@ -863,10 +865,10 @@ private fun WhiteVolumePill(
         RemoteSurfaceButton(
             description = bottomDescription,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            shape = CircleShape,
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp),
             background = white,
             onClick = onBottom,
-            pressTiltX = -7f
+            pressTiltX = 0f
         ) {
             if (title == "VOL") {
                 Text(bottomLabel, color = ink, fontSize = 31.sp, fontWeight = FontWeight.Normal)

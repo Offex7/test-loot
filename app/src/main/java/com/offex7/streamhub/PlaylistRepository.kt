@@ -1,6 +1,7 @@
 package com.offex7.streamhub
 
 import android.content.Context
+import android.util.AtomicFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -59,10 +60,10 @@ class PlaylistRepository(
         val source = allSources().firstOrNull { it.key == sourceKey } ?: return@withContext null
         val playlist = cacheFile(source)
         val stamp = stampFile(source)
-        if (!playlist.exists() || !stamp.exists()) return@withContext null
-        val ts = stamp.readText().toLongOrNull() ?: return@withContext null
+        val ts = runCatching { readCacheAtomically(stamp).toLongOrNull() }.getOrNull()
+            ?: return@withContext null
         if (System.currentTimeMillis() - ts in 0..86_400_000L) {
-            parse(playlist.readText(), source.url)
+            runCatching { parse(readCacheAtomically(playlist), source.url) }.getOrNull()
         } else null
     }
 
@@ -116,8 +117,24 @@ class PlaylistRepository(
 
     private fun writeCache(source: ResolvedSource, items: List<StreamItem>) {
         runCatching {
-            cacheFile(source).writeText(toM3u(items))
-            stampFile(source).writeText(System.currentTimeMillis().toString())
+            writeCacheAtomically(cacheFile(source), toM3u(items))
+            writeCacheAtomically(stampFile(source), System.currentTimeMillis().toString())
+        }
+    }
+
+    private fun readCacheAtomically(file: File): String =
+        AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+    private fun writeCacheAtomically(file: File, content: String) {
+        val atomicFile = AtomicFile(file)
+        val output = atomicFile.startWrite()
+        try {
+            output.write(content.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+            atomicFile.finishWrite(output)
+        } catch (error: Throwable) {
+            atomicFile.failWrite(output)
+            throw error
         }
     }
 

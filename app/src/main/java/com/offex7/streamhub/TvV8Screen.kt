@@ -1642,13 +1642,16 @@ private fun TvV9Player(
 
 
     var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
-    var locked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var locked by androidx.compose.runtime.rememberSaveable(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
     var menuInteractionToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableLongStateOf(0L) }
     var formatMode by androidx.compose.runtime.remember(channel.key, initialZoom) { androidx.compose.runtime.mutableIntStateOf(if (initialZoom != null) 5 else 0) }
     val orientation = LocalConfiguration.current.orientation
+    LaunchedEffect(locked, orientation) {
+        if (locked) hideSystemBars()
+    }
     var lastOrientation by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(orientation) }
     var channelNotice by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     val channelLogoCache = androidx.compose.runtime.remember(context) { TvLogoCache(context) }
