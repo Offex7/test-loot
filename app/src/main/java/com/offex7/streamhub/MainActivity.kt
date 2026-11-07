@@ -96,6 +96,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -113,6 +114,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
@@ -203,6 +205,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowCompat
@@ -2249,6 +2253,8 @@ private fun Radio(
     val radioIsTelevision =
         (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val radioIsLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val radioShowInfoButton = radioIsTelevision || radioIsLandscape
     var favorites by remember { mutableStateOf(emptySet<String>()) }
     var favoriteTimes by remember { mutableStateOf(emptyMap<String, Long>()) }
     var timerElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
@@ -2263,6 +2269,7 @@ private fun Radio(
     var searchHistory by remember { mutableStateOf(emptyList<String>()) }
     var radioBumpNonce by remember { mutableIntStateOf(0) }
     var eqDialog by remember { mutableStateOf(false) }
+    var infoStation by remember { mutableStateOf<StreamItem?>(null) }
     val eqSettings by store.radioEqualizerFlow().collectAsState(SettingsStore.RadioEqualizerSettings())
     val energySaving = LocalEnergySaving.current
     val radioTimerContext = LocalContext.current.applicationContext
@@ -2637,6 +2644,8 @@ private fun Radio(
                             radioBump = if (active && playing) radioBumpNonce else 0,
                             radioPlaying = active && playing,
                             activeFocusRequester = if (active) activeStationFocusRequester else null,
+                            showRadioInfo = radioShowInfoButton,
+                            onInfo = { infoStation = station },
                             onToggle = if (active) {
                                 {
                                     val activeIndex = RADIO_STATIONS.indexOf(station)
@@ -2656,6 +2665,13 @@ private fun Radio(
                             scope.launch { store.setRadioEqualizer(updated) }
                             eqDialog = false
                         }
+                    )
+                }
+
+                infoStation?.let { station ->
+                    RadioStationInfoDialog(
+                        station = station,
+                        onDismiss = { infoStation = null }
                     )
                 }
 
@@ -4679,7 +4695,9 @@ private fun ChannelRow(
     radioPlaying: Boolean = activeRadio,
     activeFocusRequester: FocusRequester? = null,
     hapticsEnabled: Boolean = true,
-    soundEnabled: Boolean = true
+    soundEnabled: Boolean = true,
+    showRadioInfo: Boolean = false,
+    onInfo: (() -> Unit)? = null
 ) {
     val energySaving=LocalEnergySaving.current
     val iconColorAnimated by animateColorAsState(if (favorite) Red else Color.White, label = "favorite-color")
@@ -4687,11 +4705,28 @@ private fun ChannelRow(
     val scaleAnimated by animateFloatAsState(if(favorite)1.14f else 1f,animationSpec=spring(),label="favorite-scale")
     val scale=if(energySaving)1f else scaleAnimated
     val feedbackContext=LocalContext.current
+    val cardModifier = Modifier.fillMaxWidth().then(
+        activeFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+    ).then(
+        if (isRadio) {
+            Modifier.combinedClickable(
+                onClick = {
+                    InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false)
+                    onPlay()
+                },
+                onLongClick = if (!showRadioInfo && onInfo != null) {
+                    { onInfo() }
+                } else null
+            )
+        } else {
+            Modifier.clickable {
+                InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false)
+                onPlay()
+            }
+        }
+    )
     Card(
-        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onPlay() },
-        modifier = Modifier.fillMaxWidth().then(
-            activeFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
-        ),
+        modifier = cardModifier,
         colors = CardDefaults.cardColors(containerColor = if (favorite) Red.copy(alpha = .08f) else Panel),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -4712,24 +4747,43 @@ private fun ChannelRow(
                 }
                 if (offline && !isRadio) Text("• временно недоступен", color = Gray, fontSize = 10.sp)
             }
-            if (isRadio && activeRadio && onToggle != null) {
+            if (isRadio) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(
-                        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onFavorite() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            "Избранное",
-                            tint = iconColor,
-                            modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onFavorite() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                "Избранное",
+                                tint = iconColor,
+                                modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+                            )
+                        }
+                        if (showRadioInfo && onInfo != null) {
+                            IconButton(
+                                onClick = {
+                                    InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false)
+                                    onInfo()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Panel)
+                                    .border(1.dp, Gray.copy(alpha = .65f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Info, "Описание станции", tint = Orange, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
-                    IconButton(
-                        onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onToggle() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Orange, modifier = Modifier.size(22.dp))
+                    if (activeRadio && onToggle != null) {
+                        IconButton(
+                            onClick = { InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false); onToggle() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Старт / пауза", tint = Orange, modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
             } else {
@@ -4743,6 +4797,89 @@ private fun ChannelRow(
         }
     }
 }
+@Composable
+private fun RadioStationInfoDialog(
+    station: StreamItem,
+    onDismiss: () -> Unit
+) {
+    var visible by remember(station.key) { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+
+    LaunchedEffect(station.key) {
+        visible = true
+        delay(120_000L)
+        visible = false
+    }
+    LaunchedEffect(visible) {
+        if (!visible) {
+            delay(180L)
+            onDismiss()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { visible = false },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(180)) + scaleIn(animationSpec = tween(180), initialScale = 0.96f),
+            exit = fadeOut(tween(150)) + scaleOut(animationSpec = tween(150), targetScale = 0.96f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.90f)
+                    .widthIn(max = 560.dp)
+                    .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Panel,
+                border = BorderStroke(1.dp, Red.copy(alpha = 0.38f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = (configuration.screenHeightDp - 80).coerceAtLeast(180).dp)
+                        .padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        station.name.uppercase(Locale.ROOT),
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "О СТАНЦИИ",
+                        color = Red,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = RADIO_STATION_DESCRIPTIONS[station.name]
+                            ?: "Описание для этой станции пока не добавлено.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = (configuration.screenHeightDp * 0.52f).toInt().coerceAtLeast(120).dp)
+                            .verticalScroll(rememberScrollState()),
+                        color = Color.White.copy(alpha = 0.90f),
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp
+                    )
+                    TextButton(
+                        onClick = { visible = false },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("ЗАКРЫТЬ", color = Red, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun LogoImage(
     item: StreamItem,
