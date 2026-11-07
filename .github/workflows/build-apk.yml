@@ -77,12 +77,13 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          import re
           root = Path("app")
           gradle = (root / "build.gradle.kts").read_text(encoding="utf-8")
           main = (root / "src/main/java/com/offex7/streamhub/MainActivity.kt").read_text(encoding="utf-8")
           models = (root / "src/main/java/com/offex7/streamhub/Models.kt").read_text(encoding="utf-8")
           radio_descriptions = (root / "src/main/java/com/offex7/streamhub/RadioStationDescriptions.kt").read_text(encoding="utf-8")
+          description_keys = [line.strip().split('"', 2)[1] for line in radio_descriptions.splitlines() if ' to """' in line]
+          station_names = [line.split('StreamItem("', 1)[1].split('"', 1)[0] for line in models.splitlines() if 'StreamItem("' in line]
           media = (root / "src/main/java/com/offex7/streamhub/RadioPlaybackService.kt").read_text(encoding="utf-8")
           player = (root / "src/main/java/com/offex7/streamhub/PlayerController.kt").read_text(encoding="utf-8")
           tv = (root / "src/main/java/com/offex7/streamhub/TvV8Screen.kt").read_text(encoding="utf-8")
@@ -106,7 +107,7 @@ jobs:
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
               "version": "versionCode = 28" in gradle and 'versionName = "4.14"' in gradle,
-              "radio_station_descriptions_all_33": len(re.findall(r'^\\s*"([^"]+)"\\s+to\\s+"""', radio_descriptions, re.MULTILINE)) == 33 and set(re.findall(r'^\\s*"([^"]+)"\\s+to\\s+"""', radio_descriptions, re.MULTILINE)) == set(re.findall(r'StreamItem\\("([^"]+)"', models)),
+              "radio_station_descriptions_all_33": len(description_keys) == 33 and len(set(description_keys)) == 33 and set(description_keys) == set(station_names),
               "radio_long_press_portrait_only": "combinedClickable(" in main and "onLongClick = if (!showRadioInfo && onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
               "radio_info_button_focusable": "IconButton(" in main and "Описание станции" in main and ".size(40.dp)" in main,
@@ -334,7 +335,7 @@ jobs:
           token: ${{ github.token }}
           tag_name: v4.14
           name: Radio.TV v4.14
-          # Release metadata mirrors the APK manifest: code 27, version 4.14.
+          # Release metadata mirrors the APK manifest: code 28, version 4.14.
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
