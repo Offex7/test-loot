@@ -558,12 +558,14 @@ private fun App(
         }
     }
     SideEffect {
-        activity.updateOrientationPolicy(
-            pinLocked = !pinUnlocked,
-            remoteTab = false,
-            remoteSettingsVisible = false
-        )
-        if (!pinUnlocked) activity.remotePadVisible = false
+        if (!pinUnlocked) {
+            activity.updateOrientationPolicy(
+                pinLocked = true,
+                remoteTab = false,
+                remoteSettingsVisible = false
+            )
+            activity.remotePadVisible = false
+        }
     }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
