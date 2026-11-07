@@ -153,6 +153,7 @@ import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -354,7 +355,26 @@ class MainActivity : FragmentActivity() {
     internal var pipEnabled = true
     internal var tvViewing by mutableStateOf(false)
     internal var pipMode by mutableStateOf(false)
+    internal var remotePadVisible by mutableStateOf(false)
     internal val isTelevisionDevice: Boolean get() = televisionDevice
+
+    internal fun updateOrientationPolicy(
+        pinLocked: Boolean,
+        remoteTab: Boolean,
+        remoteSettingsVisible: Boolean
+    ) {
+        val targetOrientation = when {
+            pinLocked -> if (televisionDevice) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            remoteTab && !remoteSettingsVisible ->
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        if (requestedOrientation != targetOrientation) requestedOrientation = targetOrientation
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -388,7 +408,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::remoteRuntime.isInitialized) lifecycleScope.launch { runCatching { remoteRuntime.reconnectAfterResume() } }
+        if (::remoteRuntime.isInitialized && remotePadVisible) {
+            lifecycleScope.launch { runCatching { remoteRuntime.reconnectAfterResume() } }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -486,7 +508,6 @@ private fun App(
     var pinUnlocked by rememberSaveable { mutableStateOf(!pinStore.isEnabled()) }
     val appConfiguration = LocalConfiguration.current
     val appOrientation = appConfiguration.orientation
-    val pinLandscape = activity.isTelevisionDevice
     var lastAppOrientation by rememberSaveable { mutableIntStateOf(appOrientation) }
 
     suspend fun refreshPinReauth() {
@@ -536,16 +557,13 @@ private fun App(
             }
         }
     }
-    DisposableEffect(activity, pinUnlocked, pinLandscape) {
-        val previousOrientation = activity.requestedOrientation
-        if (!pinUnlocked) {
-            activity.requestedOrientation = if (pinLandscape) {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } else {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-        }
-        onDispose { if (!pinUnlocked) activity.requestedOrientation = previousOrientation }
+    SideEffect {
+        activity.updateOrientationPolicy(
+            pinLocked = !pinUnlocked,
+            remoteTab = false,
+            remoteSettingsVisible = false
+        )
+        if (!pinUnlocked) activity.remotePadVisible = false
     }
     if (!pinUnlocked) {
         PinGate(activity = activity, store = pinStore, onUnlocked = { pinUnlocked = true })
@@ -561,11 +579,14 @@ private fun App(
     var remoteTab by rememberSaveable { mutableStateOf(activity.requestedRemotePad) }
     var remoteSettingsVisible by rememberSaveable { mutableStateOf(false) }
     var remoteAutoSearching by remember { mutableStateOf(false) }
-    DisposableEffect(activity, remoteTab, remoteSettingsVisible) {
-        val previousOrientation = activity.requestedOrientation
-        val lockRemotePadPortrait = remoteTab && !remoteSettingsVisible
-        if (lockRemotePadPortrait) activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose { if (lockRemotePadPortrait) activity.requestedOrientation = previousOrientation }
+    SideEffect {
+        val activeRemoteTab = remoteTab && section == null
+        activity.remotePadVisible = activeRemoteTab
+        activity.updateOrientationPolicy(
+            pinLocked = false,
+            remoteTab = activeRemoteTab,
+            remoteSettingsVisible = remoteSettingsVisible
+        )
     }
     var remoteHost by rememberSaveable { mutableStateOf(activity.remoteRuntime.savedHost) }
     var remotePairingCode by rememberSaveable { mutableStateOf("") }
