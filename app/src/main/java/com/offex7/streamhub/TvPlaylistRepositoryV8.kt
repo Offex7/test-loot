@@ -1,6 +1,7 @@
 package com.offex7.streamhub
 
 import android.content.Context
+import android.util.AtomicFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -70,7 +71,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         // The fresh network parse below updates it in the background.
         if (!file.isFile) return@withContext null
 
-        val items = runCatching { parse(file.readText(), source.url) }.getOrNull().orEmpty()
+        val items = runCatching { parse(readCacheAtomically(file), source.url) }.getOrNull().orEmpty()
         items.takeIf { it.isNotEmpty() }?.let {
             TvLoadedPlaylist(source.key, source.name, it)
         }
@@ -116,7 +117,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
 
     private fun cache(source: TvResolvedSource, items: List<StreamItem>) {
         runCatching {
-            cacheFile(source).writeText(buildString {
+            writeCacheAtomically(cacheFile(source), buildString {
                 appendLine("#EXTM3U")
                 items.forEach { item ->
                     append("#EXTINF:-1")
@@ -127,7 +128,23 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
                     appendLine(item.url)
                 }
             })
-            timestampFile(source).writeText(System.currentTimeMillis().toString())
+            writeCacheAtomically(timestampFile(source), System.currentTimeMillis().toString())
+        }
+    }
+
+    private fun readCacheAtomically(file: File): String =
+        AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+    private fun writeCacheAtomically(file: File, content: String) {
+        val atomicFile = AtomicFile(file)
+        val output = atomicFile.startWrite()
+        try {
+            output.write(content.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+            atomicFile.finishWrite(output)
+        } catch (error: Throwable) {
+            atomicFile.failWrite(output)
+            throw error
         }
     }
 
