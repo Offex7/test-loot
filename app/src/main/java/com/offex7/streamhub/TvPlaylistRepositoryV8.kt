@@ -69,7 +69,6 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         val file = cacheFile(source)
         // A valid local playlist remains usable even when it is older than 24 hours.
         // The fresh network parse below updates it in the background.
-        if (!file.isFile) return@withContext null
 
         val items = runCatching { parse(readCacheAtomically(file), source.url) }.getOrNull().orEmpty()
         items.takeIf { it.isNotEmpty() }?.let {
