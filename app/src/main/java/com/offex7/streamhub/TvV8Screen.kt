@@ -37,6 +37,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +47,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -79,6 +82,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -104,6 +108,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -139,6 +144,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowInsetsCompat
@@ -153,6 +160,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -211,6 +219,8 @@ fun TvV8Screen(
     onStopVoiceSearch: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val isTelevisionDevice = (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+    val showEpgInfoButton = isTelevisionDevice || LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
@@ -266,6 +276,7 @@ fun TvV8Screen(
     var voiceSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceSearchPopupExit by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
+    var epgDialogChannel by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<StreamItem?>(null) }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -703,6 +714,17 @@ fun TvV8Screen(
             onFavoriteSelected = { index ->
                 if (index in channels.indices) startPlayback(index, true)
             },
+            onAddCurrentToFavorites = {
+                val currentChannel = channels.getOrNull(selectedIndex)
+                if (currentChannel != null && !favorites.contains(currentChannel.key)) {
+                    scope.launch {
+                        store.setFavorite(Section.TV, currentChannel.key, true, sourceKey)
+                        favorites = store.favorites(Section.TV, sourceKey)
+                        favoriteTimes = store.favoriteAddedAt(Section.TV, sourceKey)
+                        notify("Текущий канал добавлен в избранное", 3000L)
+                    }
+                }
+            },
             onEnterPip = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     (context as? androidx.activity.ComponentActivity)?.enterPictureInPictureMode(
@@ -824,6 +846,17 @@ fun TvV8Screen(
         }
     }
 
+    LaunchedEffect(voiceSearchActive, query) {
+        if (voiceSearchActive) {
+            delay(15_000L)
+            if (voiceSearchActive) {
+                voiceTypingJob?.cancel()
+                finishVoiceSearchPopup()
+                onStopVoiceSearch()
+            }
+        }
+    }
+
     val renderChannel: @Composable (StreamItem) -> Unit = { channel ->
         val favorite = favorites.contains(channel.key)
         val offline = health[channel.url] == AvailabilityStatus.OFFLINE
@@ -839,6 +872,8 @@ fun TvV8Screen(
             soundEnabled = soundEnabled,
             allowSound = !player.isPlaying.value && !radioPlaying,
             isListScrolling = isListScrolling,
+            showEpgInfoButton = showEpgInfoButton,
+            onProgram = { epgDialogChannel = channel },
             onPlay = {
                 channels.indexOfFirst { it.key == channel.key }
                     .takeIf { it >= 0 }
@@ -1087,15 +1122,23 @@ fun TvV8Screen(
                 }
                 Button(
                     onClick = {
-                        finishVoiceSearchPopup()
                         voiceTypingJob?.cancel()
+                        val confirmedQuery = query.trim()
+                        if (confirmedQuery.isNotBlank()) {
+                            query = confirmedQuery
+                            store.rememberSearch(Section.TV, confirmedQuery)
+                            searchHistory = store.searchHistory(Section.TV)
+                            searchOpen = true
+                            searchStamp = System.currentTimeMillis()
+                        }
+                        finishVoiceSearchPopup()
                         onStopVoiceSearch()
                     },
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TvV9Red, contentColor = Color.White)
                 ) {
-                    Text("ЗАКРЫТЬ", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("ОК", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
             }
@@ -1202,6 +1245,88 @@ fun TvV8Screen(
             confirmButton = {}
         )
     }
+    epgDialogChannel?.let { programChannel ->
+        TvProgramDialog(
+            channel = programChannel,
+            onDismiss = { epgDialogChannel = null }
+        )
+    }
+
+}
+
+@Composable
+private fun TvProgramDialog(
+    channel: StreamItem,
+    onDismiss: () -> Unit
+) {
+    var visible by remember(channel.key) { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val programScrollState = rememberScrollState()
+    val maxDialogHeight = (configuration.screenHeightDp - 48).coerceAtLeast(220).dp
+
+    LaunchedEffect(channel.key) {
+        visible = true
+        delay(120_000L)
+        visible = false
+    }
+    LaunchedEffect(visible) {
+        if (!visible) {
+            delay(180L)
+            onDismiss()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { visible = false },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(180)) + androidx.compose.animation.scaleIn(tween(180), initialScale = 0.96f),
+            exit = fadeOut(tween(150)) + androidx.compose.animation.scaleOut(tween(150), targetScale = 0.96f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .widthIn(max = 560.dp)
+                    .heightIn(max = maxDialogHeight)
+                    .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+                    .padding(8.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = TvV9Panel,
+                border = BorderStroke(1.dp, TvV9Red.copy(alpha = 0.55f))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        channel.name.uppercase(Locale.ROOT),
+                        color = Color.White,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text("ТЕЛЕПРОГРАММА", color = TvV9Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = 80.dp, max = (configuration.screenHeightDp * 0.35f).toInt().coerceAtLeast(80).dp)
+                    ) {
+                        Text(
+                            "Нет данных о телепрограмме",
+                            modifier = Modifier.fillMaxWidth().verticalScroll(programScrollState).padding(end = 10.dp),
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
+                        )
+                    }
+                    TextButton(onClick = { visible = false }, modifier = Modifier.align(Alignment.End)) {
+                        Text("ЗАКРЫТЬ", color = TvV9Red, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -1267,13 +1392,15 @@ private fun TvV9ChannelRow(
     logoImageLoader: ImageLoader,
     offline: Boolean,
     showHideIcon: Boolean,
+    showEpgInfoButton: Boolean,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     allowSound: Boolean,
     isListScrolling: Boolean,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
-    onHide: () -> Unit
+    onHide: () -> Unit,
+    onProgram: () -> Unit
 ) {
     var rowWidth by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(1f) }
     var dragOffset by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableFloatStateOf(0f) }
@@ -1281,6 +1408,7 @@ private fun TvV9ChannelRow(
     var settling by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     var hiding by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     var thresholdReached by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
+    var longPressHandled by androidx.compose.runtime.remember(item.key) { androidx.compose.runtime.mutableStateOf(false) }
     val feedbackContext = LocalContext.current
     val settledOffset by animateFloatAsState(
         targetValue = settleTarget,
@@ -1325,7 +1453,7 @@ private fun TvV9ChannelRow(
                 }
             }
             Card(
-                onClick = if (hiding) ({}) else onPlay,
+                onClick = if (hiding) ({}) else ({ if (longPressHandled) longPressHandled = false else onPlay() }),
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged { rowWidth = it.width.toFloat().coerceAtLeast(1f) }
@@ -1370,6 +1498,37 @@ private fun TvV9ChannelRow(
                                 }
                             }
                         )
+                    }
+                    .pointerInput(item.key, showEpgInfoButton) {
+                        if (!showEpgInfoButton) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val pointerId = down.id
+                                val startPosition = down.position
+                                val releasedOrMoved = withTimeoutOrNull(3_000L) {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val pointer = event.changes.firstOrNull { it.id == pointerId }
+                                            ?: return@withTimeoutOrNull true
+                                        if (!pointer.pressed ||
+                                            (pointer.position - startPosition).getDistance() > viewConfiguration.touchSlop
+                                        ) {
+                                            return@withTimeoutOrNull true
+                                        }
+                                    }
+                                    false
+                                }
+                                if (releasedOrMoved == null) {
+                                    longPressHandled = true
+                                    onProgram()
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.none { it.id == pointerId && it.pressed }) break
+                                    }
+                                    longPressHandled = false
+                                }
+                            }
+                        }
                     },
                 colors = CardDefaults.cardColors(
                     containerColor = when {
@@ -1420,6 +1579,17 @@ private fun TvV9ChannelRow(
                             modifier = Modifier.size(34.dp)
                         ) {
                             Icon(Icons.Default.VisibilityOff, "Скрыть канал", tint = TvV9Gray)
+                        }
+                    }
+                    if (showEpgInfoButton) {
+                        IconButton(
+                            onClick = {
+                                InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)
+                                onProgram()
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(Icons.Default.Info, "Телепрограмма", tint = TvV9Gray)
                         }
                     }
                 }
@@ -1611,6 +1781,7 @@ private fun TvV9Player(
     onNext: () -> Unit,
     onPause: () -> Unit,
     onFavoriteSelected: (Int) -> Unit,
+    onAddCurrentToFavorites: () -> Unit,
     onEnterPip: () -> Unit,
     onSleep: (Long) -> Unit,
     onCancelSleep: () -> Unit,
@@ -1643,6 +1814,19 @@ private fun TvV9Player(
 
     var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     var locked by androidx.compose.runtime.rememberSaveable(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
+    val originalRequestedOrientation = androidx.compose.runtime.remember(activity) {
+        activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    androidx.compose.runtime.DisposableEffect(activity) {
+        onDispose { activity?.requestedOrientation = originalRequestedOrientation }
+    }
+    androidx.compose.runtime.LaunchedEffect(locked, activity) {
+        activity?.requestedOrientation = if (locked) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
+    }
     var favoriteMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepMenu by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
     var sleepToken by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -1674,8 +1858,18 @@ private fun TvV9Player(
     }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     val favoritePopupMaxHeight = (screenHeightDp * 0.70f).coerceAtLeast(220f).dp
-    val favoriteVisibleItems = favoriteChannels.size.coerceAtMost(8)
+    val showAddCurrentChannel = favoriteChannels.none { it.second.key == channel.key }
+    val addCurrentChannelFocusRequester = remember(channel.key) { FocusRequester() }
+    val favoriteVisibleItems = (favoriteChannels.size + if (showAddCurrentChannel) 1 else 0).coerceAtMost(8)
     val favoritePopupHeight = minOf(favoritePopupMaxHeight, (58 + favoriteVisibleItems * 48).dp)
+
+    LaunchedEffect(favoriteMenu, favoriteChannels.size, showAddCurrentChannel) {
+        if (favoriteMenu) {
+            delay(80L)
+            if (favoriteFocusers.isNotEmpty()) favoriteFocusers.first().requestFocus()
+            else if (showAddCurrentChannel) addCurrentChannelFocusRequester.requestFocus()
+        }
+    }
 
     fun showPlayerToast(message: String, durationMs: Long) {
         playerToast = message
@@ -1940,6 +2134,7 @@ private fun TvV9Player(
             IconButton(
                 onClick = {
                     locked = false
+                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
                     controls = false
                     favoriteMenu = false
                     sleepMenu = false
@@ -2005,6 +2200,7 @@ private fun TvV9Player(
                             menuInteractionToken++
                             favoriteMenu = false
                             sleepMenu = false
+                            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
                             locked = true
                             hideSystemBars()
                         }
@@ -2121,7 +2317,7 @@ private fun TvV9Player(
                         Popup(
                             alignment = Alignment.TopStart,
                             onDismissRequest = { favoriteMenu = false },
-                            properties = PopupProperties(focusable = false, dismissOnClickOutside = true)
+                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true)
                         ) {
                             Box(
                                 Modifier
@@ -2136,11 +2332,11 @@ private fun TvV9Player(
                                     Text("ИЗБРАННЫЕ КАНАЛЫ", color = TvV9Red, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.height(5.dp))
                                     if (favoriteChannels.isEmpty()) {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                             Text("Пока нет избранных каналов", color = TvV9Gray, fontSize = 12.sp)
                                         }
                                     } else {
-                                        Box(Modifier.fillMaxSize()) {
+                                        Box(Modifier.weight(1f)) {
                                             LazyColumn(
                                                 state = favoriteListState,
                                                 modifier = Modifier
@@ -2179,6 +2375,10 @@ private fun TvV9Player(
                                                                             menuInteractionToken++
                                                                             favoriteFocusers[focusIndex + 1].requestFocus()
                                                                             playerScope.launch { favoriteListState.animateScrollToItem(focusIndex + 1) }
+                                                                        } else if (showAddCurrentChannel) {
+                                                                            menuInteractionToken++
+                                                                            addCurrentChannelFocusRequester.requestFocus()
+                                                                            playerScope.launch { favoriteListState.animateScrollToItem(favoriteChannels.size) }
                                                                         }
                                                                         true
                                                                     }
@@ -2208,6 +2408,55 @@ private fun TvV9Player(
                                                 }
                                             }
 
+                                        }
+                                    }
+                                    if (showAddCurrentChannel) {
+                                        TextButton(
+                                            onClick = {
+                                                favoriteMenu = false
+                                                onAddCurrentToFavorites()
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(addCurrentChannelFocusRequester)
+                                                .focusable()
+                                                .onPreviewKeyEvent { event ->
+                                                    if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+                                                    when (event.nativeKeyEvent.keyCode) {
+                                                        KeyEvent.KEYCODE_DPAD_UP -> {
+                                                            if (favoriteFocusers.isNotEmpty()) {
+                                                                menuInteractionToken++
+                                                                favoriteFocusers.last().requestFocus()
+                                                                playerScope.launch { favoriteListState.animateScrollToItem(favoriteChannels.lastIndex) }
+                                                            }
+                                                            true
+                                                        }
+                                                        KeyEvent.KEYCODE_DPAD_CENTER,
+                                                        KeyEvent.KEYCODE_ENTER -> {
+                                                            favoriteMenu = false
+                                                            onAddCurrentToFavorites()
+                                                            true
+                                                        }
+                                                        KeyEvent.KEYCODE_BACK -> {
+                                                            favoriteMenu = false
+                                                            true
+                                                        }
+                                                        else -> false
+                                                    }
+                                                }
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.FavoriteBorder, null, tint = TvV9Red, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(7.dp))
+                                                Text(
+                                                    "Добавить текущий канал в избранное",
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    textAlign = TextAlign.Start
+                                                )
+                                            }
                                         }
                                     }
                                 }
