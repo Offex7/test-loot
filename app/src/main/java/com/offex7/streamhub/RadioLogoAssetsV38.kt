@@ -2,6 +2,8 @@ package com.offex7.streamhub
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.util.Base64
+import java.io.ByteArrayInputStream
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.util.Locale
@@ -9,6 +11,7 @@ import java.util.zip.ZipInputStream
 
 object RadioLogoAssetsV38 {
     private const val ZIP = "radio_logo2.zip"
+    private const val NEW_LOGOS_BASE64 = "radio_logo3.zip.b64"
 
     private val filenames = mapOf(
         "ШАНСОН" to "shanson.jfif",
@@ -21,8 +24,12 @@ object RadioLogoAssetsV38 {
         "REMIX FM" to "remixfm.jfif",
         "НОВОЕ РАДИО" to "novoeradio.jfif",
         "ЮМОР FM" to "umor_fm.jfif",
-        "ДЕТСКОЕ РАДИО" to "detskoe_radio.jfif"
+        "ДЕТСКОЕ РАДИО" to "detskoe_radio.jfif",
+        "БОРНЕО" to "BORNEO.webp",
+        "ГАРАЖ FM" to "GARAGE_FM.webp",
+        "НЕСТАНДАРТ" to "NESTANDART.webp"
     )
+    private val newLogoStations = setOf("БОРНЕО", "ГАРАЖ FM", "НЕСТАНДАРТ")
 
     private val cache = HashMap<String, ImageBitmap>()
     private val bitmapCache = HashMap<String, android.graphics.Bitmap>()
@@ -33,7 +40,13 @@ object RadioLogoAssetsV38 {
         val filename = filenames[key] ?: return null
         val bitmap = runCatching {
             var result: android.graphics.Bitmap? = null
-            context.assets.open(ZIP).use { input ->
+            val archiveInput = if (key in newLogoStations) {
+                val encoded = context.assets.open(NEW_LOGOS_BASE64).bufferedReader().use { it.readText() }
+                ByteArrayInputStream(Base64.decode(encoded, Base64.DEFAULT))
+            } else {
+                context.assets.open(ZIP)
+            }
+            archiveInput.use { input ->
                 ZipInputStream(input).use { zip ->
                     while (true) {
                         val entry = zip.nextEntry ?: break
