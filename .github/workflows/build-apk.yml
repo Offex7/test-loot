@@ -107,7 +107,7 @@ jobs:
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
               "version": "versionCode = 29" in gradle and 'versionName = "4.15"' in gradle,
-              "radio_station_descriptions_all_36": len(description_keys) == 36 and len(set(description_keys)) == 33 and set(description_keys) == set(station_names),
+              "radio_station_descriptions_all_36": len(description_keys) == 36 and len(set(description_keys)) == 36 and set(description_keys) == set(station_names),
               "radio_long_press_portrait_only": "combinedClickable(" in main and "onLongClick = if (!showRadioInfo && onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
               "radio_info_button_focusable": "IconButton(" in main and "Описание станции" in main and ".size(40.dp)" in main,
@@ -196,7 +196,7 @@ jobs:
           update_banner = (root / "src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8")
           cast_module = Path("tvremote-cast/src/main/java/com/radiotv/control/cast/DlnaDiscovery.kt").read_text(encoding="utf-8")
           checks.update({
-              "tv_voice_close_button_and_timeout": "onStopVoiceSearch" in tv and "ЗАКРЫТЬ" in tv and "PopupProperties(focusable = true" in tv and "voiceSearchPopupExit" in tv and "AnimatedVisibility(" in tv and "finishVoiceSearchPopup()" in tv and "voiceSearchActive = true" in tv and "if (isFinalResult) finishVoiceSearchPopup()" in tv and "onRecognized?.invoke" in main,
+              "tv_voice_close_button_and_timeout": "onStopVoiceSearch" in tv and "ЗАКРЫТЬ" in tv and "PopupProperties(focusable = true" in tv and "voiceSearchPopupExit" in tv and "AnimatedVisibility(" in tv and "finishVoiceSearchPopup()" in tv and "voiceSearchActive = true" in tv and "if (isFinalResult) finishVoiceSearchPopup()" in tv and "ОК" in tv and "onRecognized?.invoke" in main,
               "TV_lazy_list_keys_scroll_and_coil": 'items(primaryResults, key = { it.key }, contentType = { "tv-channel" })' in tv and 'items(secondaryResults, key = { it.key }, contentType = { "tv-channel" })' in tv and "derivedStateOf { list.isScrollInProgress }" in tv and "FilterQuality.Low" in tv and ".crossfade(false)" in tv,
               "TV_playlist_parse_off_ui_thread": "withContext(Dispatchers.IO)" in tv_playlist and "withContext(Dispatchers.IO)" in playlist,
               "playlist_cache_atomic_writes": "AtomicFile(file).openRead()" in playlist and "atomicFile.finishWrite(output)" in playlist and "AtomicFile(file).openRead()" in tv_playlist and "atomicFile.finishWrite(output)" in tv_playlist,
@@ -258,7 +258,7 @@ jobs:
               "remote_pad_single_dpad_block": "val dpadVerticalGap = if (tight) 2.dp else 3.dp" in remote_pad and "val sideArrowGap = if (tight) 1.dp else 2.dp" in remote_pad,
               "remote_search_ten_second_no_tv_notice": "withTimeoutOrNull(10_000L)" in main and "10_000L - " in main and "старый протокол подключения" in main,
               "bluetooth_permission_retry_after_denial": "Bluetooth tab opened without runtime permission; requesting again" in main and "Нажмите вкладку Bluetooth ещё раз" in main,
-              "voice_search_partial_edittext_and_silence": "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null" in main and "EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000" in main and "updateVoiceQuery" in tv and "delay(24L)" in tv,
+              "voice_search_partial_edittext_and_silence": "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null" in main and "EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, if (isRemoteDictation) 15_000 else 4_000" in main and "updateVoiceQuery" in tv and "delay(24L)" in tv,
               "tv_search_language_priority": "tvSearchFilter" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА АНГЛИЙСКОМ" in tv and "ВОЗМОЖНЫЕ СОВПАДЕНИЯ НА РУССКОМ" in tv,
               "tv_player_idle_autohide_ten_seconds": "delay(10_000L)" in tv and "menuInteractionToken, channel.key" in tv,
               "tv_player_orientation_lock_restores_full_sensor": "SCREEN_ORIENTATION_FULL_SENSOR" in tv and "SCREEN_ORIENTATION_LOCKED" in tv and "requestedOrientation" in tv and "originalRequestedOrientation" in tv,
