@@ -1814,11 +1814,13 @@ private fun TvV9Player(
 
     var controls by androidx.compose.runtime.remember(channel.key) { androidx.compose.runtime.mutableStateOf(true) }
     var locked by androidx.compose.runtime.rememberSaveable(channel.key) { androidx.compose.runtime.mutableStateOf(false) }
-    val originalRequestedOrientation = androidx.compose.runtime.remember(activity) {
-        activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    val originalRequestedOrientation = androidx.compose.runtime.rememberSaveable(channel.key) {
+        androidx.compose.runtime.mutableIntStateOf(
+            activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        )
     }
     androidx.compose.runtime.DisposableEffect(activity) {
-        onDispose { activity?.requestedOrientation = originalRequestedOrientation }
+        onDispose { activity?.requestedOrientation = originalRequestedOrientation.intValue }
     }
     androidx.compose.runtime.LaunchedEffect(locked, activity) {
         activity?.requestedOrientation = if (locked) {
