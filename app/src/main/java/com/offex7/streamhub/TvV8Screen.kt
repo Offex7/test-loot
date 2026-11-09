@@ -1525,7 +1525,8 @@ private fun TvV9ChannelRow(
                                         val event = awaitPointerEvent()
                                         if (event.changes.none { it.id == pointerId && it.pressed }) break
                                     }
-                                    longPressHandled = false
+                                    // Keep the guard set until Card.onClick consumes the release,
+                                    // preventing a long press from also starting channel playback.
                                 }
                             }
                         }
