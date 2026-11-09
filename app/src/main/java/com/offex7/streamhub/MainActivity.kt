@@ -343,6 +343,7 @@ class MainActivity : FragmentActivity() {
     internal lateinit var remoteRuntime: RemoteControlRuntime
         private set
     private var televisionDevice = false
+    private var hasAutoRotateSensor = false
     internal var requestedSection by mutableStateOf<Section?>(null)
     internal var requestedRemotePad by mutableStateOf(false)
 
@@ -368,10 +369,10 @@ class MainActivity : FragmentActivity() {
         remoteSettingsVisible: Boolean
     ) {
         val targetOrientation = when {
-            pinLocked -> if (televisionDevice) {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } else {
+            pinLocked -> if (hasAutoRotateSensor) {
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }
             remoteTab && !remoteSettingsVisible ->
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -382,6 +383,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hasAutoRotateSensor = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_SENSOR_ACCELEROMETER) ||
+            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_SENSOR_GYROSCOPE)
         televisionDevice = (getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager)
             ?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         companionClient = RadioTvCompanionClient(applicationContext)
@@ -746,8 +749,9 @@ private fun App(
 
             fun restartSearchSilenceTimer() {
                 searchSpeechIdleJob?.cancel()
+                val idleTimeoutMs = if (isRemoteDictation) 15_000L else 4_000L
                 searchSpeechIdleJob = scope.launch {
-                    delay(4_000L)
+                    delay(idleTimeoutMs)
                     if (activeSpeechRecognizer === recognizer) {
                         // Ask for final recognition first; a short grace period prevents dropping it.
                         runCatching { recognizer.stopListening() }
@@ -766,7 +770,7 @@ private fun App(
                             }
                             onRecognized?.invoke("")
                             onPartial?.invoke("")
-                            LogExporter.log("Voice input: 4 seconds of silence; closing voice UI")
+                            LogExporter.log("Voice input: ${idleTimeoutMs / 1000L} seconds of silence; closing voice UI")
                             runCatching { recognizer.cancel() }
                             runCatching { recognizer.destroy() }
                         }
@@ -863,8 +867,8 @@ private fun App(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null || isRemoteDictation)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, if (isRemoteDictation) 15_000 else 4_000)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, if (isRemoteDictation) 15_000 else 4_000)
             }
             recognizer.startListening(intent)
             LogExporter.log(if (onRecognized != null || onPartial != null) "TV voice search recognizer started" else "Remote text dictation started")
@@ -1550,6 +1554,17 @@ private fun App(
                                 airMouseActive = remoteAirMouseStatus is AirMouseStatus.Active,
                                 voiceActive = remoteVoiceStatus is VoiceInputStatus.Recording || remoteSpeechActive,
                                 voiceTranscript = remoteSpeechTranscript,
+                                onCloseVoiceInput = {
+                                    searchSpeechIdleJob?.cancel()
+                                    searchSpeechIdleJob = null
+                                    activeSpeechRecognizer?.let { recognizer ->
+                                        runCatching { recognizer.cancel() }
+                                        runCatching { recognizer.destroy() }
+                                    }
+                                    activeSpeechRecognizer = null
+                                    remoteSpeechActive = false
+                                    remoteSpeechTranscript = ""
+                                },
                                 featureMessage = remoteDeviceName
                             )
                         }
@@ -4773,7 +4788,7 @@ private fun ChannelRow(
                                     .background(Panel)
                                     .border(1.dp, Gray.copy(alpha = .65f), CircleShape)
                             ) {
-                                Icon(Icons.Default.Info, "Описание станции", tint = Orange, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Info, "Описание станции", tint = Color(0xFFE0E0E0), modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -4804,6 +4819,9 @@ private fun RadioStationInfoDialog(
 ) {
     var visible by remember(station.key) { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
+    val descriptionScrollState = rememberScrollState()
+    val maxDialogHeight = (configuration.screenHeightDp - 48).coerceAtLeast(220).dp
+    val descriptionMaxHeight = (configuration.screenHeightDp * 0.30f).coerceAtLeast(70f).dp
 
     LaunchedEffect(station.key) {
         visible = true
@@ -4830,6 +4848,7 @@ private fun RadioStationInfoDialog(
                 modifier = Modifier
                     .fillMaxWidth(0.90f)
                     .widthIn(max = 560.dp)
+                    .heightIn(max = maxDialogHeight)
                     .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(20.dp),
@@ -4837,11 +4856,8 @@ private fun RadioStationInfoDialog(
                 border = BorderStroke(1.dp, Red.copy(alpha = 0.38f))
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = (configuration.screenHeightDp - 80).coerceAtLeast(180).dp)
-                        .padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         station.name.uppercase(Locale.ROOT),
@@ -4851,27 +4867,39 @@ private fun RadioStationInfoDialog(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        "О СТАНЦИИ",
-                        color = Red,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = RADIO_STATION_DESCRIPTIONS[station.name]
-                            ?: "Описание для этой станции пока не добавлено.",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = (configuration.screenHeightDp * 0.52f).toInt().coerceAtLeast(120).dp)
-                            .verticalScroll(rememberScrollState()),
-                        color = Color.White.copy(alpha = 0.90f),
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp
-                    )
-                    TextButton(
-                        onClick = { visible = false },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
+                    Text("О СТАНЦИИ", color = Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Box(Modifier.fillMaxWidth().heightIn(min = 70.dp, max = descriptionMaxHeight)) {
+                        Text(
+                            text = RADIO_STATION_DESCRIPTIONS[station.name]
+                                ?: "Описание для этой станции пока не добавлено.",
+                            modifier = Modifier.fillMaxWidth()
+                                .verticalScroll(descriptionScrollState)
+                                .padding(end = 10.dp),
+                            color = Color.White.copy(alpha = 0.90f),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
+                        )
+                        if (descriptionScrollState.maxValue > 0) {
+                            Canvas(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(4.dp)) {
+                                val viewport = size.height
+                                val thumbHeight = (viewport * viewport / (viewport + descriptionScrollState.maxValue)).coerceAtLeast(20f)
+                                val thumbTop = (descriptionScrollState.value / descriptionScrollState.maxValue.toFloat()).coerceIn(0f, 1f) * (viewport - thumbHeight)
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.16f),
+                                    topLeft = androidx.compose.ui.geometry.Offset(size.width / 2f - 0.5f, 0f),
+                                    size = androidx.compose.ui.geometry.Size(1.dp.toPx(), viewport),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
+                                )
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.58f),
+                                    topLeft = androidx.compose.ui.geometry.Offset(0f, thumbTop),
+                                    size = androidx.compose.ui.geometry.Size(size.width, thumbHeight),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width, size.width)
+                                )
+                            }
+                        }
+                    }
+                    TextButton(onClick = { visible = false }, modifier = Modifier.align(Alignment.End)) {
                         Text("ЗАКРЫТЬ", color = Red, fontWeight = FontWeight.Bold)
                     }
                 }
