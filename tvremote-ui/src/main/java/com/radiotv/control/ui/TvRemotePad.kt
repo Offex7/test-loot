@@ -173,6 +173,7 @@ internal fun TvRemotePad(
     muteActive: Boolean = false,
     voiceActive: Boolean = false,
     voiceTranscript: String? = null,
+    onCloseVoiceInput: () -> Unit = {},
     keyboardActive: Boolean = false,
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
@@ -724,27 +725,41 @@ internal fun TvRemotePad(
             enter = fadeIn(tween(180)),
             exit = fadeOut(tween(1000))
         ) {
-            Box(
-                modifier = Modifier.size(132.dp)
-                    .background(Color(0xEE171717), CircleShape)
-                    .border(2.dp, RadioTvPalette.Red, CircleShape),
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    Icons.Filled.Mic,
-                    contentDescription = "Голосовой ввод",
-                    tint = RadioTvPalette.Red,
-                    modifier = Modifier.size(58.dp).graphicsLayer {
-                        scaleX = voicePulse
-                        scaleY = voicePulse
-                    }
-                )
+                Box(
+                    modifier = Modifier.size(132.dp)
+                        .background(Color(0xEE171717), CircleShape)
+                        .border(2.dp, RadioTvPalette.Red, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = "Голосовой ввод",
+                        tint = RadioTvPalette.Red,
+                        modifier = Modifier.size(58.dp).graphicsLayer {
+                            scaleX = voicePulse
+                            scaleY = voicePulse
+                        }
+                    )
+                }
+                OutlinedButton(
+                    onClick = onCloseVoiceInput,
+                    modifier = Modifier.width(156.dp).height(48.dp)
+                        .background(RadioTvPalette.Red, RoundedCornerShape(12.dp)),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) {
+                    Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, maxLines = 1)
+                }
             }
         }
         AnimatedVisibility(
             visible = !voiceTranscript.isNullOrBlank(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-                .padding(start = 18.dp, end = 18.dp, bottom = 96.dp),
+            modifier = Modifier.align(Alignment.TopCenter)
+                .padding(start = 18.dp, end = 18.dp, top = 88.dp),
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(650))
         ) {
@@ -809,7 +824,7 @@ private fun RemoteSurfaceButton(
                 indication = ripple(bounded = true),
                 onClickLabel = description,
                 onClick = {
-                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onClick()
                 }
             ),
