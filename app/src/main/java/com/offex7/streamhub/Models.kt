@@ -55,14 +55,17 @@ val RADIO_STATIONS = listOf(
     StreamItem("LOVE", "https://stream.gakku.kz:8443/love128.mp3"),
     StreamItem("ВЕСТИ FM", "http://icecast.vgtrk.cdnvideo.ru/vestifm_mp3_192kbps"),
     StreamItem("МАРУСЯ FM", "http://89.108.125.51:9000/marusya_eysk_revers"),
-    StreamItem("РАДИО ДАЧА", "https://microit2.n340.ru:8443/VgMv0WV17ZVx1uuo_14_dacha_64?radiostatistica"),
+    StreamItem("РАДИО ДАЧА", "http://listen13.vdfm.ru:8000/dacha"),
     StreamItem("RAP CLASSIC", "https://radiorecord.hostingradio.ru/rapclassics96.aacp"),
     StreamItem("REMIX FM", "https://irp2.volna.top/remixfm.aacp"),
     StreamItem("НОВОЕ РАДИО", "https://hls.newradio.ru/novoeradio/playlist.m3u8"),
     StreamItem("ЮМОР FM", "https://srv01.gpmradio.ru/stream/trust/mp3/128/20"),
     StreamItem("ДЕТСКОЕ РАДИО", "https://hls-01-gpm.hostingradio.ru/detifm7/playlist.m3u8"),
     StreamItem("РАДИУС FM", "https://media2.datacenter.by:8002/radiusfm_main"),
-    StreamItem("ЮНИСТАР", "https://edge1.usp.unistar.by/hls/unistar_main/96k.m3u8"))
+    StreamItem("ЮНИСТАР", "https://edge1.usp.unistar.by/hls/unistar_main/96k.m3u8"),
+    StreamItem("БОРНЕО", "https://live.borneo.ru:8888/128"),
+    StreamItem("ГАРАЖ FM", "https://radio.promodj.com:443/garagefm-192"),
+    StreamItem("НЕСТАНДАРТ", "https://listen.radionestandart.ru/128.mp3"))
 
 val RADIO_LOGO_URLS = mapOf(
     "RECORD" to "https://sun9-58.vkuserphoto.ru/s/v1/ig2/IiddqILI9W20xtBjGASd1Wc2qaE8CtlNMcM4HP7_rOxeHWqZHsTZQrxChaHjZF90iod1cWtN-YKmKEhzRcRW4WNu.jpg?quality=96&cs=640x0",
