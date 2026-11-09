@@ -342,7 +342,7 @@ jobs:
           token: ${{ github.token }}
           tag_name: v4.15
           name: Radio.TV v4.15
-          # Release metadata mirrors the APK manifest: code 28, version 4.15.
+          # Release metadata mirrors the APK manifest: code 29, version 4.15.
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
@@ -351,7 +351,7 @@ jobs:
           body: |
             Radio.TV v4.15
 
-            versionCode: 28
+            versionCode: 29
             versionName: 4.15
             Package: com.offex7.streamhub
 
