@@ -38,7 +38,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1126,8 +1126,10 @@ fun TvV8Screen(
                         val confirmedQuery = query.trim()
                         if (confirmedQuery.isNotBlank()) {
                             query = confirmedQuery
-                            store.rememberSearch(Section.TV, confirmedQuery)
-                            searchHistory = store.searchHistory(Section.TV)
+                            scope.launch {
+                                store.rememberSearch(Section.TV, confirmedQuery)
+                                searchHistory = store.searchHistory(Section.TV)
+                            }
                             searchOpen = true
                             searchStamp = System.currentTimeMillis()
                         }
