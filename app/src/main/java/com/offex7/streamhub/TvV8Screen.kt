@@ -6,12 +6,15 @@
 
 package com.offex7.streamhub
 
+import android.Manifest
 import android.content.Context
 
 import android.content.res.Configuration
 import android.view.KeyEvent
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -223,6 +226,7 @@ fun TvV8Screen(
     val showEpgInfoButton = isTelevisionDevice || LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
+    val epgRepository = remember(context.applicationContext) { TvEpgRepository(context.applicationContext) }
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
     val network by rememberTvV9Network()
@@ -277,6 +281,15 @@ fun TvV8Screen(
     var voiceSearchPopupExit by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var epgDialogChannel by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<StreamItem?>(null) }
+    var epgUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var epgPermissionRetryToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var epgPermissionDenied by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        epgPermissionDenied = !granted
+        epgPermissionRetryToken++
+    }
     var searchStamp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
     var searchHistory by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyList<String>()) }
     var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -291,11 +304,15 @@ fun TvV8Screen(
         loadError = null
         runCatching { repo.cached(sourceKey) }.getOrNull()?.let { cached ->
             channels = cached.items
+            epgUrl = cached.epgUrl
             loading = false
+            cached.epgUrl?.let { url -> scope.launch { epgRepository.preload(url) } }
         }
         repo.load(sourceKey)
             .onSuccess {
                 channels = it.items
+                epgUrl = it.epgUrl
+                it.epgUrl?.let { url -> scope.launch { epgRepository.preload(url) } }
                 loading = false
                 loadError = null
                 health = emptyMap()
@@ -1250,6 +1267,15 @@ fun TvV8Screen(
     epgDialogChannel?.let { programChannel ->
         TvProgramDialog(
             channel = programChannel,
+            epgUrl = epgUrl,
+            epgRepository = epgRepository,
+            permissionRetryToken = epgPermissionRetryToken,
+            phonePermissionDenied = epgPermissionDenied,
+            onRequestPhoneStatePermission = {
+                if (Build.VERSION.SDK_INT < 33 && !epgPermissionDenied) {
+                    phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                }
+            },
             onDismiss = { epgDialogChannel = null }
         )
     }
@@ -1259,17 +1285,40 @@ fun TvV8Screen(
 @Composable
 private fun TvProgramDialog(
     channel: StreamItem,
+    epgUrl: String?,
+    epgRepository: TvEpgRepository,
+    permissionRetryToken: Int,
+    phonePermissionDenied: Boolean,
+    onRequestPhoneStatePermission: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var visible by remember(channel.key) { mutableStateOf(false) }
+    var currentTimeMillis by remember(channel.key) { mutableLongStateOf(System.currentTimeMillis()) }
+    var epgResult by remember(channel.key) {
+        mutableStateOf(TvEpgResult(isLoading = true))
+    }
     val configuration = LocalConfiguration.current
-    val programScrollState = rememberScrollState()
     val maxDialogHeight = (configuration.screenHeightDp - 48).coerceAtLeast(220).dp
+    val timeFormatter = remember { java.text.SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
     LaunchedEffect(channel.key) {
         visible = true
         delay(120_000L)
         visible = false
+    }
+    LaunchedEffect(channel.key) {
+        while (true) {
+            delay(30_000L)
+            currentTimeMillis = System.currentTimeMillis()
+        }
+    }
+    LaunchedEffect(channel.key, epgUrl, permissionRetryToken) {
+        epgResult = TvEpgResult(isLoading = true)
+        val result = epgRepository.programmes(epgUrl, channel.tvgId)
+        epgResult = result
+        if (result.requiresPhoneStatePermission && !phonePermissionDenied) {
+            onRequestPhoneStatePermission()
+        }
     }
     LaunchedEffect(visible) {
         if (!visible) {
@@ -1277,6 +1326,10 @@ private fun TvProgramDialog(
             onDismiss()
         }
     }
+
+    val visibleProgrammes = epgResult.programmes
+        .filter { it.stopMillis > currentTimeMillis && it.startMillis < currentTimeMillis + 24L * 60L * 60L * 1000L }
+        .sortedBy { it.startMillis }
 
     Dialog(
         onDismissRequest = { visible = false },
@@ -1310,18 +1363,89 @@ private fun TvProgramDialog(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text("ТЕЛЕПРОГРАММА", color = TvV9Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Box(
-                        Modifier.fillMaxWidth().heightIn(min = 80.dp, max = (configuration.screenHeightDp * 0.35f).toInt().coerceAtLeast(80).dp)
-                    ) {
-                        Text(
-                            "Нет данных о телепрограмме",
-                            modifier = Modifier.fillMaxWidth().verticalScroll(programScrollState).padding(end = 10.dp),
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 14.sp,
-                            lineHeight = 21.sp
-                        )
+                    Text("ТЕЛЕПРОГРАММА · БЛИЖАЙШИЕ 24 ЧАСА", color = TvV9Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                    when {
+                        epgResult.isLoading -> {
+                            Box(
+                                Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 180.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("ЗАГРУЗКА ТЕЛЕПРОГРАММЫ…", color = TvV9Gray, fontSize = 13.sp)
+                            }
+                        }
+                        visibleProgrammes.isEmpty() -> {
+                            val message = when (epgResult.unavailableReason) {
+                                TvEpgUnavailableReason.MOBILE_RESTRICTED,
+                                TvEpgUnavailableReason.PHONE_STATE_PERMISSION_REQUIRED ->
+                                    "Для загрузки телепрограммы подключитесь к Wi-Fi"
+                                else -> "Возможно, данный IPTV не поддерживает телепрограмму"
+                            }
+                            Text(
+                                message,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(vertical = 14.dp),
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 14.sp,
+                                lineHeight = 21.sp
+                            )
+                        }
+                        else -> {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(
+                                        min = 100.dp,
+                                        max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(
+                                    items = visibleProgrammes,
+                                    key = { it.startMillis.toString() + "_" + it.stopMillis + "_" + it.title }
+                                ) { programme ->
+                                    val isCurrent =
+                                        programme.startMillis <= currentTimeMillis &&
+                                            programme.stopMillis > currentTimeMillis
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                if (isCurrent) Color(0xFF3D2A18) else TvV9PanelAlt,
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            timeFormatter.format(java.util.Date(programme.startMillis)) +
+                                                " – " + timeFormatter.format(java.util.Date(programme.stopMillis)),
+                                            color = if (isCurrent) Color(0xFFFFA726) else TvV9Gray,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            programme.title,
+                                            color = if (isCurrent) Color(0xFFFFC477) else Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (programme.description.isNotBlank()) {
+                                            Text(
+                                                programme.description,
+                                                color = Color.White.copy(alpha = 0.78f),
+                                                fontSize = 12.sp,
+                                                lineHeight = 17.sp
+                                            )
+                                        }
+                                        if (isCurrent) {
+                                            Text("СЕЙЧАС В ЭФИРЕ", color = Color(0xFFFFA726), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+
                     TextButton(onClick = { visible = false }, modifier = Modifier.align(Alignment.End)) {
                         Text("ЗАКРЫТЬ", color = TvV9Red, fontWeight = FontWeight.Bold)
                     }
@@ -1330,7 +1454,6 @@ private fun TvProgramDialog(
         }
     }
 }
-
 
 @Composable
 private fun TvV9Header(

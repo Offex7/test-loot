@@ -7,7 +7,8 @@ data class StreamItem(
     val epgLogoUrl: String? = null,
     val groupTitle: String? = null,
     val isOffline: Boolean = false,
-    val sourceUrls: List<String> = emptyList()
+    val sourceUrls: List<String> = emptyList(),
+    val tvgId: String? = null
 ) { val key: String get() = url }
 
 data class PlaylistSource(val name: String, val url: String)

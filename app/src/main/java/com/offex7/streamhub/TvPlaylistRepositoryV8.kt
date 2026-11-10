@@ -15,10 +15,12 @@ import java.util.concurrent.TimeUnit
 data class TvLoadedPlaylist(
     val sourceKey: String,
     val sourceName: String,
-    val items: List<StreamItem>
+    val items: List<StreamItem>,
+    val epgUrl: String? = null
 )
 
 private data class TvResolvedSource(val key: String, val name: String, val url: String)
+private data class ParsedTvPlaylist(val items: List<StreamItem>, val epgUrl: String?)
 
 class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore) {
     private val appContext = context.applicationContext
@@ -54,14 +56,14 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
                 ?: throw IllegalStateException("Таймаут загрузки источника")
         }.getOrElse { return@withContext Result.failure(it) }
 
-        if (loaded.isEmpty()) {
+        if (loaded.items.isEmpty()) {
             return@withContext Result.failure(
                 IllegalStateException(source.name + ": пустой плейлист")
             )
         }
 
         cache(source, loaded)
-        Result.success(TvLoadedPlaylist(source.key, source.name, loaded))
+        Result.success(TvLoadedPlaylist(source.key, source.name, loaded.items, loaded.epgUrl))
     }
 
     suspend fun cached(activeSourceKey: String): TvLoadedPlaylist? = withContext(Dispatchers.IO) {
@@ -69,10 +71,10 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         val file = cacheFile(source)
         // A valid local playlist remains usable even when it is older than 24 hours.
         // The fresh network parse below updates it in the background.
-
-        val items = runCatching { parse(readCacheAtomically(file), source.url) }.getOrNull().orEmpty()
-        items.takeIf { it.isNotEmpty() }?.let {
-            TvLoadedPlaylist(source.key, source.name, it)
+        val parsed = runCatching { parsePlaylist(readCacheAtomically(file), source.url) }.getOrNull()
+            ?: return@withContext null
+        parsed.items.takeIf { it.isNotEmpty() }?.let {
+            TvLoadedPlaylist(source.key, source.name, it, parsed.epgUrl)
         }
     }
 
@@ -97,7 +99,7 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         }.getOrDefault(AvailabilityStatus.OFFLINE)
     }
 
-    private fun loadSingle(source: TvResolvedSource): List<StreamItem> {
+    private fun loadSingle(source: TvResolvedSource): ParsedTvPlaylist {
         val response = client.newCall(
             Request.Builder()
                 .url(source.url)
@@ -110,18 +112,25 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
             if (!r.isSuccessful) error("HTTP " + r.code)
             val body = r.body?.string().orEmpty().removePrefix("\uFEFF")
             if (body.isBlank()) error("Пустой ответ")
-            parse(body, r.request.url.toString())
+            parsePlaylist(body, r.request.url.toString())
         }
     }
 
-    private fun cache(source: TvResolvedSource, items: List<StreamItem>) {
+    private fun cache(source: TvResolvedSource, playlist: ParsedTvPlaylist) {
         runCatching {
             writeCacheAtomically(cacheFile(source), buildString {
-                appendLine("#EXTM3U")
-                items.forEach { item ->
+                append("#EXTM3U")
+                playlist.epgUrl?.takeIf { it.isNotBlank() }
+                    ?.let { append(" x-tvg-url=\"" + escape(it) + "\"") }
+                appendLine()
+                playlist.items.forEach { item ->
                     append("#EXTINF:-1")
-                    item.groupTitle?.takeIf { it.isNotBlank() }?.let { append(" group-title=\"" + escape(it) + "\"") }
-                    item.logoUrl?.takeIf { it.isNotBlank() }?.let { append(" tvg-logo=\"" + escape(it) + "\"") }
+                    item.tvgId?.takeIf { it.isNotBlank() }
+                        ?.let { append(" tvg-id=\"" + escape(it) + "\"") }
+                    item.groupTitle?.takeIf { it.isNotBlank() }
+                        ?.let { append(" group-title=\"" + escape(it) + "\"") }
+                    item.logoUrl?.takeIf { it.isNotBlank() }
+                        ?.let { append(" tvg-logo=\"" + escape(it) + "\"") }
                     append("," + item.name)
                     appendLine()
                     appendLine(item.url)
@@ -147,21 +156,34 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
         }
     }
 
-    private fun parse(text: String, baseUrl: String): List<StreamItem> {
+    private fun parsePlaylist(text: String, baseUrl: String): ParsedTvPlaylist {
         val result = ArrayList<StreamItem>()
         var currentName: String? = null
         var currentLogo: String? = null
         var currentGroup: String? = null
+        var currentTvgId: String? = null
+        var epgUrl: String? = null
 
         text.lineSequence().map { it.trim().removePrefix("\uFEFF") }.forEach { line ->
             if (line.isBlank()) return@forEach
 
             when {
+                line.startsWith("#EXTM3U", ignoreCase = true) -> {
+                    val rawEpgUrl = attr(line, "x-tvg-url") ?: attr(line, "url-tvg")
+                    epgUrl = rawEpgUrl
+                        ?.split(',')
+                        ?.firstOrNull()
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { resolveUrl(baseUrl, it) }
+                }
+
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     val comma = line.indexOf(",")
                     val title = if (comma >= 0) line.substring(comma + 1).trim() else "Без названия"
                     currentName = attr(line, "tvg-name")?.trim()?.takeIf { it.isNotBlank() }
                         ?: title.ifBlank { "Без названия" }
+                    currentTvgId = attr(line, "tvg-id")?.trim()?.takeIf { it.isNotBlank() }
                     currentLogo = attr(line, "tvg-logo")?.let { resolveUrl(baseUrl, it) }
                     currentGroup = attr(line, "group-title")?.trim()
                 }
@@ -179,17 +201,19 @@ class TvPlaylistRepositoryV8(context: Context, private val store: SettingsStore)
                             url = streamUrl,
                             logoUrl = currentLogo,
                             epgLogoUrl = null,
-                            groupTitle = currentGroup
+                            groupTitle = currentGroup,
+                            tvgId = currentTvgId
                         )
                     }
                     currentName = null
                     currentLogo = null
                     currentGroup = null
+                    currentTvgId = null
                 }
             }
         }
 
-        return result.distinctBy { it.url }
+        return ParsedTvPlaylist(result.distinctBy { it.url }, epgUrl)
     }
 
     private fun attr(line: String, key: String): String? {
