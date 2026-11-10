@@ -104,6 +104,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -1371,7 +1372,21 @@ private fun TvProgramDialog(
                                 Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 180.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("ЗАГРУЗКА ТЕЛЕПРОГРАММЫ…", color = TvV9Gray, fontSize = 13.sp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = TvV9Red,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        "Загрузка плейлиста и телепрограммы...",
+                                        color = TvV9Gray,
+                                        fontSize = 13.sp
+                                    )
+                                }
                             }
                         }
                         visibleProgrammes.isEmpty() -> {
