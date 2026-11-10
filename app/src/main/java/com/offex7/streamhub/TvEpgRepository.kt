@@ -229,7 +229,7 @@ class TvEpgRepository(context: Context) {
 
         return when (networkType) {
             TelephonyManager.NETWORK_TYPE_LTE,
-            TelephonyManager.NETWORK_TYPE_LTE_CA,
+            19, // NETWORK_TYPE_LTE_CA (LTE Carrier Aggregation).
             TelephonyManager.NETWORK_TYPE_NR -> EpgNetworkPolicy.ALLOWED
             else -> EpgNetworkPolicy.MOBILE_RESTRICTED
         }
