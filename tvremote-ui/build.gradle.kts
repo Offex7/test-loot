@@ -4,8 +4,8 @@ plugins {
 }
 android {
     namespace = "com.radiotv.control.ui"
-    compileSdk = 37
-    defaultConfig { minSdk = 31 }
+    compileSdk = 34
+    defaultConfig { minSdk = 29 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true }
 }

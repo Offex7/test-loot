@@ -46,19 +46,19 @@ jobs:
           set -e
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
 
       - name: Verify committed v4.17 source version and Android SDK
         run: |
           set -e
-          grep -q 'compileSdk = 37' app/build.gradle.kts
-          grep -q 'minSdk = 31' app/build.gradle.kts
-          grep -q 'targetSdk = 36' app/build.gradle.kts
+          grep -q 'compileSdk = 34' app/build.gradle.kts
+          grep -q 'minSdk = 29' app/build.gradle.kts
+          grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'versionCode = 32' app/build.gradle.kts
           grep -q 'versionName = "4.17"' app/build.gradle.kts
 
@@ -277,9 +277,9 @@ jobs:
               "v4_17_dpad_canvas_glow": "Canvas(Modifier.matchParentSize())" in remote_pad and "val glowRainbowBrush" in remote_pad and "Stroke(width = 12.dp.toPx()" in remote_pad and "addPath(rawPath, Offset(inset, inset))" in remote_pad,
               "v4_17_remote_fills_available_height": "val controlsAvailableHeight" in remote_pad and "val topClusterHeight = (controlsAvailableHeight - dpadHeight + dpadOverlap)" in remote_pad and "Arrangement.spacedBy(controlColumnGap)" in remote_pad,
               "v4_17_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
-              "v4_17_epg_info_requires_programmes": "hasEpgProgrammes = channel.tvgId.orEmpty().let" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
+              "v4_17_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_17_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v4_17_sdk": "compileSdk = 37" in gradle and "minSdk = 31" in gradle and "targetSdk = 36" in gradle and "PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" in manifest,
+              "v4_17_preserves_existing_sdk": "compileSdk = 34" in gradle and "minSdk = 29" in gradle and "targetSdk = 34" in gradle and "versionCode = 32" in gradle and 'versionName = "4.17"' in gradle,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
@@ -321,8 +321,8 @@ jobs:
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
           cp "$APK" Radio-TV-v4.17.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.17.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.17.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.17.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.17.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"

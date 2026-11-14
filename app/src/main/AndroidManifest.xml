@@ -34,10 +34,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.StreamHub"
         android:usesCleartextTraffic="true">
-        <!-- Preserve the existing orientation policy on large screens while targeting API 36. -->
-        <property
-            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
-            android:value="true" />
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
