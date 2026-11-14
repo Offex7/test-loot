@@ -140,10 +140,10 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -920,12 +920,10 @@ fun TvV8Screen(
             allowSound = !player.isPlaying.value && !radioPlaying,
             isListScrolling = isListScrolling,
             showEpgInfoButton = showEpgInfoButton,
-            hasEpgProgrammes = channel.tvgId.orEmpty().let { id ->
-                id.isNotBlank() && (
-                    id in epgAvailableChannelIds ||
-                        (!epgAvailabilityKnown && !epgUrl.isNullOrBlank())
-                )
-            },
+            hasEpgProgrammes = epgAvailabilityKnown &&
+                channel.tvgId.orEmpty().let { id ->
+                    id.isNotBlank() && id in epgAvailableChannelIds
+                },
             onProgram = { epgDialogChannel = channel },
             onPlay = {
                 channels.indexOfFirst { it.key == channel.key }
