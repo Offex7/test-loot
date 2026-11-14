@@ -3232,6 +3232,7 @@ private fun Settings(
     var deleteCandidate by remember { mutableStateOf<UserPlaylist?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
+    var addDialogError by remember { mutableStateOf<String?>(null) }
     val energyMode by store.energySavingModeFlow().collectAsState("OFF")
     val systemPowerSave = rememberSystemPowerSave()
     val energySaving = energyMode == "ON" || (energyMode == "AUTO" && systemPowerSave)
@@ -3824,6 +3825,7 @@ private fun Settings(
                         onClick = {
                             newName = ""
                             newUrl = ""
+                            addDialogError = null
                             sourceDialog = false
                             addDialog = true
                         },
@@ -3846,8 +3848,11 @@ private fun Settings(
                 val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
                 val formModifier = if (landscape) Modifier.fillMaxWidth().heightIn(max = (config.screenHeightDp.dp - 170.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()) else Modifier
                 Column(formModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = newName, onValueChange = { newName = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Название плейлиста") })
-                    OutlinedTextField(value = newUrl, onValueChange = { newUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("URL плейлиста") }, placeholder = { Text("https://.../playlist.m3u") })
+                    OutlinedTextField(value = newName, onValueChange = { newName = it; addDialogError = null }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Название плейлиста") })
+                    OutlinedTextField(value = newUrl, onValueChange = { newUrl = it; addDialogError = null }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("URL плейлиста") }, placeholder = { Text("https://.../playlist.m3u") })
+                    addDialogError?.let { message ->
+                        Text(message, color = Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
+                    }
                 }
             },
             confirmButton = {
@@ -3857,17 +3862,19 @@ private fun Settings(
                         val url = newUrl.trim()
                         val valid = name.isNotBlank() && (url.startsWith("http://", true) || url.startsWith("https://", true))
                         if (!valid) return@TextButton
+                        addDialogError = null
                         scope.launch {
                             if (store.userPlaylists().size >= 5) {
-                                notify("Можно добавить не более 5 пользовательских плейлистов", 3500L)
+                                addDialogError = "Можно добавить не более 5 пользовательских плейлистов"
                                 return@launch
                             }
                             val added = runCatching { store.addUserPlaylist(name, url) }.getOrDefault(false)
                             if (added) {
                                 userPlaylists = store.userPlaylists()
                                 addDialog = false
+                                addDialogError = null
                             } else {
-                                notify("Не удалось добавить плейлист. Проверьте URL и отсутствие дубликата.", 3500L)
+                                addDialogError = "Не удалось добавить плейлист. Проверьте URL и отсутствие дубликата."
                             }
                         }
                     },

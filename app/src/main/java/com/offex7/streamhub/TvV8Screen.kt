@@ -141,6 +141,9 @@ import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -278,11 +281,14 @@ fun TvV8Screen(
     var fullscreen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var searchOpen by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var query by androidx.compose.runtime.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
     var voiceSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceSearchPopupExit by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var voiceTypingJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
     var epgDialogChannel by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<StreamItem?>(null) }
     var epgUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var epgAvailableChannelIds by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
+    var epgAvailabilityKnown by remember { mutableStateOf(false) }
     var epgPermissionRetryToken by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var epgPermissionDenied by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
@@ -307,13 +313,11 @@ fun TvV8Screen(
             channels = cached.items
             epgUrl = cached.epgUrl
             loading = false
-            cached.epgUrl?.let { url -> scope.launch { epgRepository.preload(url) } }
         }
         repo.load(sourceKey)
             .onSuccess {
                 channels = it.items
                 epgUrl = it.epgUrl
-                it.epgUrl?.let { url -> scope.launch { epgRepository.preload(url) } }
                 loading = false
                 loadError = null
                 health = emptyMap()
@@ -346,6 +350,16 @@ fun TvV8Screen(
         hiddenChannels = store.hiddenChannels(sourceKey)
         savedZooms = store.channelZooms()
         reload()
+    }
+
+    LaunchedEffect(epgUrl) {
+        epgAvailabilityKnown = false
+        val cachedIds = epgRepository.cachedChannelIdsWithCurrentProgrammes(epgUrl)
+        epgAvailableChannelIds = cachedIds
+        if (cachedIds.isNotEmpty()) epgAvailabilityKnown = true
+        epgRepository.preload(epgUrl)
+        epgAvailableChannelIds = epgRepository.channelIdsWithCurrentProgrammes(epgUrl)
+        epgAvailabilityKnown = true
     }
 
     LaunchedEffect(sourcePickerVisible, sourceOptions) {
@@ -785,6 +799,7 @@ fun TvV8Screen(
     BackHandler(enabled = searchOpen) {
         searchOpen = false
         query = ""
+        isSearching = false
         searchStamp = System.currentTimeMillis()
         keyboardController?.hide()
     }
@@ -799,28 +814,42 @@ fun TvV8Screen(
             )
     }
     var filtered by remember(ordered) { mutableStateOf(ordered) }
-    LaunchedEffect(ordered, query) {
+    var primaryResults by remember(ordered) { mutableStateOf(ordered) }
+    var secondaryResults by remember(ordered) { mutableStateOf(emptyList<StreamItem>()) }
+    var searchSubmissionToken by remember { mutableIntStateOf(0) }
+    var consumedSearchSubmissionToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(ordered, query, searchSubmissionToken) {
         val searchQuery = query
         if (searchQuery.isBlank()) {
             filtered = ordered
+            primaryResults = ordered
+            secondaryResults = emptyList()
+            isSearching = false
         } else {
-            delay(300L)
-            val result = withContext(Dispatchers.Default) {
-                tvSearchFilter(ordered, searchQuery)
+            isSearching = true
+            val submitted = searchSubmissionToken != consumedSearchSubmissionToken
+            if (submitted) consumedSearchSubmissionToken = searchSubmissionToken else delay(300L)
+            val (result, primary, secondary) = withContext(Dispatchers.Default) {
+                val matches = tvSearchFilter(ordered, searchQuery)
+                val searchQueryIsRussian = searchQuery.any { it in '\u0400'..'\u04FF' }
+                val primaryMatches = matches.filter { item ->
+                    val hasRussian = tvHasCyrillic(item.name)
+                    val hasEnglish = tvHasLatin(item.name)
+                    if (searchQueryIsRussian) hasRussian || !hasEnglish else hasEnglish || !hasRussian
+                }
+                val primaryKeys = primaryMatches.mapTo(HashSet()) { it.key }
+                val secondaryMatches = matches.filterNot { it.key in primaryKeys }
+                Triple(matches, primaryMatches, secondaryMatches)
             }
-            filtered = result
+            if (searchQuery == query) {
+                filtered = result
+                primaryResults = primary
+                secondaryResults = secondary
+                isSearching = false
+            }
         }
     }
     val queryIsRussian = query.any { it in '\u0400'..'\u04FF' }
-    val primaryResults = remember(filtered, query, queryIsRussian) {
-        if (query.isBlank()) filtered else filtered.filter { item ->
-            val hasRussian = tvHasCyrillic(item.name)
-            val hasEnglish = tvHasLatin(item.name)
-            if (queryIsRussian) hasRussian || !hasEnglish else hasEnglish || !hasRussian
-        }
-    }
-    val primaryKeys = remember(primaryResults) { primaryResults.mapTo(HashSet()) { it.key } }
-    val secondaryResults = remember(filtered, primaryKeys) { filtered.filterNot { it.key in primaryKeys } }
     val isListScrolling by remember(list) { derivedStateOf { list.isScrollInProgress } }
 
     fun finishVoiceSearchPopup() {
@@ -891,6 +920,12 @@ fun TvV8Screen(
             allowSound = !player.isPlaying.value && !radioPlaying,
             isListScrolling = isListScrolling,
             showEpgInfoButton = showEpgInfoButton,
+            hasEpgProgrammes = channel.tvgId.orEmpty().let { id ->
+                id.isNotBlank() && (
+                    id in epgAvailableChannelIds ||
+                        (!epgAvailabilityKnown && !epgUrl.isNullOrBlank())
+                )
+            },
             onProgram = { epgDialogChannel = channel },
             onPlay = {
                 channels.indexOfFirst { it.key == channel.key }
@@ -921,6 +956,7 @@ fun TvV8Screen(
             searchOpen = searchOpen,
             query = query,
             focusRequester = focusRequester,
+            isSearching = isSearching,
             onBack = back,
             onSearchOpen = {
                 searchOpen = true
@@ -928,18 +964,27 @@ fun TvV8Screen(
             },
             onQuery = {
                 query = it
+                isSearching = it.isNotBlank()
                 searchStamp = System.currentTimeMillis()
+            },
+            onSearchSubmit = {
+                if (query.isNotBlank()) {
+                    isSearching = true
+                    searchSubmissionToken++
+                }
             },
             onSearchClose = {
                 if (query.isNotBlank()) scope.launch { store.rememberSearch(Section.TV, query) }
                 searchOpen = false
                 query = ""
+                isSearching = false
                 searchStamp = System.currentTimeMillis()
                 keyboardController?.hide()
             },
             onVoiceSearch = {
                 voiceTypingJob?.cancel()
                 query = ""
+                isSearching = false
                 searchOpen = true
                 searchStamp = System.currentTimeMillis()
                 voiceSearchActive = true
@@ -963,6 +1008,7 @@ fun TvV8Screen(
                 history = searchHistory,
                 onPick = {
                     query = it
+                    isSearching = it.isNotBlank()
                     searchStamp = System.currentTimeMillis()
                 },
                 onClear = {
@@ -1301,6 +1347,7 @@ private fun TvProgramDialog(
     val configuration = LocalConfiguration.current
     val maxDialogHeight = (configuration.screenHeightDp - 48).coerceAtLeast(220).dp
     val timeFormatter = remember { java.text.SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val epgProgressPercent by epgRepository.downloadProgressPercent.collectAsStateWithLifecycle(initialValue = null)
 
     LaunchedEffect(channel.key) {
         visible = true
@@ -1372,20 +1419,34 @@ private fun TvProgramDialog(
                                 Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 180.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        color = TvV9Red,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Text(
-                                        "Загрузка плейлиста и телепрограммы...",
-                                        color = TvV9Gray,
-                                        fontSize = 13.sp
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            color = TvV9Red,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Text(
+                                            epgProgressPercent?.let { "Загрузка телепрограммы... $it%" }
+                                                ?: "Загрузка плейлиста и телепрограммы...",
+                                            color = TvV9Gray,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    epgProgressPercent?.let { percent ->
+                                        LinearProgressIndicator(
+                                            progress = percent / 100f,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = TvV9Red
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1475,9 +1536,11 @@ private fun TvV9Header(
     searchOpen: Boolean,
     query: String,
     focusRequester: FocusRequester,
+    isSearching: Boolean,
     onBack: () -> Unit,
     onSearchOpen: () -> Unit,
     onQuery: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
     onSearchClose: () -> Unit,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
@@ -1496,10 +1559,19 @@ private fun TvV9Header(
                 onValueChange = onQuery,
                 modifier = Modifier.weight(1f).focusRequester(focusRequester),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearchSubmit() }),
                 placeholder = { Text("Поиск…") },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = TvV9Red) },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isSearching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = TvV9Red,
+                                strokeWidth = 2.dp
+                            )
+                        }
                         IconButton(onClick = onVoiceSearch) {
                             Icon(Icons.Default.Mic, "Голосовой поиск", tint = TvV9Red)
                         }
@@ -1533,6 +1605,7 @@ private fun TvV9ChannelRow(
     offline: Boolean,
     showHideIcon: Boolean,
     showEpgInfoButton: Boolean,
+    hasEpgProgrammes: Boolean,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     allowSound: Boolean,
@@ -1722,7 +1795,7 @@ private fun TvV9ChannelRow(
                             Icon(Icons.Default.VisibilityOff, "Скрыть канал", tint = TvV9Gray)
                         }
                     }
-                    if (showEpgInfoButton) {
+                    if (showEpgInfoButton && hasEpgProgrammes) {
                         IconButton(
                             onClick = {
                                 InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,allowSound)

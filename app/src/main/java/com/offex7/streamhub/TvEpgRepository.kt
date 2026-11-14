@@ -15,12 +15,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FilterInputStream
 import java.io.InputStream
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -91,6 +94,8 @@ class TvEpgRepository(context: Context) {
         .build()
     private val mutex = Mutex()
     private val catalogs = mutableMapOf<String, TvEpgCatalog>()
+    private val _downloadProgressPercent = MutableStateFlow<Int?>(null)
+    val downloadProgressPercent = _downloadProgressPercent.asStateFlow()
 
     suspend fun preload(epgUrl: String?) {
         if (epgUrl.isNullOrBlank()) return
@@ -137,6 +142,50 @@ class TvEpgRepository(context: Context) {
             }
         }
 
+    /** Read the existing XMLTV cache without starting a network refresh. */
+    suspend fun cachedChannelIdsWithCurrentProgrammes(epgUrl: String?): Set<String> =
+        withContext(Dispatchers.IO) {
+            if (epgUrl.isNullOrBlank()) return@withContext emptySet()
+            try {
+                val url = epgUrl.trim()
+                val catalog = mutex.withLock {
+                    catalogs[url] ?: cacheFile(url).takeIf { it.isFile && it.length() > 0L }
+                        ?.let { parseXmlTv(it).also { parsed -> catalogs[url] = parsed } }
+                } ?: return@withContext emptySet()
+                currentProgrammeChannelIds(catalog)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TV_EPG_TAG, "Cannot read cached XMLTV channel availability", error)
+                emptySet()
+            }
+        }
+
+    /** Read channel IDs after the current catalogue has been loaded or refreshed. */
+    suspend fun channelIdsWithCurrentProgrammes(epgUrl: String?): Set<String> =
+        withContext(Dispatchers.IO) {
+            if (epgUrl.isNullOrBlank()) return@withContext emptySet()
+            try {
+                val loaded = mutex.withLock { loadCatalogLocked(epgUrl.trim()) }
+                val catalog = loaded.catalog ?: return@withContext emptySet()
+                currentProgrammeChannelIds(catalog)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TV_EPG_TAG, "Cannot read XMLTV channel availability", error)
+                emptySet()
+            }
+        }
+
+    private fun currentProgrammeChannelIds(catalog: TvEpgCatalog): Set<String> {
+        val now = System.currentTimeMillis()
+        return catalog.programmesByChannel
+            .filterValues { programmes ->
+                programmes.any { it.stopMillis > now && it.startMillis < now + EPG_DAY_MS }
+            }
+            .keys
+    }
+
     private suspend fun loadCatalogLocked(url: String): CatalogLoad {
         if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
             return CatalogLoad(null, TvEpgUnavailableReason.NO_LINK)
@@ -182,10 +231,13 @@ class TvEpgRepository(context: Context) {
                 throw IllegalStateException("XMLTV contains no channels or programmes")
             }
             catalogs[url] = parsed
+            _downloadProgressPercent.value = null
             CatalogLoad(parsed, null)
         } catch (cancelled: CancellationException) {
+            _downloadProgressPercent.value = null
             throw cancelled
         } catch (error: Exception) {
+            _downloadProgressPercent.value = null
             Log.w(TV_EPG_TAG, "XMLTV download or parsing failed", error)
             if (cachedCatalog != null) CatalogLoad(cachedCatalog, null)
             else CatalogLoad(null, TvEpgUnavailableReason.INVALID_OR_EMPTY)
@@ -242,6 +294,7 @@ class TvEpgRepository(context: Context) {
     }
 
     private fun downloadXmlTv(url: String, destination: File) {
+        _downloadProgressPercent.value = null
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", "Radio.TV/4.16")
@@ -250,7 +303,39 @@ class TvEpgRepository(context: Context) {
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("XMLTV HTTP " + response.code)
             val body = response.body ?: error("Empty XMLTV response body")
-            val raw = BufferedInputStream(body.byteStream())
+            val contentLength = response.header("Content-Length")
+                ?.toLongOrNull()
+                ?.takeIf { it > 0L }
+                ?: body.contentLength().takeIf { it > 0L }
+            var downloadedBytes = 0L
+            var lastReportedPercent = -1
+            if (contentLength != null) _downloadProgressPercent.value = 0
+
+            fun reportDownloadedBytes(count: Int) {
+                if (count <= 0 || contentLength == null) return
+                downloadedBytes += count.toLong()
+                val percent = ((downloadedBytes.toDouble() / contentLength.toDouble()) * 100.0)
+                    .toInt()
+                    .coerceIn(0, 100)
+                if (percent != lastReportedPercent) {
+                    lastReportedPercent = percent
+                    _downloadProgressPercent.value = percent
+                }
+            }
+
+            val progressInput = object : FilterInputStream(body.byteStream()) {
+                override fun read(): Int {
+                    val value = super.read()
+                    if (value >= 0) reportDownloadedBytes(1)
+                    return value
+                }
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    val count = super.read(buffer, offset, length)
+                    reportDownloadedBytes(count)
+                    return count
+                }
+            }
+            val raw = BufferedInputStream(progressInput)
             raw.mark(2)
             val first = raw.read()
             val second = raw.read()
@@ -275,6 +360,7 @@ class TvEpgRepository(context: Context) {
                 }
                 output.fd.sync()
                 atomicFile.finishWrite(output)
+                if (contentLength != null) _downloadProgressPercent.value = 100
             } catch (error: Throwable) {
                 atomicFile.failWrite(output)
                 throw error

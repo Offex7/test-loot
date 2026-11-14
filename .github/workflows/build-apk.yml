@@ -46,18 +46,21 @@ jobs:
           set -e
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.16.1 source version
+      - name: Verify committed v4.17 source version and Android SDK
         run: |
           set -e
-          grep -q 'versionCode = 31' app/build.gradle.kts
-          grep -q 'versionName = "4.16.1"' app/build.gradle.kts
+          grep -q 'compileSdk = 37' app/build.gradle.kts
+          grep -q 'minSdk = 31' app/build.gradle.kts
+          grep -q 'targetSdk = 36' app/build.gradle.kts
+          grep -q 'versionCode = 32' app/build.gradle.kts
+          grep -q 'versionName = "4.17"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -67,11 +70,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.16.1): install verified local Unistar logo"
+            git commit -m "fix(v4.17): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.16.1 sources
+      - name: Validate Radio.TV v4.17 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -107,7 +110,7 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 31" in gradle and 'versionName = "4.16.1"' in gradle,
+              "version": "versionCode = 32" in gradle and 'versionName = "4.17"' in gradle,
               "radio_station_descriptions_all_36": len(description_keys) == 36 and len(set(description_keys)) == 36 and set(description_keys) == set(station_names),
               "radio_long_press_portrait_only": "combinedClickable(" in main and "onLongClick = if (!showRadioInfo && onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
@@ -195,7 +198,7 @@ jobs:
               "tv_channel_long_press_exactly_3_seconds": tv.count("withTimeoutOrNull(3_000L)") == 1 and "onProgram()" in tv,
               "tv_favorite_quick_add": "onAddCurrentToFavorites" in tv and "Добавить текущий канал в избранное" in tv and "favoriteChannels.none { it.second.key == channel.key }" in tv,
           }
-          # v4.16.1 feature-specific regression checks.
+          # v4.17 feature-specific regression checks.
           remote_runtime = Path("app/src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8")
           remote_settings = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemoteSettingsScreen.kt").read_text(encoding="utf-8")
           updater = (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8")
@@ -209,7 +212,7 @@ jobs:
               "hidden_channel_names_keep_tvg_name": 'attrRaw(line, "tvg-name")' in playlist and "return resolveUrl(baseUrl, raw)" not in playlist,
               "remote_voice_transcript_and_fade": "remoteSpeechTranscript" in main and "remoteSpeechActive" in main and "delay(1_000L)" in main and "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null || isRemoteDictation" in main and "voiceTranscript: String? = null" in remote_pad and "fadeOut(tween(1000))" in remote_pad and "Alignment.Center" in remote_pad and "voiceTranscript.orEmpty()" in remote_pad and "СЛУШАЮ…" not in remote_pad,
               "radio_search_hidden": 'showSearch = false,\n                showTimer = false' in main,
-              "TV_search_debounced_background": "LaunchedEffect(ordered, query)" in tv and "delay(300L)" in tv and "withContext(Dispatchers.Default)" in tv and "remember(filtered, query, queryIsRussian)" in tv,
+              "TV_search_debounced_background_and_progress": "LaunchedEffect(ordered, query, searchSubmissionToken)" in tv and "delay(300L)" in tv and "withContext(Dispatchers.Default)" in tv and "isSearching" in tv and "CircularProgressIndicator(" in tv and "KeyboardActions(onSearch" in tv,
               "TV_logo_missing_uses_app_icon": "painterResource(id = R.drawable.ic_app_icon)" in tv and "if (!logoLoaded) {" in tv,
               "TV_loading_over_silent_switch": "val showLoading = switching || waiting || error != null || buffering" in tv and "visible = !pipMode && showLoading" in tv,
               "remote_settings_are_separate": "TvRemoteSettingsScreen" in main and "remoteSettingsVisible = true" in main and "onSettings = { settings = true }" not in main and "НАСТРОЙКИ ПУЛЬТА" in remote_settings,
@@ -270,13 +273,20 @@ jobs:
               "tv_player_orientation_lock_restores_full_sensor": "SCREEN_ORIENTATION_FULL_SENSOR" in tv and "SCREEN_ORIENTATION_LOCKED" in tv and "requestedOrientation" in tv and "originalRequestedOrientation" in tv,
               "remote_logs_exported_with_logcat": "last_100_radio_tv_internal_logs" in (root / "src/main/java/com/offex7/streamhub/LogExporter.kt").read_text(encoding="utf-8") and "Remote WebSocket status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote ADB status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote Bluetooth status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8"),
               "save_settings_icon_uses_log_pulse": "Поделиться настройками" in main and "scaleX = logShareScale" in main,
+              "v4_17_radio_stream_urls": 'StreamItem("ЮНИСТАР", "https://mtest.by/hls/unistar_main/index.m3u8")' in models and 'StreamItem("РАДИО ДАЧА", "https://online2.gkvr.ru:8001/dacha_nsb_64.aac")' in models,
+              "v4_17_dpad_canvas_glow": "Canvas(Modifier.matchParentSize())" in remote_pad and "val glowRainbowBrush" in remote_pad and "Stroke(width = 12.dp.toPx()" in remote_pad and "addPath(rawPath, Offset(inset, inset))" in remote_pad,
+              "v4_17_remote_fills_available_height": "val controlsAvailableHeight" in remote_pad and "val topClusterHeight = (controlsAvailableHeight - dpadHeight + dpadOverlap)" in remote_pad and "Arrangement.spacedBy(controlColumnGap)" in remote_pad,
+              "v4_17_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
+              "v4_17_epg_info_requires_programmes": "hasEpgProgrammes = channel.tvgId.orEmpty().let" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
+              "v4_17_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
+              "v4_17_sdk": "compileSdk = 37" in gradle and "minSdk = 31" in gradle and "targetSdk = 36" in gradle and "PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" in manifest,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.16.1 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.16.1 source checks passed.")
+              raise SystemExit("v4.17 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.17 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -298,7 +308,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.16.1-debug-build-log
+          name: Radio-TV-v4.17-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -310,35 +320,35 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.16.1.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose Radio-TV-v4.16.1.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs Radio-TV-v4.16.1.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.17.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.17.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.17.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.16.1.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.17.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='31'"
-          echo "$BADGING" | grep -q "versionName='4.16.1'"
-          sha256sum Radio-TV-v4.16.1.apk
-          ls -lh Radio-TV-v4.16.1.apk
+          echo "$BADGING" | grep -q "versionCode='32'"
+          echo "$BADGING" | grep -q "versionName='4.17'"
+          sha256sum Radio-TV-v4.17.apk
+          ls -lh Radio-TV-v4.17.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.16.1-APK
-          path: Radio-TV-v4.16.1.apk
+          name: Radio-TV-v4.17-APK
+          path: Radio-TV-v4.17.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.16.1-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.17-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.16.1-Source
-          path: Radio-TV-v4.16.1-source.zip
+          name: Radio-TV-v4.17-Source
+          path: Radio-TV-v4.17-source.zip
           if-no-files-found: error
 
       - name: Publish direct APK and source download links
@@ -346,8 +356,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v4.16.1
-          name: Radio.TV v4.16.1
+          tag_name: v4.17
+          name: Radio.TV v4.17
           # Release metadata mirrors the APK manifest: code 31, version 4.16.1.
           target_commitish: ${{ github.sha }}
           draft: false
@@ -355,7 +365,7 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           body: |
-            Radio.TV v4.16.1
+            Radio.TV v4.17
 
             versionCode: 31
             versionName: 4.16.1
@@ -363,5 +373,5 @@ jobs:
 
             APK is signed with the existing v4 signing key. The source archive is attached below.
           files: |
-            Radio-TV-v4.16.1.apk
-            Radio-TV-v4.16.1-source.zip
+            Radio-TV-v4.17.apk
+            Radio-TV-v4.17-source.zip

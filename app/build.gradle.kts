@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "com.offex7.streamhub"
-    compileSdk = 34
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.offex7.streamhub"
-        minSdk = 29
-        targetSdk = 34
-        versionCode = 31
-        versionName = "4.16.1"
+        minSdk = 31
+        targetSdk = 36
+        versionCode = 32
+        versionName = "4.17"
     }
     signingConfigs {
         create("v5Debug") {
