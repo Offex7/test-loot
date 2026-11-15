@@ -1344,6 +1344,7 @@ private fun TvProgramDialog(
     }
     val configuration = LocalConfiguration.current
     val maxDialogHeight = (configuration.screenHeightDp - 48).coerceAtLeast(220).dp
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val timeFormatter = remember { java.text.SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val epgProgressPercent by epgRepository.downloadProgressPercent.collectAsStateWithLifecycle(initialValue = null)
 
@@ -1398,7 +1399,9 @@ private fun TvProgramDialog(
                 border = BorderStroke(1.dp, TvV9Red.copy(alpha = 0.55f))
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .then(if (isLandscape) Modifier.fillMaxHeight() else Modifier)
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
@@ -1411,6 +1414,21 @@ private fun TvProgramDialog(
                     )
                     Text("ТЕЛЕПРОГРАММА · БЛИЖАЙШИЕ 24 ЧАСА", color = TvV9Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
 
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isLandscape) {
+                                    Modifier.weight(1f)
+                                } else {
+                                    Modifier.heightIn(
+                                        min = 110.dp,
+                                        max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp
+                                    )
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
                     when {
                         epgResult.isLoading -> {
                             Box(
@@ -1465,12 +1483,7 @@ private fun TvProgramDialog(
                         }
                         else -> {
                             LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(
-                                        min = 100.dp,
-                                        max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp
-                                    ),
+                                modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 items(
@@ -1520,7 +1533,12 @@ private fun TvProgramDialog(
                         }
                     }
 
-                    TextButton(onClick = { visible = false }, modifier = Modifier.align(Alignment.End)) {
+                    }
+
+                    TextButton(
+                        onClick = { visible = false },
+                        modifier = Modifier.align(Alignment.End).height(48.dp)
+                    ) {
                         Text("ЗАКРЫТЬ", color = TvV9Red, fontWeight = FontWeight.Bold)
                     }
                 }
