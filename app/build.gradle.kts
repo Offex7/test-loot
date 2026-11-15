@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.offex7.streamhub"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.offex7.streamhub"
         minSdk = 31
