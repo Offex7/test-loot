@@ -48,7 +48,7 @@ jobs:
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "platforms;android-37" "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "platforms;android-36" "build-tools;36.0.0"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
@@ -56,7 +56,7 @@ jobs:
       - name: Verify committed v4.18 source version and Android SDK
         run: |
           set -e
-          grep -q 'compileSdk = 37' app/build.gradle.kts
+          grep -q 'compileSdk = 36' app/build.gradle.kts
           grep -q 'minSdk = 31' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
           grep -q 'versionCode = 33' app/build.gradle.kts
@@ -280,7 +280,7 @@ jobs:
               "v4_18_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
               "v4_18_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_18_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v4_18_android_12_floor_android_17_compile_preserving_target": "compileSdk = 37" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 33" in gradle and 'versionName = "4.18"' in gradle,
+              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 33" in gradle and 'versionName = "4.18"' in gradle,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
