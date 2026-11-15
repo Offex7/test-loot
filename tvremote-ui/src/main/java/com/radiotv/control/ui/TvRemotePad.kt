@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -527,7 +526,7 @@ internal fun TvRemotePad(
                             cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
                             close()
                         }
-                        // Keep the full outline and its moving highlight inside the draw bounds.
+                        // Keep the complete outline inside the draw bounds.
                         val path = Path().apply { addPath(rawPath, Offset(inset, inset)) }
                         val gradientCenter = Offset(size.width / 2f, size.height / 2f)
                         val fixedRainbowBrush = Brush.sweepGradient(
