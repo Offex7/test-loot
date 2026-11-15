@@ -1418,14 +1418,7 @@ private fun TvProgramDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
-                                if (isLandscape) {
-                                    Modifier.weight(1f)
-                                } else {
-                                    Modifier.heightIn(
-                                        min = 110.dp,
-                                        max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp
-                                    )
-                                }
+                                if (isLandscape) Modifier.weight(1f) else Modifier
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1485,7 +1478,16 @@ private fun TvProgramDialog(
                         }
                         else -> {
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxWidth().then(
+                                    if (isLandscape) {
+                                        Modifier.fillMaxHeight()
+                                    } else {
+                                        Modifier.heightIn(
+                                            min = 100.dp,
+                                            max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp
+                                        )
+                                    }
+                                ),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 items(
