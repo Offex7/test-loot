@@ -1432,7 +1432,7 @@ private fun TvProgramDialog(
                     when {
                         epgResult.isLoading -> {
                             Box(
-                                Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 180.dp),
+                                Modifier.fillMaxWidth().heightIn(min = if (isLandscape) 0.dp else 110.dp, max = if (isLandscape) 120.dp else 180.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(
@@ -1475,7 +1475,9 @@ private fun TvProgramDialog(
                             }
                             Text(
                                 message,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(vertical = 14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .heightIn(min = if (isLandscape) 0.dp else 80.dp)
+                                    .padding(vertical = if (isLandscape) 4.dp else 14.dp),
                                 color = Color.White.copy(alpha = 0.9f),
                                 fontSize = 14.sp,
                                 lineHeight = 21.sp
