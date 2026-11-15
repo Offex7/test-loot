@@ -81,8 +81,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -216,11 +214,13 @@ internal fun TvRemotePad(
         val mediaButtonSize = minOf((maxWidth * 0.195f).coerceAtLeast(58.dp), (controlsAvailableHeight * 0.19f).coerceAtLeast(58.dp)).coerceAtMost(108.dp)
         val secondRowButtonSize = minOf((maxWidth * 0.18f).coerceAtLeast(50.dp), (controlsAvailableHeight * 0.16f).coerceAtLeast(50.dp)).coerceAtMost(96.dp)
         val arrowSize = minOf((maxWidth * 0.20f).coerceAtLeast(56.dp), (controlsAvailableHeight * 0.18f).coerceAtLeast(56.dp)).coerceAtMost(112.dp)
-        val arrowSideWidth = arrowSize * 1.10f
         val okSize = minOf((maxWidth * 0.24f).coerceAtLeast(64.dp), (controlsAvailableHeight * 0.20f).coerceAtLeast(64.dp)).coerceAtMost(124.dp)
+        val dpadHorizontalGap = if (tight) 6.dp else 8.dp
+        val availableSideWidth = (((maxWidth - okSize) / 2f) - dpadHorizontalGap).coerceAtLeast(0.dp)
+        val arrowSideWidth = minOf(arrowSize * 1.10f, availableSideWidth)
         val dpadTopInset = if (tight) 6.dp else 10.dp
         val dpadBottomInset = if (tight) 6.dp else 10.dp
-        val dpadVerticalGap = if (tight) 2.dp else 3.dp
+        val dpadVerticalGap = if (tight) 6.dp else 8.dp
         val dpadHeight = dpadTopInset + arrowSize + dpadVerticalGap + okSize +
             dpadVerticalGap + arrowSize + dpadBottomInset
         val dpadOverlap = (arrowSize * if (tight) 0.78f else 0.90f)
@@ -228,8 +228,8 @@ internal fun TvRemotePad(
         val lowerButtonSize = footerButtonSize
         val sideInset = (maxWidth * 0.045f).coerceIn(8.dp, 22.dp)
         val controlColumnGap = (maxWidth * 0.035f).coerceIn(4.dp, 12.dp)
-        val sideArrowGap = if (tight) 1.dp else 2.dp
-        val arrowInset = (((maxWidth - 18.dp - okSize) / 2) - arrowSideWidth - sideArrowGap).coerceAtLeast(0.dp)
+        val sideArrowGap = dpadHorizontalGap
+        val arrowInset = (((maxWidth - okSize) / 2f) - arrowSideWidth - sideArrowGap).coerceAtLeast(0.dp)
         // Fill the available height around the D-pad while preserving the portrait reference.
         val topClusterHeight = (controlsAvailableHeight - dpadHeight + dpadOverlap).coerceAtLeast(68.dp)
         val remoteControlsHeight = topClusterHeight + dpadHeight - dpadOverlap
@@ -269,15 +269,6 @@ internal fun TvRemotePad(
                 repeatMode = RepeatMode.Reverse
             ),
             label = "search-pulse"
-        )
-        val rainbowOffset by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = if (energySaving) 0f else 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(3600, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "rainbow-gradient-offset"
         )
         val rainbowColors = listOf(
             Color(0xFFFF3B30),
@@ -538,61 +529,26 @@ internal fun TvRemotePad(
                         }
                         // Keep the full outline and its moving highlight inside the draw bounds.
                         val path = Path().apply { addPath(rawPath, Offset(inset, inset)) }
+                        val gradientCenter = Offset(size.width / 2f, size.height / 2f)
                         val fixedRainbowBrush = Brush.sweepGradient(
                             colors = rainbowColors,
-                            center = Offset(size.width / 2f, size.height / 2f)
+                            center = gradientCenter
                         )
                         val glowRainbowBrush = Brush.sweepGradient(
-                            colors = rainbowColors.map { it.copy(alpha = 0.18f) },
-                            center = Offset(size.width / 2f, size.height / 2f)
+                            colors = rainbowColors.map { it.copy(alpha = 0.14f) },
+                            center = gradientCenter
                         )
+                        // One continuous contour surrounds the complete D-pad, not individual keys.
                         drawPath(
                             path,
                             brush = glowRainbowBrush,
-                            style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            style = Stroke(width = 9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
                         drawPath(
                             path,
                             brush = fixedRainbowBrush,
-                            style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
-                        drawPath(
-                            path,
-                            brush = fixedRainbowBrush,
-                            style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
-                        val measure = android.graphics.PathMeasure(path.asAndroidPath(), false)
-                        val pathLength = measure.length
-                        if (pathLength > 0f) {
-                            val segmentLength = pathLength * 0.16f
-                            val segmentStart = pathLength * rainbowOffset
-                            val segmentEnd = segmentStart + segmentLength
-                            val movingSegment = android.graphics.Path()
-                            if (segmentEnd <= pathLength) {
-                                measure.getSegment(segmentStart, segmentEnd, movingSegment, true)
-                            } else {
-                                measure.getSegment(segmentStart, pathLength, movingSegment, true)
-                                val wrappedSegment = android.graphics.Path()
-                                measure.getSegment(0f, segmentEnd - pathLength, wrappedSegment, true)
-                                movingSegment.addPath(wrappedSegment)
-                            }
-                            val snakePath = movingSegment.asComposePath()
-                            drawPath(
-                                snakePath,
-                                color = Color.White.copy(alpha = 0.22f),
-                                style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                            )
-                            drawPath(
-                                snakePath,
-                                brush = fixedRainbowBrush,
-                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                            )
-                            drawPath(
-                                snakePath,
-                                color = Color.White.copy(alpha = 0.90f),
-                                style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                            )
-                        }
                 }
                 RemoteSurfaceButton(
                     description = "Вверх",
