@@ -4,13 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -75,14 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -99,7 +89,7 @@ import kotlinx.coroutines.delay
 enum class RemoteFeatureAction { VOICE_INPUT, KEYBOARD, AIR_MOUSE, TOUCHPAD, CAST, APP_YOUTUBE, APP_NETFLIX }
 
 
-private val LocalRemoteHaptics = staticCompositionLocalOf { true }
+private val LocalRemoteButtonFeedback = staticCompositionLocalOf<() -> Unit> { {} }
 
 object RadioTvPalette {
     val Red = Color(0xFFE53935)
@@ -175,14 +165,14 @@ internal fun TvRemotePad(
     featureMessage: String? = null,
     showFeatureActions: Boolean = false,
     energySaving: Boolean = false,
-    hapticsEnabled: Boolean = true,
+    onButtonFeedback: () -> Unit = {},
     deviceName: String = "Телевизор не подключён",
     searching: Boolean = false,
     onSettings: () -> Unit = {},
     onBack: () -> Unit = { onKey(RemoteKey.BACK) },
     onStartSearch: () -> Unit = {}
 ) {
-    CompositionLocalProvider(LocalRemoteHaptics provides hapticsEnabled) {
+    CompositionLocalProvider(LocalRemoteButtonFeedback provides onButtonFeedback) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
             .background(Color(0xFF000000))
@@ -214,7 +204,7 @@ internal fun TvRemotePad(
         val secondRowButtonSize = minOf((maxWidth * 0.18f).coerceAtLeast(50.dp), (controlsAvailableHeight * 0.16f).coerceAtLeast(50.dp)).coerceAtMost(96.dp)
         val arrowSize = minOf((maxWidth * 0.20f).coerceAtLeast(56.dp), (controlsAvailableHeight * 0.18f).coerceAtLeast(56.dp)).coerceAtMost(112.dp)
         val okSize = minOf((maxWidth * 0.24f).coerceAtLeast(64.dp), (controlsAvailableHeight * 0.20f).coerceAtLeast(64.dp)).coerceAtMost(124.dp)
-        val dpadHorizontalGap = if (tight) 6.dp else 8.dp
+        val dpadHorizontalGap = 10.dp
         val availableSideWidth = (((maxWidth - okSize) / 2f) - dpadHorizontalGap).coerceAtLeast(0.dp)
         val arrowSideWidth = minOf(arrowSize * 1.10f, availableSideWidth)
         val dpadTopInset = if (tight) 6.dp else 10.dp
@@ -269,16 +259,6 @@ internal fun TvRemotePad(
             ),
             label = "search-pulse"
         )
-        val rainbowColors = listOf(
-            Color(0xFFFF3B30),
-            Color(0xFFFF9500),
-            Color(0xFFFFD60A),
-            Color(0xFF34C759),
-            Color(0xFF0A84FF),
-            Color(0xFFBF5AF2),
-            Color(0xFFFF3B30)
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -497,58 +477,6 @@ internal fun TvRemotePad(
                     .height(dpadHeight)
                     .padding(horizontal = 1.dp)
             ) {
-                Canvas(Modifier.matchParentSize()) {
-                        val inset = 6.dp.toPx()
-                        val w = (size.width - inset * 2f).coerceAtLeast(0f)
-                        val h = (size.height - inset * 2f).coerceAtLeast(0f)
-                        // Compact organic clover contour. The narrow top/bottom lobes hug
-                        // the arrow keys; the side lobes bulge only far enough to frame them.
-                        val rawPath = Path().apply {
-                            moveTo(w * 0.38f, h * 0.01f)
-                            cubicTo(w * 0.35f, h * 0.01f, w * 0.34f, h * 0.04f, w * 0.34f, h * 0.10f)
-                            cubicTo(w * 0.34f, h * 0.17f, w * 0.34f, h * 0.235f, w * 0.35f, h * 0.285f)
-                            cubicTo(w * 0.39f, h * 0.32f, w * 0.34f, h * 0.325f, w * 0.28f, h * 0.325f)
-                            cubicTo(w * 0.18f, h * 0.325f, w * 0.12f, h * 0.36f, w * 0.12f, h * 0.43f)
-                            lineTo(w * 0.12f, h * 0.57f)
-                            cubicTo(w * 0.12f, h * 0.64f, w * 0.18f, h * 0.675f, w * 0.28f, h * 0.675f)
-                            cubicTo(w * 0.36f, h * 0.675f, w * 0.39f, h * 0.68f, w * 0.35f, h * 0.715f)
-                            cubicTo(w * 0.34f, h * 0.765f, w * 0.34f, h * 0.83f, w * 0.34f, h * 0.90f)
-                            cubicTo(w * 0.34f, h * 0.955f, w * 0.35f, h * 0.99f, w * 0.38f, h * 0.99f)
-                            lineTo(w * 0.62f, h * 0.99f)
-                            cubicTo(w * 0.65f, h * 0.99f, w * 0.66f, h * 0.955f, w * 0.66f, h * 0.90f)
-                            cubicTo(w * 0.66f, h * 0.83f, w * 0.66f, h * 0.765f, w * 0.65f, h * 0.715f)
-                            cubicTo(w * 0.61f, h * 0.68f, w * 0.66f, h * 0.675f, w * 0.72f, h * 0.675f)
-                            cubicTo(w * 0.82f, h * 0.675f, w * 0.88f, h * 0.64f, w * 0.88f, h * 0.57f)
-                            lineTo(w * 0.88f, h * 0.43f)
-                            cubicTo(w * 0.88f, h * 0.36f, w * 0.82f, h * 0.325f, w * 0.72f, h * 0.325f)
-                            cubicTo(w * 0.64f, h * 0.325f, w * 0.575f, h * 0.32f, w * 0.61f, h * 0.285f)
-                            cubicTo(w * 0.66f, h * 0.235f, w * 0.66f, h * 0.17f, w * 0.66f, h * 0.10f)
-                            cubicTo(w * 0.66f, h * 0.04f, w * 0.65f, h * 0.01f, w * 0.62f, h * 0.01f)
-                            close()
-                        }
-                        // Keep the complete outline inside the draw bounds.
-                        val path = Path().apply { addPath(rawPath, Offset(inset, inset)) }
-                        val gradientCenter = Offset(size.width / 2f, size.height / 2f)
-                        val fixedRainbowBrush = Brush.sweepGradient(
-                            colors = rainbowColors,
-                            center = gradientCenter
-                        )
-                        val glowRainbowBrush = Brush.sweepGradient(
-                            colors = rainbowColors.map { it.copy(alpha = 0.14f) },
-                            center = gradientCenter
-                        )
-                        // One continuous contour surrounds the complete D-pad, not individual keys.
-                        drawPath(
-                            path,
-                            brush = glowRainbowBrush,
-                            style = Stroke(width = 9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
-                        drawPath(
-                            path,
-                            brush = fixedRainbowBrush,
-                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
-                }
                 RemoteSurfaceButton(
                     description = "Вверх",
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = dpadTopInset).size(arrowSize),
@@ -767,8 +695,7 @@ private fun RemoteSurfaceButton(
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val haptic = LocalHapticFeedback.current
-    val hapticsEnabled = LocalRemoteHaptics.current
+    val buttonFeedback = LocalRemoteButtonFeedback.current
     val pressScale by animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
         animationSpec = tween(70, easing = FastOutSlowInEasing),
@@ -796,7 +723,7 @@ private fun RemoteSurfaceButton(
                 indication = ripple(bounded = true),
                 onClickLabel = description,
                 onClick = {
-                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    buttonFeedback()
                     onClick()
                 }
             ),

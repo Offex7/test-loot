@@ -1501,7 +1501,10 @@ private fun App(
                                 modifier = Modifier.fillMaxSize(),
                                 enabled = remoteV2Status is RemoteStatus.Connected || remoteAdbStatus is AdbRemoteStatus.Connected || remoteBluetoothStatus is BluetoothHidStatus.Connected || companionStatus is CompanionConnectionStatus.Connected,
                                 energySaving = energySaving,
-                                hapticsEnabled = hapticsEnabled,
+                                onButtonFeedback = {
+                                    InteractionFeedback.vibrate(appContext, hapticsEnabled, 55L, 180)
+                                    InteractionFeedback.beep(appContext, soundEnabled)
+                                },
                                 deviceName = remoteDeviceName,
                                 searching = remoteAutoSearching,
                                 onKey = { key ->

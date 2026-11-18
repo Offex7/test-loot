@@ -53,14 +53,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.18 source version and Android SDK
+      - name: Verify committed v4.20 source version and Android SDK
         run: |
           set -e
           grep -q 'compileSdk = 36' app/build.gradle.kts
           grep -q 'minSdk = 31' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
-          grep -q 'versionCode = 33' app/build.gradle.kts
-          grep -q 'versionName = "4.18"' app/build.gradle.kts
+          grep -q 'versionCode = 35' app/build.gradle.kts
+          grep -q 'versionName = "4.20"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -70,11 +70,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.18): install verified local Unistar logo"
+            git commit -m "fix(v4.20): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.18 sources
+      - name: Validate Radio.TV v4.20 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -104,13 +104,14 @@ jobs:
           storage = (root / "src/main/java/com/offex7/streamhub/Storage.kt").read_text(encoding="utf-8")
           radio_timer_store = (root / "src/main/java/com/offex7/streamhub/RadioTimerStore.kt").read_text(encoding="utf-8")
           remote_pad = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemotePad.kt").read_text(encoding="utf-8")
+          remote_pad_screen = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemotePadScreen.kt").read_text(encoding="utf-8")
           remote_widget_provider = (root / "src/main/java/com/offex7/streamhub/RemoteWidgetProvider.kt").read_text(encoding="utf-8")
           remote_widget = (root / "src/main/res/xml/widget_remote_info.xml").read_text(encoding="utf-8")
           remote_widget_layout = (root / "src/main/res/layout/widget_remote.xml").read_text(encoding="utf-8")
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 33" in gradle and 'versionName = "4.18"' in gradle,
+              "version": "versionCode = 35" in gradle and 'versionName = "4.20"' in gradle,
               "radio_station_descriptions_all_36": len(description_keys) == 36 and len(set(description_keys)) == 36 and set(description_keys) == set(station_names),
               "radio_long_press_portrait_only": "combinedClickable(" in main and "onLongClick = if (!showRadioInfo && onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
@@ -185,7 +186,7 @@ jobs:
               "remote_cold_start_precedence": "launchRemoteImmediately" in main and "if (launchRemoteImmediately)" in main and "remoteTab = true" in main,
               "TV_neighbor_precheck_types": "val pending = neighbors.filter { health[it.url] == null }" in tv,
               "autostart_and_keep_screen_on": "autoStartKey" in storage and "FLAG_KEEP_SCREEN_ON" in main,
-              "remote_button_haptic_respects_setting": "LocalRemoteHaptics.current" in remote_pad and "HapticFeedbackType.LongPress" in remote_pad and "hapticsEnabled = hapticsEnabled" in main,
+              "remote_button_feedback_respects_remote_settings": "LocalRemoteButtonFeedback.current" in remote_pad and "buttonFeedback()" in remote_pad and "onButtonFeedback: () -> Unit = {}" in remote_pad_screen and "onButtonFeedback = onButtonFeedback" in remote_pad_screen and "onButtonFeedback = {" in main and "InteractionFeedback.vibrate(appContext, hapticsEnabled, 55L, 180)" in main and "InteractionFeedback.beep(appContext, soundEnabled)" in main,
               "remote_voice_idle_close_and_button": "15_000L" in main and "onCloseVoiceInput" in main and "ЗАКРЫТЬ" in remote_pad,
               "radio_description_scroll_indicator": "descriptionScrollState.maxValue > 0" in main and "ЗАКРЫТЬ" in main,
               "radio_info_icon_light_gray": "tint = Color(0xFFE0E0E0)" in main,
@@ -198,7 +199,7 @@ jobs:
               "tv_channel_long_press_exactly_3_seconds": tv.count("withTimeoutOrNull(3_000L)") == 1 and "onProgram()" in tv,
               "tv_favorite_quick_add": "onAddCurrentToFavorites" in tv and "Добавить текущий канал в избранное" in tv and "favoriteChannels.none { it.second.key == channel.key }" in tv,
           }
-          # v4.18 feature-specific regression checks.
+          # v4.20 feature-specific regression checks.
           remote_runtime = Path("app/src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8")
           remote_settings = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemoteSettingsScreen.kt").read_text(encoding="utf-8")
           updater = (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8")
@@ -252,7 +253,7 @@ jobs:
               "remote_saved_device_history": "RemoteDeviceHistory" in remote_runtime and "connectSavedDevice" in remote_runtime and "ВЫБОР ТЕЛЕВИЗОРА" in remote_settings and "onRenameSavedDevice" in main and "onRemoveSavedDevice" in main,
               "auto_mdns_ssdp_discovery": "networkDiscovery.discover()" in remote_runtime and "_androidtvremote2._tcp." in (root / "src/main/java/com/offex7/streamhub/TvNetworkDiscovery.kt").read_text(encoding="utf-8") and "M-SEARCH * HTTP/1.1" in (root / "src/main/java/com/offex7/streamhub/TvNetworkDiscovery.kt").read_text(encoding="utf-8"),
               "bluetooth_permissions_on_mode_selection": "prepareBluetoothMode()" in main and "BLUETOOTH_ADVERTISE" in main and "BLUETOOTH_SCAN" not in main,
-              "remote_button_ripple_scale_haptics": "ripple(bounded = true)" in remote_pad and "animateFloatAsState" in remote_pad and "LocalRemoteHaptics.current" in remote_pad and "hapticsEnabled = hapticsEnabled" in main,
+              "remote_button_ripple_scale_feedback": "ripple(bounded = true)" in remote_pad and "animateFloatAsState" in remote_pad and "LocalRemoteButtonFeedback.current" in remote_pad and "buttonFeedback()" in remote_pad,
               "power_toggle_feedback": 'key == RemoteKey.POWER' in main and "Команда отправлена" in main and "Не удалось отправить команду" in main,
               "remote_reconnect_on_resume": "reconnectAfterResume()" in main and "remotePadVisible" in main and "&& remotePadVisible" in main and "reconnectAfterResume()" in remote_runtime and "lastResumeReconnectAt" in remote_runtime,
               "manual_ip_first_pairing": "activity.remoteRuntime.connect(remoteHost, true)" in main,
@@ -262,7 +263,7 @@ jobs:
               "remote_buttons_full_surface_press": "Box(Modifier.fillMaxSize()" in remote_pad and "role = androidx.compose.ui.semantics.Role.Button" in remote_pad and "ripple(bounded = true)" in remote_pad and "collectIsPressedAsState()" in remote_pad and "animateFloatAsState" in remote_pad,
               "remote_widget_uses_vector_drawable": 'android:src="@drawable/widget_remote_icon"' in remote_widget_layout and "setImageViewResource(R.id.widget_icon, R.drawable.widget_remote_icon)" in remote_widget_provider,
               "remote_pad_reference_overlay": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val remoteControlsHeight = topClusterHeight + dpadHeight - dpadOverlap" in remote_pad and ".offset(y = topClusterHeight - dpadOverlap)" in remote_pad and "Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(lowerButtonSize)" in remote_pad and "dpadTopInset" in remote_pad and "dpadBottomInset" in remote_pad and "sideArrowGap" in remote_pad and "val arrowSideWidth = minOf(arrowSize * 1.10f, availableSideWidth)" in remote_pad and "pressTiltX = 8f" in remote_pad and "pressTiltY = -8f" in remote_pad,
-              "remote_pad_fixed_gradient_snake": "fixedRainbowBrush" in remote_pad and "drawPath(" in remote_pad and "val inset = 6.dp.toPx()" in remote_pad and "addPath(rawPath, Offset(inset, inset))" in remote_pad and "rainbowOffset" not in remote_pad,
+              "remote_pad_dpad_outline_removed": "Canvas(" not in remote_pad and "drawPath(" not in remote_pad and "BlurMaskFilter" not in remote_pad,
               "remote_pad_vol_ch_contiguous": "RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp)" in remote_pad and "RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp)" in remote_pad and "pressTiltX = 0f" in remote_pad,
               "remote_pad_single_dpad_block": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val sideArrowGap = dpadHorizontalGap" in remote_pad,
               "remote_search_ten_second_no_tv_notice": "withTimeoutOrNull(10_000L)" in main and "10_000L - " in main and "старый протокол подключения" in main,
@@ -274,20 +275,20 @@ jobs:
               "remote_logs_exported_with_logcat": "last_100_radio_tv_internal_logs" in (root / "src/main/java/com/offex7/streamhub/LogExporter.kt").read_text(encoding="utf-8") and "Remote WebSocket status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote ADB status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8") and "Remote Bluetooth status" in (root / "src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8"),
               "save_settings_icon_uses_log_pulse": "Поделиться настройками" in main and "scaleX = logShareScale" in main,
               "v4_18_radio_stream_urls": 'StreamItem("ЮНИСТАР", "https://mtest.by/hls/unistar_main/index.m3u8")' in models and 'StreamItem("РАДИО ДАЧА", "https://online2.gkvr.ru:8001/dacha_nsb_64.aac")' in models,
-              "v4_18_dpad_single_gradient_path_and_gaps": "Canvas(Modifier.matchParentSize())" in remote_pad and "val rawPath = Path().apply" in remote_pad and "drawPath(" in remote_pad and "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val dpadHorizontalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val glowRainbowBrush" in remote_pad and "Stroke(width = 9.dp.toPx()" in remote_pad and "rainbowOffset" not in remote_pad,
+              "v4_20_dpad_no_outline_and_10dp_spacing": "Canvas(" not in remote_pad and "drawPath(" not in remote_pad and "BlurMaskFilter" not in remote_pad and "val dpadHorizontalGap = 10.dp" in remote_pad and "val sideArrowGap = dpadHorizontalGap" in remote_pad,
               "v4_18_remote_fills_available_height": "val controlsAvailableHeight" in remote_pad and "val topClusterHeight = (controlsAvailableHeight - dpadHeight + dpadOverlap)" in remote_pad and "Arrangement.spacedBy(controlColumnGap)" in remote_pad,
               "v4_18_epg_landscape_close_footer": "val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE" in tv and "Modifier.weight(1f)" in tv and "Modifier.fillMaxHeight()" in tv and "Modifier.align(Alignment.End).height(48.dp)" in tv and "max = (configuration.screenHeightDp * 0.55f).coerceAtLeast(120f).dp" in tv,
               "v4_18_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
               "v4_18_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_18_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 33" in gradle and 'versionName = "4.18"' in gradle,
+              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 35" in gradle and 'versionName = "4.20"' in gradle,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.18 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.18 source checks passed.")
+              raise SystemExit("v4.20 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.20 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -309,7 +310,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.18-debug-build-log
+          name: Radio-TV-v4.20-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -321,35 +322,35 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.18.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.18.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.18.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.20.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.20.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.20.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.18.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.20.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='33'"
-          echo "$BADGING" | grep -q "versionName='4.18'"
-          sha256sum Radio-TV-v4.18.apk
-          ls -lh Radio-TV-v4.18.apk
+          echo "$BADGING" | grep -q "versionCode='35'"
+          echo "$BADGING" | grep -q "versionName='4.20'"
+          sha256sum Radio-TV-v4.20.apk
+          ls -lh Radio-TV-v4.20.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.18-APK
-          path: Radio-TV-v4.18.apk
+          name: Radio-TV-v4.20-APK
+          path: Radio-TV-v4.20.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.18-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.20-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.18-Source
-          path: Radio-TV-v4.18-source.zip
+          name: Radio-TV-v4.20-Source
+          path: Radio-TV-v4.20-source.zip
           if-no-files-found: error
 
       - name: Publish direct APK and source download links
@@ -357,22 +358,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v4.18
-          name: Radio.TV v4.18
-          # Release metadata mirrors the APK manifest: code 32, version 4.17.
+          tag_name: v4.20
+          name: Radio.TV v4.20
+          # Release metadata matches the APK manifest: code 35, version 4.20.
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           make_latest: true
           fail_on_unmatched_files: true
           body: |
-            Radio.TV v4.18
+            Radio.TV v4.20
 
-            versionCode: 33
-            versionName: 4.18
+            versionCode: 35
+            versionName: 4.20
             Package: com.offex7.streamhub
 
             APK is signed with the existing v4 signing key. The source archive is attached below.
           files: |
-            Radio-TV-v4.18.apk
-            Radio-TV-v4.18-source.zip
+            Radio-TV-v4.20.apk
+            Radio-TV-v4.20-source.zip
