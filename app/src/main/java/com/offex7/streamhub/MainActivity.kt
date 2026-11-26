@@ -1589,7 +1589,7 @@ private fun App(
                             remoteV2Status is RemoteStatus.AwaitingCode -> "Ожидается код сопряжения"
                             else -> remoteConnectionMessage
                         }
-                        if (remoteSettingsVisible) {
+                        if (remoteSettingsVisible && !(localNetworkDenied && Build.VERSION.SDK_INT >= 37)) {
                             TvRemoteSettingsScreen(
                                 host = remoteHost,
                                 onHostChange = {
