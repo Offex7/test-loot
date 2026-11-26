@@ -112,6 +112,8 @@ jobs:
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
               "version": "versionCode = 39" in gradle and 'versionName = "5.0"' in gradle,
+              "android16_media_fgs_and_notifications": "targetSdk = 36" in gradle and "android.permission.POST_NOTIFICATIONS" in manifest and 'android:name=".RadioPlaybackService"' in manifest and 'android:foregroundServiceType="mediaPlayback"' in manifest and "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" in manifest,
+              "isolated_android_auto_module": Path("android-auto/build.gradle.kts").is_file() and Path("android-auto/src/main/AndroidManifest.xml").is_file() and Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").is_file() and 'implementation(project(":android-auto"))' in gradle and "MediaController.Builder" in Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").read_text(encoding="utf-8"),
               "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 37 and set(description_keys) == set(station_names),
               "radio_long_press_all_orientations": "combinedClickable(" in main and "onLongClick = if (onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,

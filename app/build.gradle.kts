@@ -47,6 +47,7 @@ dependencies {
     implementation(project(":tvremote-core"))
     implementation(project(":tvremote-companion"))
     implementation(project(":tvremote-cast"))
+    implementation(project(":android-auto"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
