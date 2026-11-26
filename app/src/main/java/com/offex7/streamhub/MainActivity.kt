@@ -1341,30 +1341,31 @@ private fun App(
             delay(250L)
         }
     }
-    suspend fun checkForUpdates(manual: Boolean) {
+    suspend fun checkForUpdates(isManualCheck: Boolean) {
         if (!networkNow(appContext)) {
-            if (manual) notify("Нет подключения к интернету")
+            if (isManualCheck) notify("Нет подключения к интернету")
             return
         }
-        AppUpdateManager.checkLatest()
+        AppUpdateManager.checkLatest(isManualCheck = isManualCheck)
             .onSuccess { info ->
                 if (info == null) {
-                    if (manual) notify("У вас последняя версия")
+                    if (isManualCheck) notify("У вас последняя версия")
                 } else {
-                    val dismissed = runCatching {
+                    // Manual checks always bypass the saved "Later" window.
+                    val dismissed = !isManualCheck && runCatching {
                         store.isUpdateDismissed(info.versionName)
                     }.getOrDefault(false)
-                    if (manual || !dismissed) updateInfo = info
+                    if (!dismissed) updateInfo = info
                 }
             }
             .onFailure {
-                if (manual) notify("Не удалось проверить обновление")
+                if (isManualCheck) notify("Не удалось проверить обновление")
             }
     }
 
     LaunchedEffect(Unit) {
         delay(1500L)
-        checkForUpdates(manual = false)
+        checkForUpdates(isManualCheck = false)
     }
 
     fun leaveSection() {
@@ -1441,7 +1442,7 @@ private fun App(
                     },
                     onDisclaimer = { disclaimer = true },
                     notify = ::notify,
-                    onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } },
+                    onCheckUpdate = { scope.launch { checkForUpdates(isManualCheck = true) } },
                     updateAvailable = updateInfo != null,
                     onResetAll = {
                         scope.launch {
@@ -1643,7 +1644,7 @@ private fun App(
                             },
                             onOpenRemote = { remoteTab = true },
                             settings = { settings = true },
-                            onCheckUpdate = { scope.launch { checkForUpdates(manual = true) } }
+                            onCheckUpdate = { scope.launch { checkForUpdates(isManualCheck = true) } }
                         )
                     }
                 }
@@ -1759,7 +1760,7 @@ private fun App(
                     scope.launch {
                         store.dismissUpdate(
                             info.versionName,
-                            System.currentTimeMillis() + 48L * 60L * 60L * 1000L
+                            System.currentTimeMillis() + 72L * 60L * 60L * 1000L
                         )
                         updateInfo = null
                     }

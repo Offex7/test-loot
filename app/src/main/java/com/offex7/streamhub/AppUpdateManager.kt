@@ -76,11 +76,13 @@ object AppUpdateManager {
         .callTimeout(10, TimeUnit.MINUTES)
         .build()
 
-    suspend fun checkLatest(): Result<AppUpdateInfo?> = withContext(Dispatchers.IO) {
+    suspend fun checkLatest(isManualCheck: Boolean = false): Result<AppUpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder().url(LATEST_URL)
                 .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", "Radio.TV/" + BuildConfig.VERSION_NAME).build()
+                .header("User-Agent", "Radio.TV/" + BuildConfig.VERSION_NAME)
+                .header("Cache-Control", if (isManualCheck) "no-cache, no-store" else "no-cache")
+                .build()
             client.newCall(request).execute().use { response ->
                 require(response.isSuccessful) { "GitHub API HTTP " + response.code }
                 val json = JSONObject(response.body?.string().orEmpty())

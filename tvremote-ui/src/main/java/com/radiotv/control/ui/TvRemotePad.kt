@@ -694,17 +694,17 @@ private fun RemoteSurfaceButton(
     animatePressTilt: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     val buttonFeedback = LocalRemoteButtonFeedback.current
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.92f else 1f,
+        targetValue = if (isPressed) 0.92f else 1f,
         animationSpec = tween(70, easing = FastOutSlowInEasing),
         label = "press-$description"
     )
     val pressTiltXAnimated by animateFloatAsState(
-        targetValue = if (pressed && animatePressTilt) pressTiltX else 0f,
-        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        targetValue = if (isPressed && animatePressTilt) pressTiltX else 0f,
+        animationSpec = tween(150, easing = FastOutSlowInEasing),
         label = "press-tilt-$description"
     )
     Box(
@@ -712,10 +712,10 @@ private fun RemoteSurfaceButton(
             .graphicsLayer {
                 scaleX = pressScale * pulseScale
                 scaleY = pressScale * pulseScale
-                rotationX = if (animatePressTilt) pressTiltXAnimated else if (pressed) pressTiltX else 0f
-                rotationY = if (pressed) pressTiltY else 0f
-                cameraDistance = 32.dp.toPx()
-                alpha = if (pressed) 0.82f else 1f
+                rotationX = if (animatePressTilt) pressTiltXAnimated else if (isPressed) pressTiltX else 0f
+                rotationY = if (isPressed) pressTiltY else 0f
+                cameraDistance = 12f * density
+                alpha = if (isPressed) 0.82f else 1f
             }
             .clip(shape)
             .background(background)
@@ -725,7 +725,7 @@ private fun RemoteSurfaceButton(
             }
             // The clickable is on the full outer Box, not on its icon/text child.
             .clickable(
-                interactionSource = interactions,
+                interactionSource = interactionSource,
                 indication = ripple(bounded = true),
                 onClickLabel = description,
                 onClick = {
@@ -767,7 +767,7 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
             background = white,
             onClick = onTop,
-            pressTiltX = -6f,
+            pressTiltX = -10f,
             animatePressTilt = true
         ) {
             if (title == "VOL") {
@@ -789,7 +789,7 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp),
             background = white,
             onClick = onBottom,
-            pressTiltX = 6f,
+            pressTiltX = 10f,
             animatePressTilt = true
         ) {
             if (title == "VOL") {

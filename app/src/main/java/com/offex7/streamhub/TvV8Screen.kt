@@ -123,6 +123,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.key.KeyEventType
@@ -142,6 +143,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -1935,12 +1937,11 @@ private fun TvV9Logo(
             }
             Text(
                 "Ping: " + (ping.latencyMillis?.toString() ?: "—"),
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .border(1.dp, Color.DarkGray, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
                 color = pingColor,
                 fontSize = (size.value * 0.13f).coerceIn(7f, 10f).sp,
                 fontWeight = FontWeight.Bold,
+                style = TextStyle(shadow = Shadow(color = Color.Black, blurRadius = 4f)),
                 maxLines = 1
             )
         }
