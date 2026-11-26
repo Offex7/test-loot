@@ -343,9 +343,12 @@ jobs:
           test -n "$APK"
           cp "$APK" Radio-TV-v5.0.1.apk
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose Radio-TV-v5.0.1.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs Radio-TV-v5.0.1.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          APK_CERT=$("$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs Radio-TV-v5.0.1.apk | sed -nE 's/.*certificate SHA-256 digest:[[:space:]]*([[:xdigit:]:]+).*/\1/p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
+          test -n "$KEY_CERT"
+          echo "APK signer certificate SHA-256: $APK_CERT"
+          echo "Keystore certificate SHA-256:   $KEY_CERT"
           test "$KEY_CERT" = "$APK_CERT"
           BADGING=$(aapt2 dump badging Radio-TV-v5.0.1.apk | head -n 1)
           echo "$BADGING"
