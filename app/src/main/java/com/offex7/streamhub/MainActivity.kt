@@ -446,7 +446,13 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         if (::remoteRuntime.isInitialized && remotePadVisible) {
-            lifecycleScope.launch { runCatching { remoteRuntime.reconnectAfterResume() } }
+            val hasLocalNetworkAccess = Build.VERSION.SDK_INT < 37 ||
+                checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasLocalNetworkAccess) {
+                lifecycleScope.launch { runCatching { remoteRuntime.reconnectAfterResume() } }
+            } else {
+                LogExporter.log("Skipped Activity reconnect until ACCESS_LOCAL_NETWORK is granted")
+            }
         }
     }
 
