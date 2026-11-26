@@ -230,11 +230,11 @@ fun TvV8Screen(
     val showEpgInfoButton = isTelevisionDevice || LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
+    val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val epgRepository = remember(context.applicationContext) { TvEpgRepository(context.applicationContext) }
     val pingRepository = remember(context.applicationContext) { TvChannelPingRepository() }
     val pingResults = remember(sourceKey) { mutableStateMapOf<String, TvChannelPingResult>() }
     val pingInFlight = remember(sourceKey) { mutableStateMapOf<String, Boolean>() }
-    val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
     val network by rememberTvV9Network()
     var hiddenChannels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptySet<String>()) }
@@ -2576,7 +2576,7 @@ private fun TvV9Player(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (!channel.logoUrl.isNullOrBlank()) {
-                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false, logoImageLoader, channelName = channel.name, pingResult = pingResults[channel.key])
+                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false, logoImageLoader, channelName = channel.name)
                                     Spacer(Modifier.width(8.dp))
                                 }
                                 Text(
