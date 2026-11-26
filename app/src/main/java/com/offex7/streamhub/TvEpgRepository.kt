@@ -114,7 +114,7 @@ class TvEpgRepository(context: Context) {
     suspend fun programmes(
         epgUrl: String?,
         tvgId: String?,
-        onFallback: () -> Unit = {}
+        onFallback: suspend () -> Unit = {}
     ): TvEpgResult = withContext(Dispatchers.IO) {
         if (tvgId.isNullOrBlank()) {
             return@withContext TvEpgResult(unavailableReason = TvEpgUnavailableReason.NO_LINK)

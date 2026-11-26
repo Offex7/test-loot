@@ -1402,9 +1402,7 @@ private fun TvProgramDialog(
     LaunchedEffect(channel.key, epgUrl, permissionRetryToken) {
         epgResult = TvEpgResult(isLoading = true)
         val result = epgRepository.programmes(epgUrl, channel.tvgId) {
-            withContext(Dispatchers.Main) {
-                notify("Телепрограмма плейлиста не найдена. Пробую загрузить альтернативную", 5000L)
-            }
+            notify("Телепрограмма плейлиста не найдена. Пробую загрузить альтернативную", 5000L)
         }
         epgResult = result
         if (result.programmes.isEmpty()) {
