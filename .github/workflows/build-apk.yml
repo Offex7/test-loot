@@ -112,7 +112,7 @@ jobs:
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
               "version": "versionCode = 36" in gradle and 'versionName = "4.21"' in gradle,
-              "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 36 and set(description_keys) == set(station_names),
+              "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 37 and set(description_keys) == set(station_names),
               "radio_long_press_all_orientations": "combinedClickable(" in main and "onLongClick = if (onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
               "radio_info_button_focusable": "IconButton(" in main and "Описание станции" in main and ".size(40.dp)" in main,
@@ -194,7 +194,7 @@ jobs:
               "epg_m3u_header_and_tvg_id": 'attr(line, "x-tvg-url")' in tv_playlist and 'attr(line, "url-tvg")' in tv_playlist and 'attr(line, "tvg-id")' in tv_playlist and "tvgId = currentTvgId" in tv_playlist,
               "epg_network_policy_and_background_io": "Dispatchers.IO" in epg_source and "NetworkCapabilities.TRANSPORT_WIFI" in epg_source and "NetworkCapabilities.TRANSPORT_ETHERNET" in epg_source and "NetworkCapabilities.TRANSPORT_CELLULAR" in epg_source and "NETWORK_TYPE_LTE" in epg_source and "NETWORK_TYPE_NR" in epg_source,
               "epg_xmltv_gzip_parser_cache_and_timezone": "GZIPInputStream" in epg_source and "Xml.newPullParser()" in epg_source and "AtomicFile(destination)" in epg_source and "parseXmlTvDate" in epg_source and "SimpleTimeZone" in epg_source,
-              "epg_dialog_lazy_list_timeout_and_fallbacks": "LazyColumn(" in tv and "delay(120_000L)" in tv and "Для загрузки телепрограммы подключитесь к Wi-Fi" in tv and "Возможно, данный IPTV не поддерживает телепрограмму" in tv and "СЕЙЧАС В ЭФИРЕ" in tv,
+              "epg_dialog_lazy_list_timeout_and_fallbacks": "LazyColumn(" in tv and "delay(120_000L)" in tv and "Для загрузки телепрограммы подключитесь к Wi-Fi" in tv and "Нет данных о телепрограмме" in tv and "СЕЙЧАС В ЭФИРЕ" in tv,
               "tv_epg_loading_message_and_spinner": "Загрузка плейлиста и телепрограммы..." in tv and "CircularProgressIndicator(" in tv,
               "tv_channel_long_press_exactly_3_seconds": tv.count("withTimeoutOrNull(3_000L)") == 1 and "onProgram()" in tv,
               "tv_favorite_quick_add": "onAddCurrentToFavorites" in tv and "Добавить текущий канал в избранное" in tv and "favoriteChannels.none { it.second.key == channel.key }" in tv,
@@ -214,7 +214,7 @@ jobs:
               "remote_voice_transcript_and_fade": "remoteSpeechTranscript" in main and "remoteSpeechActive" in main and "delay(1_000L)" in main and "EXTRA_PARTIAL_RESULTS, onRecognized != null || onPartial != null || isRemoteDictation" in main and "voiceTranscript: String? = null" in remote_pad and "fadeOut(tween(1000))" in remote_pad and "Alignment.Center" in remote_pad and "voiceTranscript.orEmpty()" in remote_pad and "СЛУШАЮ…" not in remote_pad,
               "radio_search_hidden": 'showSearch = false,\n                showTimer = false' in main,
               "TV_search_debounced_background_and_progress": "LaunchedEffect(ordered, query, searchSubmissionToken)" in tv and "delay(300L)" in tv and "withContext(Dispatchers.Default)" in tv and "isSearching" in tv and "CircularProgressIndicator(" in tv and "KeyboardActions(onSearch" in tv,
-              "TV_logo_missing_uses_app_icon": "painterResource(id = R.drawable.ic_app_icon)" in tv and "if (!logoLoaded) {" in tv,
+              "TV_logo_missing_uses_first_letter_placeholder": "channelName.trim().firstOrNull()" in tv and "if (!logoLoaded) {" in tv and "ping: " in tv,
               "TV_loading_over_silent_switch": "val showLoading = switching || waiting || error != null || buffering" in tv and "visible = !pipMode && showLoading" in tv,
               "remote_settings_are_separate": "TvRemoteSettingsScreen" in main and "remoteSettingsVisible = true" in main and "onSettings = { settings = true }" not in main and "НАСТРОЙКИ ПУЛЬТА" in remote_settings,
               "remote_fallback_transports": all(x in remote_runtime for x in ("AndroidTvRemoteV2Transport", "AdbRemoteDevice", "BluetoothHidController", "remoteV2.sendKey", "adb.sendKey", "bluetooth.sendRemoteKey")),
