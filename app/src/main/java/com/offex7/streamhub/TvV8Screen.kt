@@ -1933,19 +1933,16 @@ private fun TvV9Logo(
                 ping.latencyMillis <= 400L -> Color(0xFFFF9800)
                 else -> TvV9Red
             }
-            Box(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.82f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "ping: " + (ping.latencyMillis?.toString() ?: "—"),
-                    color = pingColor,
-                    fontSize = (size.value * 0.13f).coerceIn(7f, 10f).sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
+            Text(
+                "Ping: " + (ping.latencyMillis?.toString() ?: "—"),
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .border(1.dp, Color.DarkGray, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                color = pingColor,
+                fontSize = (size.value * 0.13f).coerceIn(7f, 10f).sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }

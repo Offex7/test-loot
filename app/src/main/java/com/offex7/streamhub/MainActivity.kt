@@ -5028,6 +5028,8 @@ private fun LogoImage(
                 BitmapFactory.decodeResource(context.resources, R.drawable.radius_fm_logo)?.asImageBitmap()
             item.name.equals("ЮНИСТАР", ignoreCase = true) ->
                 BitmapFactory.decodeResource(context.resources, R.drawable.unistar_logo)?.asImageBitmap()
+            item.name.equals("GASTRO", ignoreCase = true) ->
+                BitmapFactory.decodeResource(context.resources, R.drawable.gastro_logo)?.asImageBitmap()
             else -> RadioLogoAssets.image(item.name)
                 ?: RadioLogoAssetsV38.image(context, item.name)
         }
@@ -5233,7 +5235,7 @@ internal fun localLogoName(name: String): String = when (name.uppercase(Locale.R
     "НАШЕ РАДИО" -> "logo_nashe"
     "DATASET [AI]" -> "logo_dataset_ai"
     "ГАМАЮН" -> "logo_gamaun"
-    "GASTRO" -> "logo_fallback"
+    "GASTRO" -> "gastro_logo"
     else -> "logo_fallback"
 }
 

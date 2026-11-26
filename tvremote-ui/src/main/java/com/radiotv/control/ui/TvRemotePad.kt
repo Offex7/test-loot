@@ -691,6 +691,7 @@ private fun RemoteSurfaceButton(
     pulseScale: Float = 1f,
     pressTiltX: Float = 0f,
     pressTiltY: Float = 0f,
+    animatePressTilt: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val interactions = remember { MutableInteractionSource() }
@@ -701,12 +702,17 @@ private fun RemoteSurfaceButton(
         animationSpec = tween(70, easing = FastOutSlowInEasing),
         label = "press-$description"
     )
+    val pressTiltXAnimated by animateFloatAsState(
+        targetValue = if (pressed && animatePressTilt) pressTiltX else 0f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "press-tilt-$description"
+    )
     Box(
         modifier = modifier
             .graphicsLayer {
                 scaleX = pressScale * pulseScale
                 scaleY = pressScale * pulseScale
-                rotationX = if (pressed) pressTiltX else 0f
+                rotationX = if (animatePressTilt) pressTiltXAnimated else if (pressed) pressTiltX else 0f
                 rotationY = if (pressed) pressTiltY else 0f
                 cameraDistance = 32.dp.toPx()
                 alpha = if (pressed) 0.82f else 1f
@@ -761,7 +767,8 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
             background = white,
             onClick = onTop,
-            pressTiltX = 0f
+            pressTiltX = -6f,
+            animatePressTilt = true
         ) {
             if (title == "VOL") {
                 Text(topLabel, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Normal)
@@ -782,7 +789,8 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp),
             background = white,
             onClick = onBottom,
-            pressTiltX = 0f
+            pressTiltX = 6f,
+            animatePressTilt = true
         ) {
             if (title == "VOL") {
                 Text(bottomLabel, color = ink, fontSize = 31.sp, fontWeight = FontWeight.Normal)

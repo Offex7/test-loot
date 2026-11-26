@@ -53,14 +53,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.21 source version and Android SDK
+      - name: Verify committed v4.22 source version and Android SDK
         run: |
           set -e
           grep -q 'compileSdk = 36' app/build.gradle.kts
           grep -q 'minSdk = 31' app/build.gradle.kts
           grep -q 'targetSdk = 34' app/build.gradle.kts
-          grep -q 'versionCode = 36' app/build.gradle.kts
-          grep -q 'versionName = "4.21"' app/build.gradle.kts
+          grep -q 'versionCode = 37' app/build.gradle.kts
+          grep -q 'versionName = "4.22"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -70,11 +70,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.21): install verified local Unistar logo"
+            git commit -m "fix(v4.22): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.21 sources
+      - name: Validate Radio.TV v4.22 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -111,7 +111,7 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 36" in gradle and 'versionName = "4.21"' in gradle,
+              "version": "versionCode = 37" in gradle and 'versionName = "4.22"' in gradle,
               "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 37 and set(description_keys) == set(station_names),
               "radio_long_press_all_orientations": "combinedClickable(" in main and "onLongClick = if (onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
@@ -199,7 +199,7 @@ jobs:
               "tv_channel_long_press_exactly_3_seconds": tv.count("withTimeoutOrNull(3_000L)") == 1 and "onProgram()" in tv,
               "tv_favorite_quick_add": "onAddCurrentToFavorites" in tv and "Добавить текущий канал в избранное" in tv and "favoriteChannels.none { it.second.key == channel.key }" in tv,
           }
-          # v4.21 feature-specific regression checks.
+          # v4.22 feature-specific regression checks.
           remote_runtime = Path("app/src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8")
           remote_settings = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemoteSettingsScreen.kt").read_text(encoding="utf-8")
           updater = (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8")
@@ -264,7 +264,7 @@ jobs:
               "remote_widget_uses_vector_drawable": 'android:src="@drawable/widget_remote_icon"' in remote_widget_layout and "setImageViewResource(R.id.widget_icon, R.drawable.widget_remote_icon)" in remote_widget_provider,
               "remote_pad_reference_overlay": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val remoteControlsHeight = topClusterHeight + dpadHeight - dpadOverlap" in remote_pad and ".offset(y = topClusterHeight - dpadOverlap)" in remote_pad and "Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(lowerButtonSize)" in remote_pad and "dpadTopInset" in remote_pad and "dpadBottomInset" in remote_pad and "sideArrowGap" in remote_pad and "val arrowSideWidth = minOf(arrowSize * 1.10f, availableSideWidth)" in remote_pad and "pressTiltX = 8f" in remote_pad and "pressTiltY = -8f" in remote_pad,
               "remote_pad_dpad_outline_removed": "Canvas(" not in remote_pad and "drawPath(" not in remote_pad and "BlurMaskFilter" not in remote_pad,
-              "remote_pad_vol_ch_contiguous": "RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp)" in remote_pad and "RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp)" in remote_pad and "pressTiltX = 0f" in remote_pad,
+              "remote_pad_vol_ch_contiguous": "RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp)" in remote_pad and "RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp)" in remote_pad and "pressTiltX = -6f" in remote_pad and "pressTiltX = 6f" in remote_pad and "animatePressTilt = true" in remote_pad,
               "remote_pad_single_dpad_block": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val sideArrowGap = dpadHorizontalGap * 2f" in remote_pad,
               "remote_search_ten_second_no_tv_notice": "withTimeoutOrNull(10_000L)" in main and "10_000L - " in main and "старый протокол подключения" in main,
               "bluetooth_permission_retry_after_denial": "Bluetooth tab opened without runtime permission; requesting again" in main and "Нажмите вкладку Bluetooth ещё раз" in main,
@@ -281,7 +281,7 @@ jobs:
               "v4_18_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
               "v4_18_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_18_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 36" in gradle and 'versionName = "4.21"' in gradle,
+              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 37" in gradle and 'versionName = "4.22"' in gradle,
               "v4_21_update_pause_resume_cancel_and_70h_dismissal": "Загрузить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "Отменить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "70L * 60L * 60L * 1000L" in main and "Range" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
               "v4_21_epg_fallback": 'http://epg.one/edem.xml.gz' in epg_source and "programmesFromUrl(FALLBACK_EPG_URL, tvgId)" in epg_source and "Нет данных о телепрограмме" in tv,
               "v4_21_lazy_ping_bounded_to_four": "Semaphore(4)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "Random.nextLong(30L, 221L)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "channels.take(10)" in tv and "visibleItemsInfo" in tv,
@@ -289,14 +289,17 @@ jobs:
               "v4_21_nfc_ndef_handler": "android.nfc.action.NDEF_DISCOVERED" in manifest and "NdefMessage" in main and "requestedNfcPayload" in main,
               "v4_21_audio_focus_ducking": "AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK" in media and "setWillPauseWhenDucked(true)" in media and "animateFocusVolume" in media and "without pausing playback" in media,
               "v4_21_gastro_station": 'StreamItem("GASTRO", "http://admin.gastro-radio.ru:1040/stream")' in models and '"GASTRO" to """' in radio_descriptions,
+              "tv_ping_text_border_without_strip": '"Ping: "' in tv and "border(1.dp, Color.DarkGray, RoundedCornerShape(4.dp))" in tv and "background(Color.Black.copy(alpha = 0.82f))" not in tv[tv.index("pingResult?.let"):tv.index("pingResult?.let") + 600],
+              "gastro_local_drawable": (root / "src/main/res/drawable-nodpi/gastro_logo.webp").is_file() and "R.drawable.gastro_logo" in main and '"GASTRO" -> "gastro_logo"' in main,
+              "remote_vol_ch_smooth_tilt_animation": "animatePressTilt: Boolean = false" in remote_pad and "tween(240" in remote_pad and "pressTiltX = -6f" in remote_pad and "pressTiltX = 6f" in remote_pad and "animatePressTilt = true" in remote_pad,
               "v4_21_landscape_tv_long_press": "awaitEachGesture" in tv and ".pointerInput(item.key)" in tv and "onProgram()" in tv,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.21 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.21 source checks passed.")
+              raise SystemExit("v4.22 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v4.22 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -318,7 +321,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.21-debug-build-log
+          name: Radio-TV-v4.22-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -330,34 +333,34 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.21.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.21.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.21.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v4.22.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.22.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.22.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.21.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v4.22.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='36'"
-          echo "$BADGING" | grep -q "versionName='4.21'"
-          sha256sum Radio-TV-v4.21.apk
-          ls -lh Radio-TV-v4.21.apk
+          echo "$BADGING" | grep -q "versionCode='37'"
+          echo "$BADGING" | grep -q "versionName='4.22'"
+          sha256sum Radio-TV-v4.22.apk
+          ls -lh Radio-TV-v4.22.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.21-APK
-          path: Radio-TV-v4.21.apk
+          name: Radio-TV-v4.22-APK
+          path: Radio-TV-v4.22.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.21-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v4.22-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.21-Source
-          path: Radio-TV-v4.21-source.zip
+          name: Radio-TV-v4.22-Source
+          path: Radio-TV-v4.22-source.zip
           if-no-files-found: error
 
