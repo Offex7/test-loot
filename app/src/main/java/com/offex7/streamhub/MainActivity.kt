@@ -470,7 +470,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (::companionClient.isInitialized && !televisionDevice) companionClient.resume()
+        if (::companionClient.isInitialized && !televisionDevice) {
+            val hasLocalNetworkAccess = Build.VERSION.SDK_INT < 37 ||
+                checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasLocalNetworkAccess) companionClient.resume()
+            else LogExporter.log("Skipped Companion LAN resume until ACCESS_LOCAL_NETWORK is granted")
+        }
     }
 
     override fun onStop() {
@@ -1207,17 +1212,17 @@ private fun App(
 
     LaunchedEffect(remoteTab) {
         if (!remoteTab) return@LaunchedEffect
-        activity.companionClient.resume()
         val hasLocalNetworkAccess = Build.VERSION.SDK_INT < 37 ||
             ContextCompat.checkSelfPermission(
                 appContext,
                 "android.permission.ACCESS_LOCAL_NETWORK"
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         if (hasLocalNetworkAccess) {
+            activity.companionClient.resume()
             val result = runCatching { activity.remoteRuntime.reconnectAfterResume() }.getOrNull()
             if (!result.isNullOrBlank()) remoteConnectionMessage = result
         } else {
-            LogExporter.log("Skipped background auto-reconnect until user grants ACCESS_LOCAL_NETWORK")
+            LogExporter.log("Skipped Companion resume and remote auto-reconnect until ACCESS_LOCAL_NETWORK is granted")
         }
         refreshRemoteDevices()
     }
@@ -1890,26 +1895,59 @@ private fun App(
                     TouchpadSurface(
                         enabled = true,
                         onMove = { dx, dy ->
-                            scope.launch {
-                                if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
-                                    runCatching { activity.remoteRuntime.moveMouse(dx, dy) }.onFailure { notify(it.message ?: "Ошибка перемещения курсора") }
-                                } else if (kotlin.math.abs(dx) + kotlin.math.abs(dy) >= 5) {
-                                    val key = if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) { if (dx > 0) RemoteKey.RIGHT else RemoteKey.LEFT } else { if (dy > 0) RemoteKey.DOWN else RemoteKey.UP }
-                                    runCatching { activity.remoteRuntime.sendKey(key) }
-                                        .recoverCatching { if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode()) else throw it }
+                            if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
+                                scope.launch {
+                                    runCatching { activity.remoteRuntime.moveMouse(dx, dy) }
+                                        .onFailure { notify(it.message ?: "Ошибка перемещения курсора") }
+                                }
+                            } else if (kotlin.math.abs(dx) + kotlin.math.abs(dy) >= 5) {
+                                val key = if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                                    if (dx > 0) RemoteKey.RIGHT else RemoteKey.LEFT
+                                } else {
+                                    if (dy > 0) RemoteKey.DOWN else RemoteKey.UP
+                                }
+                                withRemoteNetworkPermission {
+                                    scope.launch {
+                                        runCatching { activity.remoteRuntime.sendKey(key) }
+                                            .recoverCatching {
+                                                if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode())
+                                                else throw it
+                                            }
+                                            .onFailure { notify(it.message ?: "Ошибка отправки команды", 3000L) }
+                                    }
                                 }
                             }
                         },
                         onTap = {
-                            scope.launch {
-                                runCatching {
-                                    if (remoteBluetoothStatus is BluetoothHidStatus.Connected) activity.remoteRuntime.clickMouse()
-                                    else activity.remoteRuntime.sendKey(RemoteKey.OK)
-                                }.onFailure { notify(it.message ?: "Нет соединения") }
+                            if (remoteBluetoothStatus is BluetoothHidStatus.Connected) {
+                                scope.launch {
+                                    runCatching { activity.remoteRuntime.clickMouse() }
+                                        .onFailure { notify(it.message ?: "Нет соединения") }
+                                }
+                            } else {
+                                withRemoteNetworkPermission {
+                                    scope.launch {
+                                        runCatching { activity.remoteRuntime.sendKey(RemoteKey.OK) }
+                                            .recoverCatching {
+                                                if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(RemoteKey.OK.toAndroidKeyCode())
+                                                else throw it
+                                            }
+                                            .onFailure { notify(it.message ?: "Нет соединения") }
+                                    }
+                                }
                             }
                         },
                         onLongPress = {
-                            scope.launch { runCatching { activity.remoteRuntime.sendKey(RemoteKey.BACK) } }
+                            withRemoteNetworkPermission {
+                                scope.launch {
+                                    runCatching { activity.remoteRuntime.sendKey(RemoteKey.BACK) }
+                                        .recoverCatching {
+                                            if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(RemoteKey.BACK.toAndroidKeyCode())
+                                            else throw it
+                                        }
+                                        .onFailure { notify(it.message ?: "Нет соединения") }
+                                }
+                            }
                         },
                         helperText = if (remoteBluetoothStatus is BluetoothHidStatus.Connected) "Свайп — курсор · тап — клик · долгий тап — меню" else "Свайп — навигация по стрелкам · тап — ОК · долгий тап — Назад"
                     )
