@@ -705,6 +705,44 @@ private fun App(
         notificationToken += 1L
     }
 
+    var pendingLocalNetworkAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pendingAction = pendingLocalNetworkAction
+        pendingLocalNetworkAction = null
+        if (granted) {
+            LogExporter.log("Android 17 local-network permission granted")
+            pendingAction?.invoke()
+        } else {
+            LogExporter.log("Android 17 local-network permission denied; LAN action skipped")
+            notify(
+                "Для поиска и подключения к ТВ по Wi‑Fi разрешите доступ к локальной сети в настройках разрешений приложения.",
+                6000L
+            )
+        }
+    }
+
+    fun withLocalNetworkPermission(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT < 37 ||
+            ContextCompat.checkSelfPermission(
+                appContext,
+                "android.permission.ACCESS_LOCAL_NETWORK"
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
+            return
+        }
+        pendingLocalNetworkAction = action
+        LogExporter.log("Requesting ACCESS_LOCAL_NETWORK before a user-initiated LAN operation")
+        localNetworkPermissionLauncher.launch("android.permission.ACCESS_LOCAL_NETWORK")
+    }
+
+    fun withRemoteNetworkPermission(action: () -> Unit) {
+        if (remoteBluetoothStatus is BluetoothHidStatus.Connected) action()
+        else withLocalNetworkPermission(action)
+    }
+
     LaunchedEffect(activity.requestedNfcPayload, pinUnlocked) {
         val payload = activity.requestedNfcPayload ?: return@LaunchedEffect
         if (!pinUnlocked) return@LaunchedEffect
@@ -745,7 +783,7 @@ private fun App(
         }
     }
 
-    fun startRemoteAutoSearch() {
+    fun performRemoteAutoSearch() {
         if (remoteAutoSearching) return
         activity.companionClient.resume()
         remoteAutoSearching = true
@@ -782,6 +820,10 @@ private fun App(
                 remoteAutoSearching = false
             }
         }
+    }
+
+    fun startRemoteAutoSearch() {
+        withLocalNetworkPermission { performRemoteAutoSearch() }
     }
 
     fun startSystemSpeechInput(
@@ -886,7 +928,8 @@ private fun App(
                         remoteSpeechActive = true
                         remoteSpeechTranscript = recognized
                         remoteTextInput = recognized
-                        scope.launch {
+                        withRemoteNetworkPermission {
+                            scope.launch {
                             // Keep the final transcript visible while text is delivered to the TV.
                             delay(1_000L)
                             runCatching { activity.remoteRuntime.sendText(recognized) }
@@ -904,6 +947,7 @@ private fun App(
                             remoteSpeechActive = false
                             delay(650L)
                             if (remoteSpeechTranscript == recognized) remoteSpeechTranscript = ""
+                            }
                         }
                     }
                 }
@@ -1080,15 +1124,17 @@ private fun App(
     val castFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { appContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            scope.launch {
-                castLoading = true
-                runCatching {
-                    val media = activity.remoteRuntime.shareLocalMedia(uri)
-                    val devices = activity.remoteRuntime.discoverCastDevices()
-                    media to devices
-                }.onSuccess { result -> castMedia = result.first; castDevices = result.second }
-                    .onFailure { notify(it.message ?: "Не удалось подготовить DLNA Cast", 4000L) }
-                castLoading = false
+            withLocalNetworkPermission {
+                scope.launch {
+                    castLoading = true
+                    runCatching {
+                        val media = activity.remoteRuntime.shareLocalMedia(uri)
+                        val devices = activity.remoteRuntime.discoverCastDevices()
+                        media to devices
+                    }.onSuccess { result -> castMedia = result.first; castDevices = result.second }
+                        .onFailure { notify(it.message ?: "Не удалось подготовить DLNA Cast", 4000L) }
+                    castLoading = false
+                }
             }
         }
     }
@@ -1096,20 +1142,22 @@ private fun App(
     fun sendRemoteText(text: String) {
         val normalized = text.trim()
         if (normalized.isEmpty()) { notify("Введите текст"); return }
-        scope.launch {
-            runCatching { activity.remoteRuntime.sendText(normalized) }
-                .recoverCatching {
-                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendText(normalized)
-                    else throw it
-                }
-                .onSuccess {
-                    store.rememberRemoteText(normalized)
-                    remoteKeyboardVisible = false
-                    keyboardController?.hide()
-                    remoteTextInput = ""
-                    notify("Текст отправлен", 2000L)
-                }
-                .onFailure { notify(it.message ?: "Не удалось отправить текст", 3000L) }
+        withRemoteNetworkPermission {
+            scope.launch {
+                runCatching { activity.remoteRuntime.sendText(normalized) }
+                    .recoverCatching {
+                        if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendText(normalized)
+                        else throw it
+                    }
+                    .onSuccess {
+                        store.rememberRemoteText(normalized)
+                        remoteKeyboardVisible = false
+                        keyboardController?.hide()
+                        remoteTextInput = ""
+                        notify("Текст отправлен", 2000L)
+                    }
+                    .onFailure { notify(it.message ?: "Не удалось отправить текст", 3000L) }
+            }
         }
     }
 
@@ -1145,21 +1193,32 @@ private fun App(
     }
 
     fun sendRemoteLaunch(packageName: String) {
-        scope.launch {
-            runCatching { activity.remoteRuntime.launchApp(packageName) }
-                .recoverCatching {
-                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.launchApp(packageName)
-                    else throw it
-                }
-                .onFailure { notify(it.message ?: "Не удалось запустить приложение на ТВ", 3000L) }
+        withRemoteNetworkPermission {
+            scope.launch {
+                runCatching { activity.remoteRuntime.launchApp(packageName) }
+                    .recoverCatching {
+                        if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.launchApp(packageName)
+                        else throw it
+                    }
+                    .onFailure { notify(it.message ?: "Не удалось запустить приложение на ТВ", 3000L) }
+            }
         }
     }
 
     LaunchedEffect(remoteTab) {
         if (!remoteTab) return@LaunchedEffect
         activity.companionClient.resume()
-        val result = runCatching { activity.remoteRuntime.reconnectAfterResume() }.getOrNull()
-        if (!result.isNullOrBlank()) remoteConnectionMessage = result
+        val hasLocalNetworkAccess = Build.VERSION.SDK_INT < 37 ||
+            ContextCompat.checkSelfPermission(
+                appContext,
+                "android.permission.ACCESS_LOCAL_NETWORK"
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasLocalNetworkAccess) {
+            val result = runCatching { activity.remoteRuntime.reconnectAfterResume() }.getOrNull()
+            if (!result.isNullOrBlank()) remoteConnectionMessage = result
+        } else {
+            LogExporter.log("Skipped background auto-reconnect until user grants ACCESS_LOCAL_NETWORK")
+        }
         refreshRemoteDevices()
     }
 
@@ -1511,32 +1570,42 @@ private fun App(
                                 notificationsEnabled = notificationsEnabled,
                                 onNotificationsChange = { enabled -> scope.launch { store.setNotificationsEnabled(enabled) } },
                                 onConnect = {
-                                    scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, true) }
-                                            .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
-                                        refreshRemoteDevices()
-                                        notify(remoteConnectionMessage, 3500L)
+                                    withLocalNetworkPermission {
+                                        scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connect(remoteHost, true) }
+                                                .getOrElse { it.message ?: "Не удалось подключиться к ТВ" }
+                                            refreshRemoteDevices()
+                                            notify(remoteConnectionMessage, 3500L)
+                                        }
                                     }
                                 },
                                 onStartSearch = { startRemoteAutoSearch() },
                                 isSearching = remoteAutoSearching,
                                 onCompletePairing = {
-                                    scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.completePairing(remotePairingCode) }
-                                            .getOrElse { it.message ?: "Сопряжение не завершено" }
-                                        remotePairingCode = ""
+                                    withLocalNetworkPermission {
+                                        scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.completePairing(remotePairingCode) }
+                                                .getOrElse { it.message ?: "Сопряжение не завершено" }
+                                            remotePairingCode = ""
+                                        }
                                     }
                                 },
                                 onStartBluetooth = { prepareBluetoothMode() },
                                 savedDevices = remoteSavedDevices.map { RemoteSavedDeviceUi(it.id, it.name, it.connectionType, it.host) },
                                 bondedDevices = remoteBondedDevices.map { RemoteBluetoothDeviceUi(it.name, it.address) },
                                 onSelectSavedDevice = { id ->
-                                    scope.launch {
-                                        remoteConnectionMessage = runCatching { activity.remoteRuntime.connectSavedDevice(id) }
-                                            .getOrElse { it.message ?: "Не удалось подключиться к телевизору." }
-                                        refreshRemoteDevices()
-                                        notify(remoteConnectionMessage, 3500L)
+                                    val selectedDevice = remoteSavedDevices.firstOrNull { it.id == id }
+                                    val connectAction: () -> Unit = {
+                                        scope.launch {
+                                            remoteConnectionMessage = runCatching { activity.remoteRuntime.connectSavedDevice(id) }
+                                                .getOrElse { it.message ?: "Не удалось подключиться к телевизору." }
+                                            refreshRemoteDevices()
+                                            notify(remoteConnectionMessage, 3500L)
+                                        }
+                                        Unit
                                     }
+                                    if (selectedDevice?.connectionType == "Bluetooth") connectAction()
+                                    else withLocalNetworkPermission(connectAction)
                                 },
                                 onRenameSavedDevice = { id, name ->
                                     activity.remoteRuntime.renameSavedDevice(id, name)
@@ -1569,17 +1638,19 @@ private fun App(
                                 deviceName = remoteDeviceName,
                                 searching = remoteAutoSearching,
                                 onKey = { key ->
-                                    scope.launch {
-                                        val sent = runCatching { activity.remoteRuntime.sendKey(key) }
-                                            .recoverCatching {
-                                                if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode())
-                                                else throw it
+                                    withRemoteNetworkPermission {
+                                        scope.launch {
+                                            val sent = runCatching { activity.remoteRuntime.sendKey(key) }
+                                                .recoverCatching {
+                                                    if (companionStatus is CompanionConnectionStatus.Connected) activity.companionClient.sendKeyCode(key.toAndroidKeyCode())
+                                                    else throw it
+                                                }
+                                            if (key == RemoteKey.POWER) {
+                                                sent.onSuccess { Toast.makeText(appContext, "Команда отправлена", Toast.LENGTH_SHORT).show() }
+                                                    .onFailure { Toast.makeText(appContext, it.message ?: "Не удалось отправить команду", Toast.LENGTH_LONG).show() }
+                                            } else {
+                                                sent.onFailure { notify(it.message ?: "Не удалось отправить команду", 3000L) }
                                             }
-                                        if (key == RemoteKey.POWER) {
-                                            sent.onSuccess { Toast.makeText(appContext, "Команда отправлена", Toast.LENGTH_SHORT).show() }
-                                                .onFailure { Toast.makeText(appContext, it.message ?: "Не удалось отправить команду", Toast.LENGTH_LONG).show() }
-                                        } else {
-                                            sent.onFailure { notify(it.message ?: "Не удалось отправить команду", 3000L) }
                                         }
                                     }
                                 },
@@ -1874,10 +1945,12 @@ private fun App(
                     if (castDevices.isEmpty() && !castLoading) Text("DLNA-приёмники не найдены. Проверьте одну Wi-Fi сеть.", color = Color.LightGray)
                     castDevices.forEach { device ->
                         TextButton(onClick = {
-                            scope.launch {
-                                runCatching { activity.remoteRuntime.castTo(device, media) }
-                                    .onSuccess { notify("Трансляция отправлена на " + (device.friendlyName ?: "устройство"), 3000L); castMedia = null }
-                                    .onFailure { notify(it.message ?: "Не удалось начать Cast", 4000L) }
+                            withLocalNetworkPermission {
+                                scope.launch {
+                                    runCatching { activity.remoteRuntime.castTo(device, media) }
+                                        .onSuccess { notify("Трансляция отправлена на " + (device.friendlyName ?: "устройство"), 3000L); castMedia = null }
+                                        .onFailure { notify(it.message ?: "Не удалось начать Cast", 4000L) }
+                                }
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text(device.friendlyName ?: device.location, color = Color.White) }
                     }
