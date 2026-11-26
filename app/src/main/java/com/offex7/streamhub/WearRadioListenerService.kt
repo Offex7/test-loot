@@ -29,6 +29,19 @@ class WearRadioListenerService : com.google.android.gms.wearable.WearableListene
     private var mediaController: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            broadcastStateToConnectedWatches()
+        }
+
+        override fun onMediaItemTransition(
+            mediaItem: androidx.media3.common.MediaItem?,
+            reason: Int
+        ) {
+            broadcastStateToConnectedWatches()
+        }
+    }
+
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
         val nodeId = messageEvent.sourceNodeId
@@ -100,10 +113,22 @@ class WearRadioListenerService : com.google.android.gms.wearable.WearableListene
                 return@addListener
             }
             mediaController = connected
+            connected.addListener(playerListener)
             val pending = queuedActions.toList()
             queuedActions.clear()
             pending.forEach { callback -> runCatching { callback(connected) } }
         }, mainExecutor)
+    }
+
+    private fun broadcastStateToConnectedWatches() {
+        if (mediaController == null) return
+        Wearable.getNodeClient(applicationContext).connectedNodes
+            .addOnSuccessListener { nodes ->
+                nodes.forEach { node -> sendState(node.id) }
+            }
+            .addOnFailureListener { error ->
+                LogExporter.log("Wear OS connected-node lookup failed: " + (error.message ?: error.javaClass.simpleName))
+            }
     }
 
     private fun sendState(nodeId: String) {
@@ -148,6 +173,7 @@ class WearRadioListenerService : com.google.android.gms.wearable.WearableListene
     override fun onDestroy() {
         controllerFuture?.cancel(false)
         controllerFuture = null
+        mediaController?.removeListener(playerListener)
         mediaController?.release()
         mediaController = null
         ioScope.cancel()
