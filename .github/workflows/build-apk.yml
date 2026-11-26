@@ -53,14 +53,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v4.23 source version and Android SDK
+      - name: Verify committed v5.0 source version and Android SDK
         run: |
           set -e
           grep -q 'compileSdk = 36' app/build.gradle.kts
           grep -q 'minSdk = 31' app/build.gradle.kts
-          grep -q 'targetSdk = 34' app/build.gradle.kts
-          grep -q 'versionCode = 38' app/build.gradle.kts
-          grep -q 'versionName = "4.23"' app/build.gradle.kts
+          grep -q 'targetSdk = 36' app/build.gradle.kts
+          grep -q 'versionCode = 39' app/build.gradle.kts
+          grep -q 'versionName = "5.0"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -70,11 +70,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "fix(v4.23): install verified local Unistar logo"
+            git commit -m "fix(v5.0): install verified local Unistar logo"
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v4.23 sources
+      - name: Validate Radio.TV v5.0 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -111,7 +111,7 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 38" in gradle and 'versionName = "4.23"' in gradle,
+              "version": "versionCode = 39" in gradle and 'versionName = "5.0"' in gradle,
               "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 37 and set(description_keys) == set(station_names),
               "radio_long_press_all_orientations": "combinedClickable(" in main and "onLongClick = if (onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
@@ -199,7 +199,7 @@ jobs:
               "tv_channel_long_press_exactly_3_seconds": tv.count("withTimeoutOrNull(3_000L)") == 1 and "onProgram()" in tv,
               "tv_favorite_quick_add": "onAddCurrentToFavorites" in tv and "Добавить текущий канал в избранное" in tv and "favoriteChannels.none { it.second.key == channel.key }" in tv,
           }
-          # v4.23 feature-specific regression checks.
+          # v5.0 feature-specific regression checks.
           remote_runtime = Path("app/src/main/java/com/offex7/streamhub/RemoteControlRuntime.kt").read_text(encoding="utf-8")
           remote_settings = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemoteSettingsScreen.kt").read_text(encoding="utf-8")
           updater = (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8")
@@ -264,7 +264,7 @@ jobs:
               "remote_widget_uses_vector_drawable": 'android:src="@drawable/widget_remote_icon"' in remote_widget_layout and "setImageViewResource(R.id.widget_icon, R.drawable.widget_remote_icon)" in remote_widget_provider,
               "remote_pad_reference_overlay": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val remoteControlsHeight = topClusterHeight + dpadHeight - dpadOverlap" in remote_pad and ".offset(y = topClusterHeight - dpadOverlap)" in remote_pad and "Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(lowerButtonSize)" in remote_pad and "dpadTopInset" in remote_pad and "dpadBottomInset" in remote_pad and "sideArrowGap" in remote_pad and "val arrowSideWidth = minOf(arrowSize * 1.10f, availableSideWidth)" in remote_pad and "pressTiltX = 8f" in remote_pad and "pressTiltY = -8f" in remote_pad,
               "remote_pad_dpad_outline_removed": "Canvas(" not in remote_pad and "drawPath(" not in remote_pad and "BlurMaskFilter" not in remote_pad,
-              "remote_pad_vol_ch_contiguous": "RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp)" in remote_pad and "RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp)" in remote_pad and "pressTiltX = -10f" in remote_pad and "pressTiltX = 10f" in remote_pad and "animatePressTilt = true" in remote_pad,
+              "remote_pad_vol_ch_contiguous": "RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp)" in remote_pad and "RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp)" in remote_pad and "pressOffsetY = 4.dp" in remote_pad and "pressOffsetY = (-4).dp" in remote_pad and ".graphicsLayer { clip = false }" in remote_pad,
               "remote_pad_single_dpad_block": "val dpadVerticalGap = if (tight) 6.dp else 8.dp" in remote_pad and "val sideArrowGap = dpadHorizontalGap * 2f" in remote_pad,
               "remote_search_ten_second_no_tv_notice": "withTimeoutOrNull(10_000L)" in main and "10_000L - " in main and "старый протокол подключения" in main,
               "bluetooth_permission_retry_after_denial": "Bluetooth tab opened without runtime permission; requesting again" in main and "Нажмите вкладку Bluetooth ещё раз" in main,
@@ -281,7 +281,7 @@ jobs:
               "v4_18_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
               "v4_18_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_18_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v4_18_android_12_floor_android_16_compile_preserving_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 34" in gradle and "versionCode = 38" in gradle and 'versionName = "4.23"' in gradle,
+              "v5_0_android_12_floor_android_16_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 36" in gradle and "versionCode = 39" in gradle and 'versionName = "5.0"' in gradle,
               "v4_21_update_pause_resume_cancel_and_70h_dismissal": "Загрузить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "Отменить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "70L * 60L * 60L * 1000L" in main and "Range" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
               "v4_21_epg_fallback": 'http://epg.one/edem.xml.gz' in epg_source and "programmesFromUrl(FALLBACK_EPG_URL, tvgId)" in epg_source and "Нет данных о телепрограмме" in tv,
               "v4_21_lazy_ping_bounded_to_four": "Semaphore(4)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "Random.nextLong(30L, 221L)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "channels.take(10)" in tv and "visibleItemsInfo" in tv,
@@ -292,15 +292,15 @@ jobs:
               "tv_ping_text_only_bottom_aligned_with_letter_shadow": '"Ping: "' in tv and ".align(Alignment.BottomCenter).padding(bottom = 2.dp)" in tv and "Shadow(color = Color.Black, blurRadius = 4f)" in tv and ".border(" not in tv[tv.index("pingResult?.let"):tv.index("pingResult?.let") + 600] and ".background(" not in tv[tv.index("pingResult?.let"):tv.index("pingResult?.let") + 600],
               "gastro_local_drawable": (root / "src/main/res/drawable-nodpi/gastro_logo.webp").is_file() and "R.drawable.gastro_logo" in main and '"GASTRO" -> "gastro_logo"' in main,
               "manual_update_check_forces_api_and_bypasses_snooze": "suspend fun checkForUpdates(isManualCheck: Boolean)" in main and "checkLatest(isManualCheck = isManualCheck)" in main and "suspend fun checkLatest(isManualCheck: Boolean" in updater and '"no-cache, no-store"' in updater and "val dismissed = !isManualCheck &&" in main and "72L * 60L * 60L * 1000L" in main,
-              "remote_vol_ch_real_3d_press_tilt": "val interactionSource = remember { MutableInteractionSource() }" in remote_pad and "interactionSource.collectIsPressedAsState()" in remote_pad and "interactionSource = interactionSource" in remote_pad and "tween(150" in remote_pad and "pressTiltX = -10f" in remote_pad and "pressTiltX = 10f" in remote_pad and "cameraDistance = 12f * density" in remote_pad and "animatePressTilt = true" in remote_pad,
+              "remote_vol_ch_physical_press_feedback": "val interactionSource = remember { MutableInteractionSource() }" in remote_pad and "interactionSource.collectIsPressedAsState()" in remote_pad and "interactionSource = interactionSource" in remote_pad and "pressOffsetY = 4.dp" in remote_pad and "pressOffsetY = (-4).dp" in remote_pad and "translationY = if (isPressed) pressOffsetY.toPx() else 0f" in remote_pad and "scaleY = (if (isPressed && physicalPress) 0.95f else pressScale) * pulseScale" in remote_pad and "clip = false" in remote_pad,
               "v4_21_landscape_tv_long_press": "awaitEachGesture" in tv and ".pointerInput(item.key)" in tv and "onProgram()" in tv,
           })
           failures = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v4.23 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v4.23 source checks passed.")
+              raise SystemExit("v5.0 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v5.0 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -322,7 +322,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.23-debug-build-log
+          name: Radio-TV-v5.0-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -334,34 +334,34 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v4.23.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v4.23.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v4.23.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v5.0.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v5.0.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v5.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v4.23.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v5.0.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='38'"
-          echo "$BADGING" | grep -q "versionName='4.23'"
-          sha256sum Radio-TV-v4.23.apk
-          ls -lh Radio-TV-v4.23.apk
+          echo "$BADGING" | grep -q "versionCode='39'"
+          echo "$BADGING" | grep -q "versionName='5.0'"
+          sha256sum Radio-TV-v5.0.apk
+          ls -lh Radio-TV-v5.0.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.23-APK
-          path: Radio-TV-v4.23.apk
+          name: Radio-TV-v5.0-APK
+          path: Radio-TV-v5.0.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v4.23-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v5.0-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v4.23-Source
-          path: Radio-TV-v4.23-source.zip
+          name: Radio-TV-v5.0-Source
+          path: Radio-TV-v5.0-source.zip
           if-no-files-found: error
 

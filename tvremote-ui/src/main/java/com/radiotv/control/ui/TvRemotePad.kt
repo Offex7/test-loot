@@ -365,10 +365,12 @@ internal fun TvRemotePad(
             // The top controls and D-pad share one measured area, matching the compact reference layout.
             Box(
                 modifier = Modifier.fillMaxWidth().height(remoteControlsHeight)
+                    .graphicsLayer { clip = false }
             ) {
             // Tall VOL/CH pills frame Play/Pause above Mute/MENU, matching the reference.
             Row(
-                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(topClusterHeight),
+                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(topClusterHeight)
+                    .graphicsLayer { clip = false },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -692,6 +694,7 @@ private fun RemoteSurfaceButton(
     pressTiltX: Float = 0f,
     pressTiltY: Float = 0f,
     animatePressTilt: Boolean = false,
+    pressOffsetY: androidx.compose.ui.unit.Dp = 0.dp,
     content: @Composable () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -710,15 +713,20 @@ private fun RemoteSurfaceButton(
     Box(
         modifier = modifier
             .graphicsLayer {
-                scaleX = pressScale * pulseScale
-                scaleY = pressScale * pulseScale
-                rotationX = if (animatePressTilt) pressTiltXAnimated else if (isPressed) pressTiltX else 0f
-                rotationY = if (isPressed) pressTiltY else 0f
+                // VOL/CH use a physical press instead of perspective rotation:
+                // the top keys move down, the lower keys move up, and both compress vertically.
+                val physicalPress = pressOffsetY != 0.dp
+                scaleX = if (physicalPress) pulseScale else pressScale * pulseScale
+                scaleY = (if (isPressed && physicalPress) 0.95f else pressScale) * pulseScale
+                translationY = if (isPressed) pressOffsetY.toPx() else 0f
+                rotationX = if (physicalPress) 0f else if (animatePressTilt) pressTiltXAnimated else if (isPressed) pressTiltX else 0f
+                rotationY = if (physicalPress) 0f else if (isPressed) pressTiltY else 0f
                 cameraDistance = 12f * density
+                clip = false
                 alpha = if (isPressed) 0.82f else 1f
             }
             .clip(shape)
-            .background(background)
+            .background(if (isPressed && pressOffsetY != 0.dp) Color(0xFFE3E3E0) else background)
             .semantics {
                 contentDescription = description
                 role = androidx.compose.ui.semantics.Role.Button
@@ -756,8 +764,9 @@ private fun WhiteVolumePill(
     val ink = Color(0xFF252A29)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(32.dp))
-            .background(white),
+            // A rounded background is painted without clipping child press layers.
+            .graphicsLayer { clip = false }
+            .background(white, RoundedCornerShape(32.dp)),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -767,8 +776,7 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
             background = white,
             onClick = onTop,
-            pressTiltX = -10f,
-            animatePressTilt = true
+            pressOffsetY = 4.dp
         ) {
             if (title == "VOL") {
                 Text(topLabel, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Normal)
@@ -789,8 +797,7 @@ private fun WhiteVolumePill(
             shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 30.dp, bottomEnd = 30.dp),
             background = white,
             onClick = onBottom,
-            pressTiltX = 10f,
-            animatePressTilt = true
+            pressOffsetY = (-4).dp
         ) {
             if (title == "VOL") {
                 Text(bottomLabel, color = ink, fontSize = 31.sp, fontWeight = FontWeight.Normal)
