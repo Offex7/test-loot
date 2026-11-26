@@ -2,6 +2,10 @@ package com.offex7.streamhub
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.animation.ValueAnimator
+import android.view.animation.DecelerateInterpolator
 import java.io.ByteArrayOutputStream
 import java.util.Locale
 
@@ -65,6 +69,71 @@ class RadioPlaybackService : MediaSessionService() {
     private var userStopped = false
     private var retryCount = 0
     private var audioEffects: RadioAudioEffects? = null
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var focusHeld = false
+    private var ducked = false
+    private var focusRestoreVolume = 1f
+    private var duckAnimator: ValueAnimator? = null
+
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        mainHandler.post {
+            val player = session?.player as? ExoPlayer ?: return@post
+            when (change) {
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    if (!ducked) focusRestoreVolume = player.volume.coerceIn(0f, 1f)
+                    ducked = true
+                    animateFocusVolume(player, focusRestoreVolume * 0.22f, 260L)
+                    LogExporter.log("Audio focus interrupted; applying volume duck without pausing playback")
+                }
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    focusHeld = true
+                    if (ducked) {
+                        ducked = false
+                        animateFocusVolume(player, focusRestoreVolume, 420L)
+                        LogExporter.log("Audio focus regained; restoring radio volume")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun animateFocusVolume(player: ExoPlayer, target: Float, durationMs: Long) {
+        duckAnimator?.cancel()
+        duckAnimator = ValueAnimator.ofFloat(player.volume, target.coerceIn(0f, 1f)).apply {
+            duration = durationMs
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                if (!destroying && session?.player === player) player.volume = animator.animatedValue as Float
+            }
+            start()
+        }
+    }
+
+    private fun requestAppAudioFocus() {
+        val manager = audioManager ?: return
+        val request = audioFocusRequest ?: return
+        if (focusHeld) return
+        val result = manager.requestAudioFocus(request)
+        focusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        if (focusHeld && ducked) {
+            ducked = false
+            (session?.player as? ExoPlayer)?.let { animateFocusVolume(it, focusRestoreVolume, 320L) }
+        }
+    }
+
+    private fun abandonAppAudioFocus() {
+        val manager = audioManager
+        val request = audioFocusRequest
+        if (manager != null && request != null && focusHeld) runCatching { manager.abandonAudioFocusRequest(request) }
+        focusHeld = false
+        if (ducked) {
+            ducked = false
+            (session?.player as? ExoPlayer)?.let { animateFocusVolume(it, focusRestoreVolume, 180L) }
+        }
+    }
 
     private fun stationArtworkBytes(stationName: String): ByteArray? {
         val normalizedName = stationName.trim().uppercase(Locale.ROOT)
@@ -107,6 +176,16 @@ class RadioPlaybackService : MediaSessionService() {
                 timerRecovery.complete(Unit)
             }
         }
+        audioManager = getSystemService(AudioManager::class.java)
+        val platformAudioAttributes = android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(platformAudioAttributes)
+            .setWillPauseWhenDucked(true)
+            .setOnAudioFocusChangeListener(audioFocusListener, mainHandler)
+            .build()
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(6_000, 30_000, 2_000, 5_000)
             .build()
@@ -117,7 +196,7 @@ class RadioPlaybackService : MediaSessionService() {
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(),
-                true
+                false
             )
             .build()
 
@@ -169,6 +248,8 @@ class RadioPlaybackService : MediaSessionService() {
             }
 
             override fun onPlayWhenReadyChanged(isReady: Boolean, reason: Int) {
+                if (isReady) requestAppAudioFocus()
+                else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) abandonAppAudioFocus()
                 when (reason) {
                     Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> {
                         userPaused = !isReady
@@ -282,6 +363,9 @@ class RadioPlaybackService : MediaSessionService() {
         destroying = true
         mainHandler.removeCallbacks(timerCheckpointRunnable)
         mainHandler.removeCallbacksAndMessages(null)
+        duckAnimator?.cancel()
+        duckAnimator = null
+        abandonAppAudioFocus()
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         audioEffects?.release()
         audioEffects = null

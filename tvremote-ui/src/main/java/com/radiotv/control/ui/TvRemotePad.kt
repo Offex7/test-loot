@@ -217,7 +217,7 @@ internal fun TvRemotePad(
         val lowerButtonSize = footerButtonSize
         val sideInset = (maxWidth * 0.045f).coerceIn(8.dp, 22.dp)
         val controlColumnGap = (maxWidth * 0.035f).coerceIn(4.dp, 12.dp)
-        val sideArrowGap = dpadHorizontalGap
+        val sideArrowGap = dpadHorizontalGap * 2f
         val arrowInset = (((maxWidth - okSize) / 2f) - arrowSideWidth - sideArrowGap).coerceAtLeast(0.dp)
         // Fill the available height around the D-pad while preserving the portrait reference.
         val topClusterHeight = (controlsAvailableHeight - dpadHeight + dpadOverlap).coerceAtLeast(68.dp)

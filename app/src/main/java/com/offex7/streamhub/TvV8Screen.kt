@@ -231,6 +231,9 @@ fun TvV8Screen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val repo = androidx.compose.runtime.remember(context, store) { TvPlaylistRepositoryV8(context, store) }
     val epgRepository = remember(context.applicationContext) { TvEpgRepository(context.applicationContext) }
+    val pingRepository = remember(context.applicationContext) { TvChannelPingRepository() }
+    val pingResults = remember(sourceKey) { mutableStateMapOf<String, TvChannelPingResult>() }
+    val pingInFlight = remember(sourceKey) { mutableStateMapOf<String, Boolean>() }
     val sourceKey by store.activeSourceFlow().collectAsStateWithLifecycle(initialValue = builtinSourceKey(0))
     val list = rememberLazyListState()
     val network by rememberTvV9Network()
@@ -305,6 +308,18 @@ fun TvV8Screen(
     var navigationMode by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(TvNavigationMode.GENERAL) }
     var zoomSaveJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
 
+    suspend fun updateChannelPing(channel: StreamItem) {
+        val now = System.currentTimeMillis()
+        if (pingResults[channel.key]?.expiresAtMillis?.let { it > now } == true) return
+        if (pingInFlight[channel.key] == true) return
+        pingInFlight[channel.key] = true
+        try {
+            pingResults[channel.key] = pingRepository.ping(channel.url)
+        } finally {
+            pingInFlight.remove(channel.key)
+        }
+    }
+
     suspend fun reload() {
         // Existing content stays on screen while a playlist refresh is running.
         if (channels.isEmpty()) loading = true
@@ -360,6 +375,28 @@ fun TvV8Screen(
         epgRepository.preload(epgUrl)
         epgAvailableChannelIds = epgRepository.channelIdsWithCurrentProgrammes(epgUrl)
         epgAvailabilityKnown = true
+    }
+
+    // Measure the first ten playlist entries and all favorites on the initial screen load.
+    LaunchedEffect(sourceKey, channels, favorites) {
+        if (channels.isEmpty()) return@LaunchedEffect
+        val initialTargets = (channels.take(10) + channels.filter { favorites.contains(it.key) })
+            .distinctBy { it.key }
+        coroutineScope {
+            initialTargets.map { channel -> async { updateChannelPing(channel) } }.awaitAll()
+        }
+    }
+
+    // Other channels are measured only when they enter the visible LazyColumn viewport.
+    LaunchedEffect(sourceKey, channels) {
+        snapshotFlow {
+            list.layoutInfo.visibleItemsInfo.mapNotNull { visible ->
+                val key = visible.key as? String ?: return@mapNotNull null
+                channels.firstOrNull { it.key == key }
+            }.distinctBy { it.key }
+        }.collect { visibleChannels ->
+            visibleChannels.forEach { channel -> launch { updateChannelPing(channel) } }
+        }
     }
 
     LaunchedEffect(sourcePickerVisible, sourceOptions) {
@@ -924,6 +961,7 @@ fun TvV8Screen(
                 channel.tvgId.orEmpty().let { id ->
                     id.isNotBlank() && id in epgAvailableChannelIds
                 },
+            pingResult = pingResults[channel.key],
             onProgram = { epgDialogChannel = channel },
             onPlay = {
                 channels.indexOfFirst { it.key == channel.key }
@@ -1314,6 +1352,7 @@ fun TvV8Screen(
             channel = programChannel,
             epgUrl = epgUrl,
             epgRepository = epgRepository,
+            notify = notify,
             permissionRetryToken = epgPermissionRetryToken,
             phonePermissionDenied = epgPermissionDenied,
             onRequestPhoneStatePermission = {
@@ -1332,6 +1371,7 @@ private fun TvProgramDialog(
     channel: StreamItem,
     epgUrl: String?,
     epgRepository: TvEpgRepository,
+    notify: (String, Long) -> Unit,
     permissionRetryToken: Int,
     phonePermissionDenied: Boolean,
     onRequestPhoneStatePermission: () -> Unit,
@@ -1361,8 +1401,15 @@ private fun TvProgramDialog(
     }
     LaunchedEffect(channel.key, epgUrl, permissionRetryToken) {
         epgResult = TvEpgResult(isLoading = true)
-        val result = epgRepository.programmes(epgUrl, channel.tvgId)
+        val result = epgRepository.programmes(epgUrl, channel.tvgId) {
+            withContext(Dispatchers.Main) {
+                notify("Телепрограмма плейлиста не найдена. Пробую загрузить альтернативную", 5000L)
+            }
+        }
         epgResult = result
+        if (result.programmes.isEmpty()) {
+            withContext(Dispatchers.Main) { notify("Нет данных о телепрограмме", 5000L) }
+        }
         if (result.requiresPhoneStatePermission && !phonePermissionDenied) {
             onRequestPhoneStatePermission()
         }
@@ -1464,7 +1511,7 @@ private fun TvProgramDialog(
                                 TvEpgUnavailableReason.MOBILE_RESTRICTED,
                                 TvEpgUnavailableReason.PHONE_STATE_PERMISSION_REQUIRED ->
                                     "Для загрузки телепрограммы подключитесь к Wi-Fi"
-                                else -> "Возможно, данный IPTV не поддерживает телепрограмму"
+                                else -> "Нет данных о телепрограмме"
                             }
                             Text(
                                 message,
@@ -1626,6 +1673,7 @@ private fun TvV9ChannelRow(
     showHideIcon: Boolean,
     showEpgInfoButton: Boolean,
     hasEpgProgrammes: Boolean,
+    pingResult: TvChannelPingResult?,
     hapticsEnabled: Boolean,
     soundEnabled: Boolean,
     allowSound: Boolean,
@@ -1732,35 +1780,32 @@ private fun TvV9ChannelRow(
                             }
                         )
                     }
-                    .pointerInput(item.key, showEpgInfoButton) {
-                        if (!showEpgInfoButton) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val pointerId = down.id
-                                val startPosition = down.position
-                                val releasedOrMoved = withTimeoutOrNull(3_000L) {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val pointer = event.changes.firstOrNull { it.id == pointerId }
-                                            ?: return@withTimeoutOrNull true
-                                        if (!pointer.pressed ||
-                                            (pointer.position - startPosition).getDistance() > viewConfiguration.touchSlop
-                                        ) {
-                                            return@withTimeoutOrNull true
-                                        }
+                    .pointerInput(item.key) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val pointerId = down.id
+                            val startPosition = down.position
+                            val releasedOrMoved = withTimeoutOrNull(3_000L) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pointer = event.changes.firstOrNull { it.id == pointerId }
+                                        ?: return@withTimeoutOrNull true
+                                    if (!pointer.pressed ||
+                                        (pointer.position - startPosition).getDistance() > viewConfiguration.touchSlop
+                                    ) {
+                                        return@withTimeoutOrNull true
                                     }
-                                    false
                                 }
-                                if (releasedOrMoved == null) {
-                                    longPressHandled = true
-                                    onProgram()
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.none { it.id == pointerId && it.pressed }) break
-                                    }
-                                    // Keep the guard set until Card.onClick consumes the release,
-                                    // preventing a long press from also starting channel playback.
+                                false
+                            }
+                            if (releasedOrMoved == null) {
+                                longPressHandled = true
+                                onProgram()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.none { it.id == pointerId && it.pressed }) break
                                 }
+                                // The Card click guard prevents a long press from starting playback on release.
                             }
                         }
                     },
@@ -1775,7 +1820,7 @@ private fun TvV9ChannelRow(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline, logoImageLoader, isListScrolling)
+                    TvV9Logo(logoCache, item.logoUrl, 60.dp, offline, logoImageLoader, isListScrolling, item.name, pingResult)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -1839,7 +1884,9 @@ private fun TvV9Logo(
     size: Dp,
     dimmed: Boolean,
     logoImageLoader: ImageLoader,
-    isListScrolling: Boolean = false
+    isListScrolling: Boolean = false,
+    channelName: String = "?",
+    pingResult: TvChannelPingResult? = null
 ) {
     val context = LocalContext.current
     val request = remember(url, context) {
@@ -1856,12 +1903,40 @@ private fun TvV9Logo(
         contentAlignment = Alignment.Center
     ) {
         if (!logoLoaded) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_app_icon),
-                contentDescription = "Radio.TV",
-                modifier = Modifier.size(size * 0.72f).alpha(if (dimmed) .4f else 1f),
-                contentScale = ContentScale.Fit
-            )
+            Box(
+                Modifier.fillMaxSize().background(TvV9Red.copy(alpha = if (dimmed) 0.30f else 0.72f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    channelName.trim().firstOrNull()?.uppercase(Locale.ROOT) ?: "?",
+                    color = Color.White.copy(alpha = if (dimmed) 0.55f else 1f),
+                    fontSize = (size.value * 0.56f).sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+        }
+        pingResult?.let { ping ->
+            val pingColor = when {
+                ping.latencyMillis == null -> TvV9Gray
+                ping.latencyMillis <= 90L -> Color(0xFF4CAF50)
+                ping.latencyMillis <= 190L -> Color(0xFFFFEB3B)
+                ping.latencyMillis <= 400L -> Color(0xFFFF9800)
+                else -> TvV9Red
+            }
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.82f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "ping: " + (ping.latencyMillis?.toString() ?: "—"),
+                    color = pingColor,
+                    fontSize = (size.value * 0.13f).coerceIn(7f, 10f).sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
         }
         if (!url.isNullOrBlank()) {
             AsyncImage(
@@ -2503,7 +2578,7 @@ private fun TvV9Player(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (!channel.logoUrl.isNullOrBlank()) {
-                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false, logoImageLoader)
+                                    TvV9Logo(channelLogoCache, channel.logoUrl, 34.dp, false, logoImageLoader, channelName = channel.name, pingResult = pingResults[channel.key])
                                     Spacer(Modifier.width(8.dp))
                                 }
                                 Text(

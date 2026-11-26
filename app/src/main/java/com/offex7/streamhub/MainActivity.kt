@@ -22,6 +22,9 @@ import android.graphics.Color as AColor
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.nfc.NdefMessage
+import android.nfc.NdefRecord
+import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -332,6 +335,31 @@ private fun shareText(
     }
 }
 
+private fun readNfcPayload(intent: Intent?): String? {
+    if (intent?.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return null
+    val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+        ?.mapNotNull { it as? NdefMessage }
+        .orEmpty()
+    return messages.asSequence().flatMap { it.records.asSequence() }.mapNotNull { record ->
+        when {
+            record.tnf == NdefRecord.TNF_WELL_KNOWN && record.type.contentEquals(NdefRecord.RTD_URI) -> record.toUri()?.toString()
+            record.tnf == NdefRecord.TNF_WELL_KNOWN && record.type.contentEquals(NdefRecord.RTD_TEXT) -> {
+                val payload = record.payload
+                if (payload.isEmpty()) null else {
+                    val status = payload[0].toInt()
+                    val languageLength = status and 0x3F
+                    val offset = 1 + languageLength
+                    if (offset > payload.size) null else {
+                        val charset = if ((status and 0x80) == 0) Charsets.UTF_8 else Charsets.UTF_16
+                        String(payload, offset, payload.size - offset, charset).trim().takeIf { it.isNotBlank() }
+                    }
+                }
+            }
+            else -> record.payload.toString(Charsets.UTF_8).trim().takeIf { it.isNotBlank() }
+        }
+    }.firstOrNull() ?: intent.data?.toString()
+}
+
 private val SleepOptions = listOf(
     5L to "5 м", 10L to "10 м", 15L to "15 м", 30L to "30 м", 60L to "1 ч", 120L to "2 ч",
     240L to "4 ч", 480L to "8 ч", 600L to "10 ч", 900L to "15 ч", 1440L to "24 ч", 2160L to "36 ч"
@@ -346,6 +374,7 @@ class MainActivity : FragmentActivity() {
     private var hasAutoRotateSensor = false
     internal var requestedSection by mutableStateOf<Section?>(null)
     internal var requestedRemotePad by mutableStateOf(false)
+    internal var requestedNfcPayload by mutableStateOf<String?>(null)
 
     companion object {
         const val EXTRA_WIDGET_SECTION = "widget_section"
@@ -404,6 +433,7 @@ class MainActivity : FragmentActivity() {
             else -> null
         }
         requestedRemotePad = isRemoteOpenIntent(intent)
+        requestedNfcPayload = readNfcPayload(intent)
         tv = PlayerController(applicationContext)
         radio = RadioMediaController(applicationContext)
         setContent { AppTheme(store) { App(store, tv, radio, this) } }
@@ -430,6 +460,7 @@ class MainActivity : FragmentActivity() {
             else -> null
         }
         requestedRemotePad = isRemoteOpenIntent(intent)
+        requestedNfcPayload = readNfcPayload(intent)
     }
 
     private fun isRemoteOpenIntent(intent: Intent): Boolean =
@@ -651,6 +682,9 @@ private fun App(
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var updateDownloading by remember { mutableStateOf(false) }
     var updateProgress by remember { mutableFloatStateOf(0f) }
+    var updateDownloadControl by remember { mutableStateOf<UpdateDownloadControl?>(null) }
+    var updateDownloadJob by remember { mutableStateOf<Job?>(null) }
+    var updateDownloadPaused by remember { mutableStateOf(false) }
 
     LaunchedEffect(notificationsEnabled) {
         if (!notificationsEnabled) notification = null
@@ -669,6 +703,32 @@ private fun App(
         notification = message
         notificationDuration = durationMs.coerceAtLeast(250L)
         notificationToken += 1L
+    }
+
+    LaunchedEffect(activity.requestedNfcPayload, pinUnlocked) {
+        val payload = activity.requestedNfcPayload ?: return@LaunchedEffect
+        if (!pinUnlocked) return@LaunchedEffect
+        val normalized = payload.lowercase(Locale.ROOT)
+        val stationIndex = RADIO_STATIONS.indexOfFirst { station ->
+            normalized.contains(station.name.lowercase(Locale.ROOT)) ||
+                normalized.contains(station.url.lowercase(Locale.ROOT))
+        }
+        if (stationIndex >= 0) {
+            val station = RADIO_STATIONS[stationIndex]
+            tv.stop()
+            remoteTab = false
+            section = Section.RADIO
+            settings = false
+            scope.launch {
+                radio.play(stationIndex)
+                store.setSection(Section.RADIO)
+                store.saveLastStream(Section.RADIO, station)
+            }
+            notify("NFC: запускаю " + station.name)
+        } else {
+            notify("На NFC-метке не найдено название радиостанции")
+        }
+        activity.requestedNfcPayload = null
     }
 
     fun refreshRemoteDevices() {
@@ -1640,33 +1700,58 @@ private fun App(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 info = updateInfo,
                 downloading = updateDownloading,
+                paused = updateDownloadPaused,
                 progress = updateProgress,
                 onUpdate = {
                     val info = updateInfo ?: return@UpdateBannerV38
                     if (updateDownloading) return@UpdateBannerV38
+                    val control = UpdateDownloadControl()
+                    updateDownloadControl = control
+                    updateDownloadPaused = false
                     updateDownloading = true
                     updateProgress = 0f
-                    scope.launch {
-                        AppUpdateManager.downloadApk(
+                    updateDownloadJob = scope.launch {
+                        val result = AppUpdateManager.downloadApk(
                             appContext,
                             info,
-                            onProgress = { value ->
-                                activity.runOnUiThread { updateProgress = value }
-                            }
-                        ).onSuccess { apk ->
-                            updateDownloading = false
+                            control,
+                            onProgress = { value -> activity.runOnUiThread { updateProgress = value } }
+                        )
+                        updateDownloading = false
+                        updateDownloadControl = null
+                        updateDownloadJob = null
+                        result.onSuccess { apk ->
                             updateProgress = 1f
-                            runCatching {
-                                AppUpdateManager.install(appContext, apk)
-                            }.onSuccess {
-                                updateInfo = null
-                            }.onFailure {
-                                notify("Не удалось открыть установку APK")
-                            }
+                            runCatching { AppUpdateManager.install(appContext, apk) }
+                                .onSuccess { updateInfo = null }
+                                .onFailure { notify("Не удалось открыть установку APK") }
                         }.onFailure {
-                            updateDownloading = false
                             notify(it.message ?: "Не удалось скачать обновление. Проверьте стабильность соединения и попробуйте позже", 6000L)
                         }
+                    }
+                },
+                onPauseResume = {
+                    val control = updateDownloadControl ?: return@UpdateBannerV38
+                    if (updateDownloadPaused) {
+                        control.resume()
+                        updateDownloadPaused = false
+                    } else {
+                        control.pause()
+                        updateDownloadPaused = true
+                    }
+                },
+                onCancel = {
+                    val info = updateInfo ?: return@UpdateBannerV38
+                    updateDownloadControl?.cancel()
+                    updateDownloadJob?.cancel()
+                    AppUpdateManager.cancelDownload(appContext, info)
+                    updateDownloadControl = null
+                    updateDownloadJob = null
+                    updateDownloading = false
+                    updateDownloadPaused = false
+                    scope.launch {
+                        store.dismissUpdate(info.versionName, System.currentTimeMillis() + 70L * 60L * 60L * 1000L)
+                        updateInfo = null
                     }
                 },
                 onLater = {
@@ -4739,7 +4824,7 @@ private fun ChannelRow(
                     InteractionFeedback.click(feedbackContext,hapticsEnabled,soundEnabled,false)
                     onPlay()
                 },
-                onLongClick = if (!showRadioInfo && onInfo != null) {
+                onLongClick = if (onInfo != null) {
                     { onInfo() }
                 } else null
             )
@@ -5148,6 +5233,7 @@ internal fun localLogoName(name: String): String = when (name.uppercase(Locale.R
     "НАШЕ РАДИО" -> "logo_nashe"
     "DATASET [AI]" -> "logo_dataset_ai"
     "ГАМАЮН" -> "logo_gamaun"
+    "GASTRO" -> "logo_fallback"
     else -> "logo_fallback"
 }
 

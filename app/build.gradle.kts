@@ -10,8 +10,8 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 31
         targetSdk = 34
-        versionCode = 35
-        versionName = "4.20"
+        versionCode = 36
+        versionName = "4.21"
     }
     signingConfigs {
         create("v5Debug") {

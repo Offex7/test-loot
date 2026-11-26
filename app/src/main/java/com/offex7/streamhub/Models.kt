@@ -66,7 +66,8 @@ val RADIO_STATIONS = listOf(
     StreamItem("ЮНИСТАР", "https://mtest.by/hls/unistar_main/index.m3u8"),
     StreamItem("БОРНЕО", "https://live.borneo.ru:8888/128"),
     StreamItem("ГАРАЖ FM", "https://radio.promodj.com:443/garagefm-192"),
-    StreamItem("НЕСТАНДАРТ", "https://listen.radionestandart.ru/128.mp3"))
+    StreamItem("НЕСТАНДАРТ", "https://listen.radionestandart.ru/128.mp3"),
+    StreamItem("GASTRO", "http://admin.gastro-radio.ru:1040/stream"))
 
 val RADIO_LOGO_URLS = mapOf(
     "RECORD" to "https://sun9-58.vkuserphoto.ru/s/v1/ig2/IiddqILI9W20xtBjGASd1Wc2qaE8CtlNMcM4HP7_rOxeHWqZHsTZQrxChaHjZF90iod1cWtN-YKmKEhzRcRW4WNu.jpg?quality=96&cs=640x0",

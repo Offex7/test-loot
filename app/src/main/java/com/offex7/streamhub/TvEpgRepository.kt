@@ -35,6 +35,7 @@ import java.util.zip.GZIPInputStream
 
 private const val TV_EPG_TAG = "TvEpgRepository"
 private const val EPG_DAY_MS = 24L * 60L * 60L * 1000L
+private const val FALLBACK_EPG_URL = "http://epg.one/edem.xml.gz"
 private const val EPG_CACHE_MAX_AGE_MS = 6L * 60L * 60L * 1000L
 private const val EPG_MAX_UNCOMPRESSED_BYTES = 120L * 1024L * 1024L
 private const val EPG_MAX_PROGRAMMES = 250_000
@@ -110,37 +111,58 @@ class TvEpgRepository(context: Context) {
         }
     }
 
-    suspend fun programmes(epgUrl: String?, tvgId: String?): TvEpgResult =
-        withContext(Dispatchers.IO) {
-            if (epgUrl.isNullOrBlank() || tvgId.isNullOrBlank()) {
-                return@withContext TvEpgResult(unavailableReason = TvEpgUnavailableReason.NO_LINK)
-            }
-            try {
-                val loaded = mutex.withLock { loadCatalogLocked(epgUrl.trim()) }
-                val catalog = loaded.catalog
-                    ?: return@withContext TvEpgResult(unavailableReason = loaded.reason)
-                if (tvgId !in catalog.channelIds) {
-                    return@withContext TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
-                }
-                val now = System.currentTimeMillis()
-                val upcoming = catalog.programmesByChannel[tvgId]
-                    .orEmpty()
-                    .asSequence()
-                    .filter { it.stopMillis > now && it.startMillis < now + EPG_DAY_MS }
-                    .sortedBy { it.startMillis }
-                    .toList()
-                if (upcoming.isEmpty()) {
-                    TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
-                } else {
-                    TvEpgResult(programmes = upcoming)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TV_EPG_TAG, "EPG parsing failed", error)
-                TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
-            }
+    suspend fun programmes(
+        epgUrl: String?,
+        tvgId: String?,
+        onFallback: () -> Unit = {}
+    ): TvEpgResult = withContext(Dispatchers.IO) {
+        if (tvgId.isNullOrBlank()) {
+            return@withContext TvEpgResult(unavailableReason = TvEpgUnavailableReason.NO_LINK)
         }
+        val primaryUrl = epgUrl?.trim()?.takeIf { it.isNotBlank() }
+        val primary = programmesFromUrl(primaryUrl, tvgId)
+        if (primary.programmes.isNotEmpty()) return@withContext primary
+        if (primaryUrl.equals(FALLBACK_EPG_URL, ignoreCase = true)) {
+            return@withContext TvEpgResult(
+                unavailableReason = primary.unavailableReason ?: TvEpgUnavailableReason.INVALID_OR_EMPTY
+            )
+        }
+        withContext(Dispatchers.Main) { onFallback() }
+        val fallback = programmesFromUrl(FALLBACK_EPG_URL, tvgId)
+        if (fallback.programmes.isNotEmpty()) fallback
+        else TvEpgResult(
+            unavailableReason = fallback.unavailableReason ?: TvEpgUnavailableReason.INVALID_OR_EMPTY
+        )
+    }
+
+    private suspend fun programmesFromUrl(url: String?, tvgId: String): TvEpgResult {
+        if (url.isNullOrBlank()) return TvEpgResult(unavailableReason = TvEpgUnavailableReason.NO_LINK)
+        return try {
+            val loaded = mutex.withLock { loadCatalogLocked(url) }
+            val catalog = loaded.catalog
+                ?: return TvEpgResult(unavailableReason = loaded.reason)
+            if (tvgId !in catalog.channelIds) {
+                return TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
+            }
+            val now = System.currentTimeMillis()
+            val upcoming = catalog.programmesByChannel[tvgId]
+                .orEmpty()
+                .asSequence()
+                .filter { it.stopMillis > now && it.startMillis < now + EPG_DAY_MS }
+                .sortedBy { it.startMillis }
+                .toList()
+            if (upcoming.isEmpty()) {
+                TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
+            } else {
+                TvEpgResult(programmes = upcoming)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TV_EPG_TAG, "EPG parsing failed for " + url, error)
+            TvEpgResult(unavailableReason = TvEpgUnavailableReason.INVALID_OR_EMPTY)
+        }
+    }
 
     /** Read the existing XMLTV cache without starting a network refresh. */
     suspend fun cachedChannelIdsWithCurrentProgrammes(epgUrl: String?): Set<String> =

@@ -38,9 +38,12 @@ import androidx.compose.ui.unit.sp
 fun UpdateBannerV38(
     info: AppUpdateInfo?,
     downloading: Boolean,
+    paused: Boolean,
     progress: Float,
     onUpdate: () -> Unit,
     onLater: () -> Unit,
+    onPauseResume: () -> Unit,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val maxPanelHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.62f).coerceAtLeast(220.dp)
@@ -65,24 +68,23 @@ fun UpdateBannerV38(
                     Text(update.changelog, color = Color.LightGray, fontSize = 12.sp, lineHeight = 17.sp, overflow = TextOverflow.Clip)
                     if (downloading) {
                         LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                        Text("Скачивание: " + (progress.coerceIn(0f, 1f) * 100f).toInt() + "%", color = Color.LightGray, fontSize = 11.sp, lineHeight = 16.sp)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = onUpdate,
-                            enabled = !downloading,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), disabledContainerColor = Color(0xFF424242))
-                        ) {
-                            Text(if (downloading) "Скачивание…" else "Обновить", color = Color.White, maxLines = 1, fontSize = 13.sp, lineHeight = 18.sp)
+                        Text(if (paused) "Загрузка на паузе · ${(progress.coerceIn(0f, 1f) * 100f).toInt()}%" else "Скачивание: ${(progress.coerceIn(0f, 1f) * 100f).toInt()}%", color = Color.LightGray, fontSize = 11.sp, lineHeight = 16.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = onPauseResume, modifier = Modifier.weight(1f).heightIn(min = 48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303F9F))) {
+                                Text(if (paused) "Загрузить" else "Пауза", color = Color.White, maxLines = 1, fontSize = 13.sp)
+                            }
+                            Button(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = 48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8E2424))) {
+                                Text("Отменить", color = Color.White, maxLines = 1, fontSize = 13.sp)
+                            }
                         }
-                        Button(
-                            onClick = onLater,
-                            enabled = !downloading,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303030))
-                        ) {
-                            Text("Позже", color = Color.White, maxLines = 1, fontSize = 13.sp, lineHeight = 18.sp)
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = onUpdate, modifier = Modifier.weight(1f).heightIn(min = 48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) {
+                                Text("Скачать", color = Color.White, maxLines = 1, fontSize = 13.sp, lineHeight = 18.sp)
+                            }
+                            Button(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303030))) {
+                                Text("Позже", color = Color.White, maxLines = 1, fontSize = 13.sp, lineHeight = 18.sp)
+                            }
                         }
                     }
                 }
