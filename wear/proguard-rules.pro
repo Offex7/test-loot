@@ -1,0 +1,2 @@
+-keep class com.offex7.streamhub.wear.WearStateListenerService { *; }
+-keep class com.google.android.gms.wearable.** { *; }
