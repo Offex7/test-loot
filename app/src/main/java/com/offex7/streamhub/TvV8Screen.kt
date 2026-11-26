@@ -1916,6 +1916,17 @@ private fun TvV9Logo(
                 )
             }
         }
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                    imageLoader = logoImageLoader,
+                model = request,
+                contentDescription = null,
+                modifier = Modifier.size(size.coerceAtMost(96.dp)).alpha(if (dimmed) .4f else 1f),
+                contentScale = ContentScale.Fit,
+                filterQuality = if (isListScrolling) androidx.compose.ui.graphics.FilterQuality.Low else androidx.compose.ui.graphics.FilterQuality.Medium,
+                onState = { state -> logoLoaded = state is AsyncImagePainter.State.Success }
+            )
+        }
         pingResult?.let { ping ->
             val pingColor = when {
                 ping.latencyMillis == null -> TvV9Gray
@@ -1937,17 +1948,6 @@ private fun TvV9Logo(
                     maxLines = 1
                 )
             }
-        }
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                    imageLoader = logoImageLoader,
-                model = request,
-                contentDescription = null,
-                modifier = Modifier.size(size.coerceAtMost(96.dp)).alpha(if (dimmed) .4f else 1f),
-                contentScale = ContentScale.Fit,
-                filterQuality = if (isListScrolling) androidx.compose.ui.graphics.FilterQuality.Low else androidx.compose.ui.graphics.FilterQuality.Medium,
-                onState = { state -> logoLoaded = state is AsyncImagePainter.State.Success }
-            )
         }
     }
 }
