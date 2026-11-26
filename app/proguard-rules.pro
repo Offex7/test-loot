@@ -14,3 +14,6 @@
 -keep,allowoptimization class com.tananaev.adblib.** { *; }
 -keep,allowoptimization class fi.iki.elonen.** { *; }
 -keep,allowoptimization class org.bouncycastle.** { *; }
+
+# Keep Wear OS Data Layer listener
+-keep class com.offex7.streamhub.WearRadioListenerService { *; }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.offex7.streamhub"
         minSdk = 31
         targetSdk = 37
-        versionCode = 40
-        versionName = "5.0.1"
+        versionCode = 41
+        versionName = "5.1"
     }
     signingConfigs {
         create("v5Debug") {
@@ -68,6 +68,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
