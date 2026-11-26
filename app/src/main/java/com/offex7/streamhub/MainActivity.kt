@@ -750,8 +750,9 @@ private fun App(
     }
 
     fun withRemoteNetworkPermission(action: () -> Unit) {
-        if (remoteBluetoothStatus is BluetoothHidStatus.Connected) action()
-        else withLocalNetworkPermission(action)
+        // Bluetooth permission group grants are reflected by the same ACCESS_LOCAL_NETWORK check.
+        // Don't bypass this check: a remote key may still be routed over Wi-Fi or Companion.
+        withLocalNetworkPermission(action)
     }
 
     LaunchedEffect(activity.requestedNfcPayload, pinUnlocked) {
