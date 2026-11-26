@@ -18,11 +18,14 @@ import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +37,92 @@ import kotlinx.coroutines.sync.withLock
 
 class RadioPlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    // Keep the phone's radio queue intact; the car TV player is audio-only.
+    private var radioPlayer: ExoPlayer? = null
+    private var tvAutoPlayer: ExoPlayer? = null
+
+    @OptIn(UnstableApi::class)
+    private val mediaSessionCallback = object : MediaSession.Callback {
+        @OptIn(UnstableApi::class)
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val requestedIndex = startIndex.takeIf { it in mediaItems.indices } ?: 0
+            val requestedItem = mediaItems.getOrNull(requestedIndex)
+            val requestedId = requestedItem?.mediaId.orEmpty()
+            val isTvRequest = requestedId.startsWith(AUTO_TV_MEDIA_ID_PREFIX)
+            val radioUrl = when {
+                requestedId.startsWith(AUTO_RADIO_MEDIA_ID_PREFIX) ->
+                    requestedItem?.localConfiguration?.uri?.toString()
+                        ?: requestedId.removePrefix(AUTO_RADIO_MEDIA_ID_PREFIX)
+                RADIO_STATIONS.any { it.url == requestedId } -> requestedId
+                else -> null
+            }
+
+            if (isTvRequest) {
+                val target = getOrCreateTvAutoPlayer()
+                if (mediaSession.player !== target) {
+                    (mediaSession.player as? ExoPlayer)?.pause()
+                    mediaSession.setPlayer(target)
+                }
+                LogExporter.log("Android Auto routed playback to TV audio player")
+                return Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs)
+                )
+            }
+
+            if (radioUrl != null) {
+                val target = radioPlayer
+                    ?: return Futures.immediateFailedFuture(IllegalStateException("Radio player is unavailable"))
+                if (mediaSession.player !== target) {
+                    (mediaSession.player as? ExoPlayer)?.pause()
+                    mediaSession.setPlayer(target)
+                }
+                // Use the original full queue so Android Auto cannot replace the phone's station catalog.
+                val selectedIndex = (0 until target.mediaItemCount).firstOrNull { index ->
+                    target.getMediaItemAt(index).localConfiguration?.uri?.toString() == radioUrl
+                } ?: 0
+                val fullRadioQueue = (0 until target.mediaItemCount).map(target::getMediaItemAt)
+                LogExporter.log("Android Auto routed playback to radio station index=$selectedIndex")
+                return Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(fullRadioQueue, selectedIndex, startPositionMs)
+                )
+            }
+
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs)
+            )
+        }
+    }
+
+    private fun getOrCreateTvAutoPlayer(): ExoPlayer {
+        tvAutoPlayer?.let { return it }
+        return ExoPlayer.Builder(this)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                true
+            )
+            .build()
+            .also { player ->
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                    .build()
+                tvAutoPlayer = player
+            }
+    }
+
+    private companion object {
+        const val AUTO_RADIO_MEDIA_ID_PREFIX = "radio:"
+        const val AUTO_TV_MEDIA_ID_PREFIX = "tv:"
+    }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val timerMutex = Mutex()
     private fun launchTimerTask(action: suspend () -> Unit) {
@@ -56,7 +145,7 @@ class RadioPlaybackService : MediaSessionService() {
     @Volatile private var destroying = false
     private val timerCheckpointRunnable = object : Runnable {
         override fun run() {
-            val player = session?.player
+            val player = radioPlayer ?: return
             if (destroying || player?.isPlaying != true) return
             launchTimerTask { radioTimerStore.checkpoint(System.currentTimeMillis()) }
             mainHandler.postDelayed(this, 5_000L)
@@ -78,7 +167,7 @@ class RadioPlaybackService : MediaSessionService() {
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
         mainHandler.post {
-            val player = session?.player as? ExoPlayer ?: return@post
+            val player = radioPlayer ?: return@post
             when (change) {
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
@@ -199,6 +288,7 @@ class RadioPlaybackService : MediaSessionService() {
                 false
             )
             .build()
+        radioPlayer = player
 
         audioEffects = runCatching { RadioAudioEffects(player.audioSessionId) }.getOrNull()
         serviceScope.launch {
@@ -324,7 +414,9 @@ class RadioPlaybackService : MediaSessionService() {
             }
         })
 
-        session = MediaSession.Builder(this, player).build()
+        session = MediaSession.Builder(this, player)
+            .setCallback(mediaSessionCallback)
+            .build()
 
         val cm = getSystemService(ConnectivityManager::class.java)
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -369,11 +461,12 @@ class RadioPlaybackService : MediaSessionService() {
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         audioEffects?.release()
         audioEffects = null
-        session?.run {
-            player.release()
-            release()
-        }
+        session?.release()
         session = null
+        radioPlayer?.release()
+        radioPlayer = null
+        tvAutoPlayer?.release()
+        tvAutoPlayer = null
         serviceScope.launch {
             runCatching {
                 timerRecovery.await()

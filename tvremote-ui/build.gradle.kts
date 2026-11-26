@@ -4,7 +4,8 @@ plugins {
 }
 android {
     namespace = "com.radiotv.control.ui"
-    compileSdk = 34
+    compileSdk = 37
+    compileSdkMinor = 1
     defaultConfig { minSdk = 29 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true }
@@ -16,7 +17,7 @@ kotlin {
 }
 dependencies {
     api(project(":tvremote-core"))
-    api(platform("androidx.compose:compose-bom:2024.10.01"))
+    api(platform("androidx.compose:compose-bom:2026.11.01"))
     api("androidx.compose.runtime:runtime")
     api("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")

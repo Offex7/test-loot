@@ -46,21 +46,22 @@ jobs:
           set -e
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/37.0.0:$PATH"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "platforms;android-36" "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "platforms;android-37" "build-tools;37.0.0"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify committed v5.0 source version and Android SDK
+      - name: Verify committed v5.0.1 source version and Android SDK
         run: |
           set -e
-          grep -q 'compileSdk = 36' app/build.gradle.kts
+          grep -q 'compileSdk = 37' app/build.gradle.kts
+          grep -q 'compileSdkMinor = 1' app/build.gradle.kts
           grep -q 'minSdk = 31' app/build.gradle.kts
-          grep -q 'targetSdk = 36' app/build.gradle.kts
-          grep -q 'versionCode = 39' app/build.gradle.kts
-          grep -q 'versionName = "5.0"' app/build.gradle.kts
+          grep -q 'targetSdk = 37' app/build.gradle.kts
+          grep -q 'versionCode = 40' app/build.gradle.kts
+          grep -q 'versionName = "5.0.1"' app/build.gradle.kts
 
       - name: Install and checksum the provided Unistar logo
         run: |
@@ -74,7 +75,7 @@ jobs:
             git push origin HEAD:main
           fi
 
-      - name: Validate Radio.TV v5.0 sources
+      - name: Validate Radio.TV v5.0.1 sources
         run: |
           set -e
           python3 - <<'PY'
@@ -101,6 +102,8 @@ jobs:
           tv_widget = (root / "src/main/res/xml/widget_tv_info.xml").read_text(encoding="utf-8")
           strings = (root / "src/main/res/values/strings.xml").read_text(encoding="utf-8")
           manifest = (root / "src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          auto_screen = Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").read_text(encoding="utf-8")
+          car_favorites = (root / "src/main/java/com/offex7/streamhub/CarFavoritesProvider.kt").read_text(encoding="utf-8")
           storage = (root / "src/main/java/com/offex7/streamhub/Storage.kt").read_text(encoding="utf-8")
           radio_timer_store = (root / "src/main/java/com/offex7/streamhub/RadioTimerStore.kt").read_text(encoding="utf-8")
           remote_pad = Path("tvremote-ui/src/main/java/com/radiotv/control/ui/TvRemotePad.kt").read_text(encoding="utf-8")
@@ -111,9 +114,11 @@ jobs:
           remote_widget_icon = (root / "src/main/res/drawable/widget_remote_icon.xml").read_text(encoding="utf-8")
           bluetooth_controller = Path("tvremote-core/src/main/java/com/radiotv/control/core/BluetoothHidController.kt").read_text(encoding="utf-8")
           checks = {
-              "version": "versionCode = 39" in gradle and 'versionName = "5.0"' in gradle,
-              "android16_media_fgs_and_notifications": "targetSdk = 36" in gradle and "android.permission.POST_NOTIFICATIONS" in manifest and 'android:name=".RadioPlaybackService"' in manifest and 'android:foregroundServiceType="mediaPlayback"' in manifest and "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" in manifest,
-              "isolated_android_auto_module": Path("android-auto/build.gradle.kts").is_file() and Path("android-auto/src/main/AndroidManifest.xml").is_file() and Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").is_file() and 'implementation(project(":android-auto"))' in gradle and "MediaController.Builder" in Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").read_text(encoding="utf-8"),
+              "version": "versionCode = 40" in gradle and 'versionName = "5.0.1"' in gradle,
+              "android17_media_fgs_and_notifications": "targetSdk = 37" in gradle and "android.permission.POST_NOTIFICATIONS" in manifest and 'android:name=".RadioPlaybackService"' in manifest and 'android:foregroundServiceType="mediaPlayback"' in manifest and "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" in manifest,
+              "isolated_android_auto_module": Path("android-auto/build.gradle.kts").is_file() and Path("android-auto/src/main/AndroidManifest.xml").is_file() and Path("android-auto/src/main/java/com/offex7/streamhub/auto/RadioCarAppService.kt").is_file() and 'implementation(project(":android-auto"))' in gradle and "MediaController.Builder" in auto_screen,
+              "android_auto_radio_and_tv_favorites": '"Избранное Радио"' in auto_screen and '"Избранное ТВ"' in auto_screen and '"/favorites/radio"' in car_favorites and '"/favorites/tv"' in car_favorites,
+              "android_auto_single_session_routes_tv_audio": "onSetMediaItems" in media and "AUTO_TV_MEDIA_ID_PREFIX" in media and "getOrCreateTvAutoPlayer" in media and "setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)" in media and 'setMediaItems(mediaItems, index, C.TIME_UNSET)' in auto_screen,
               "radio_station_descriptions_all_37": len(description_keys) == 37 and len(set(description_keys)) == 37 and set(description_keys) == set(station_names),
               "radio_long_press_all_orientations": "combinedClickable(" in main and "onLongClick = if (onInfo != null)" in main,
               "radio_info_button_landscape_or_tv": "radioShowInfoButton = radioIsTelevision || radioIsLandscape" in main and "showRadioInfo = radioShowInfoButton" in main and "Icons.Default.Info" in main,
@@ -283,7 +288,7 @@ jobs:
               "v4_18_epg_progress_content_length": 'response.header("Content-Length")' in epg_source and "reportDownloadedBytes" in epg_source and "downloadProgressPercent" in epg_source and '... $it%' in tv and "LinearProgressIndicator(" in tv,
               "v4_18_epg_info_requires_programmes": "hasEpgProgrammes = epgAvailabilityKnown &&" in tv and "if (showEpgInfoButton && hasEpgProgrammes)" in tv and "channelIdsWithCurrentProgrammes" in epg_source,
               "v4_18_playlist_limit_message_in_dialog": "addDialogError" in main and "Можно добавить не более 5 пользовательских плейлистов" in main and 'notify("Можно добавить не более 5 пользовательских плейлистов"' not in main,
-              "v5_0_android_12_floor_android_16_target": "compileSdk = 36" in gradle and "minSdk = 31" in gradle and "targetSdk = 36" in gradle and "versionCode = 39" in gradle and 'versionName = "5.0"' in gradle,
+              "v5_0_1_android_12_floor_android_17_target": "compileSdk = 37" in gradle and "compileSdkMinor = 1" in gradle and "minSdk = 31" in gradle and "targetSdk = 37" in gradle and "versionCode = 40" in gradle and 'versionName = "5.0.1"' in gradle,
               "v4_21_update_pause_resume_cancel_and_70h_dismissal": "Загрузить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "Отменить" in Path("app/src/main/java/com/offex7/streamhub/UpdateBannerV38.kt").read_text(encoding="utf-8") and "70L * 60L * 60L * 1000L" in main and "Range" in (root / "src/main/java/com/offex7/streamhub/AppUpdateManager.kt").read_text(encoding="utf-8"),
               "v4_21_epg_fallback": 'http://epg.one/edem.xml.gz' in epg_source and "programmesFromUrl(FALLBACK_EPG_URL, tvgId)" in epg_source and "Нет данных о телепрограмме" in tv,
               "v4_21_lazy_ping_bounded_to_four": "Semaphore(4)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "Random.nextLong(30L, 221L)" in Path("app/src/main/java/com/offex7/streamhub/TvChannelPingRepository.kt").read_text(encoding="utf-8") and "channels.take(10)" in tv and "visibleItemsInfo" in tv,
@@ -301,8 +306,8 @@ jobs:
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + name)
           if failures:
-              raise SystemExit("v5.0 source validation failed: " + ", ".join(failures))
-          print("All Radio.TV v5.0 source checks passed.")
+              raise SystemExit("v5.0.1 source validation failed: " + ", ".join(failures))
+          print("All Radio.TV v5.0.1 source checks passed.")
           PY
 
       - name: Verify existing signing keystore
@@ -324,7 +329,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v5.0-debug-build-log
+          name: Radio-TV-v5.0.1-debug-build-log
           path: build-debug.log
           if-no-files-found: warn
 
@@ -336,34 +341,34 @@ jobs:
           set -e
           APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           test -n "$APK"
-          cp "$APK" Radio-TV-v5.0.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose Radio-TV-v5.0.apk
-          APK_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs Radio-TV-v5.0.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
+          cp "$APK" Radio-TV-v5.0.1.apk
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose Radio-TV-v5.0.1.apk
+          APK_CERT=$("$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs Radio-TV-v5.0.1.apk | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           KEY_CERT=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' key.txt | tr -d ' :' | tr '[:upper:]' '[:lower:]')
           test -n "$APK_CERT"
           test "$KEY_CERT" = "$APK_CERT"
-          BADGING=$(aapt2 dump badging Radio-TV-v5.0.apk | head -n 1)
+          BADGING=$(aapt2 dump badging Radio-TV-v5.0.1.apk | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='com.offex7.streamhub'"
-          echo "$BADGING" | grep -q "versionCode='39'"
-          echo "$BADGING" | grep -q "versionName='5.0'"
-          sha256sum Radio-TV-v5.0.apk
-          ls -lh Radio-TV-v5.0.apk
+          echo "$BADGING" | grep -q "versionCode='40'"
+          echo "$BADGING" | grep -q "versionName='5.0.1'"
+          sha256sum Radio-TV-v5.0.1.apk
+          ls -lh Radio-TV-v5.0.1.apk
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v5.0-APK
-          path: Radio-TV-v5.0.apk
+          name: Radio-TV-v5.0.1-APK
+          path: Radio-TV-v5.0.1.apk
           if-no-files-found: error
 
       - name: Package final source ZIP
-        run: git archive --format=zip HEAD -o Radio-TV-v5.0-source.zip
+        run: git archive --format=zip HEAD -o Radio-TV-v5.0.1-source.zip
 
       - name: Upload source ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-TV-v5.0-Source
-          path: Radio-TV-v5.0-source.zip
+          name: Radio-TV-v5.0.1-Source
+          path: Radio-TV-v5.0.1-source.zip
           if-no-files-found: error
 
