@@ -215,6 +215,8 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
@@ -717,36 +719,74 @@ private fun App(
     }
 
     var pendingLocalNetworkAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val initialLocalNetworkPermissionGranted = remember(appContext) {
+        Build.VERSION.SDK_INT < 37 ||
+            ContextCompat.checkSelfPermission(
+                appContext,
+                "android.permission.ACCESS_LOCAL_NETWORK"
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    var localNetworkPermissionGranted by remember {
+        mutableStateOf(initialLocalNetworkPermissionGranted)
+    }
+    var localNetworkPermissionRequested by rememberSaveable {
+        mutableStateOf(Build.VERSION.SDK_INT >= 37 && initialLocalNetworkPermissionGranted)
+    }
+    var localNetworkDenied by rememberSaveable { mutableStateOf(false) }
+    var localNetworkExplanationVisible by rememberSaveable { mutableStateOf(false) }
+
+    DisposableEffect(activity, localNetworkPermissionRequested) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && localNetworkPermissionRequested) {
+                val granted = Build.VERSION.SDK_INT < 37 ||
+                    ContextCompat.checkSelfPermission(
+                        appContext,
+                        "android.permission.ACCESS_LOCAL_NETWORK"
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                localNetworkPermissionGranted = granted
+                localNetworkDenied = !granted
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
     val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         val pendingAction = pendingLocalNetworkAction
         pendingLocalNetworkAction = null
+        localNetworkPermissionGranted = granted
+        localNetworkPermissionRequested = true
         if (granted) {
+            localNetworkDenied = false
             LogExporter.log("Android 17 local-network permission granted")
             pendingAction?.invoke()
         } else {
+            localNetworkDenied = true
             LogExporter.log("Android 17 local-network permission denied; LAN action skipped")
-            notify(
-                "Для поиска и подключения к ТВ по Wi‑Fi разрешите доступ к локальной сети в настройках разрешений приложения.",
-                6000L
-            )
+            notify("Нет доступа к сети. Разрешите в настройках", 6000L)
         }
     }
 
-    fun withLocalNetworkPermission(action: () -> Unit) {
-        if (Build.VERSION.SDK_INT < 37 ||
+    fun hasLocalNetworkPermissionNow(): Boolean =
+        Build.VERSION.SDK_INT < 37 ||
             ContextCompat.checkSelfPermission(
                 appContext,
                 "android.permission.ACCESS_LOCAL_NETWORK"
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
+
+    fun withLocalNetworkPermission(action: () -> Unit) {
+        if (hasLocalNetworkPermissionNow()) {
+            localNetworkPermissionGranted = true
+            localNetworkDenied = false
             action()
             return
         }
+        localNetworkPermissionGranted = false
         pendingLocalNetworkAction = action
-        LogExporter.log("Requesting ACCESS_LOCAL_NETWORK before a user-initiated LAN operation")
-        localNetworkPermissionLauncher.launch("android.permission.ACCESS_LOCAL_NETWORK")
+        localNetworkExplanationVisible = true
+        LogExporter.log("Showing local-network rationale before the Android 17 permission request")
     }
 
     fun withRemoteNetworkPermission(action: () -> Unit) {
@@ -1638,6 +1678,59 @@ private fun App(
                                 onBack = { remoteSettingsVisible = false },
                                 modifier = Modifier.fillMaxSize()
                             )
+                        } else if (localNetworkDenied && Build.VERSION.SDK_INT >= 37) {
+                            Box(
+                                modifier = Modifier.fillMaxSize().background(Bg).padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.WifiOff,
+                                        contentDescription = null,
+                                        tint = Red,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Text(
+                                        "Нет доступа к сети. Разрешите в настройках",
+                                        color = Color.White,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        "Без доступа к локальной сети поиск телевизора и управление по Wi-Fi недоступны.",
+                                        color = Gray,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Button(
+                                        onClick = {
+                                            runCatching {
+                                                appContext.startActivity(
+                                                    Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                        data = android.net.Uri.fromParts("package", appContext.packageName, null)
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                )
+                                            }.onFailure {
+                                                notify("Не удалось открыть настройки приложения", 3000L)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Red),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("ОТКРЫТЬ НАСТРОЙКИ", color = Color.White)
+                                    }
+                                    TextButton(
+                                        onClick = { withLocalNetworkPermission { } }
+                                    ) {
+                                        Text("ПОВТОРИТЬ", color = Red, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         } else {
                             TvRemotePadScreen(
                                 modifier = Modifier.fillMaxSize(),
@@ -1892,6 +1985,50 @@ private fun App(
     }
 
     if(quickLockSetup){PinSetupDialog(onDismiss={quickLockSetup=false},onSave={pin,hint->if(pinStore.enable(pin,hint)){quickLockSetup=false;pinUnlocked=false;activity.moveTaskToBack(true)}})}
+
+    if (localNetworkExplanationVisible) {
+        AlertDialog(
+            onDismissRequest = {
+                localNetworkExplanationVisible = false
+                pendingLocalNetworkAction = null
+            },
+            containerColor = Panel,
+            titleContentColor = Color.White,
+            textContentColor = Gray,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.WifiOff, contentDescription = null, tint = Red)
+                    Spacer(Modifier.width(10.dp))
+                    Text("ДОСТУП К ЛОКАЛЬНОЙ СЕТИ", color = Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text("Для поиска и управления вашим Телевизором приложению нужен доступ к локальной сети (Wi-Fi). Пожалуйста, разрешите доступ.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        localNetworkExplanationVisible = false
+                        localNetworkPermissionRequested = true
+                        localNetworkPermissionLauncher.launch("android.permission.ACCESS_LOCAL_NETWORK")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Red)
+                ) {
+                    Text("Разрешить", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        localNetworkExplanationVisible = false
+                        pendingLocalNetworkAction = null
+                    }
+                ) {
+                    Text("Отмена", color = Gray)
+                }
+            }
+        )
+    }
 
     if (touchpadDialog) {
         AlertDialog(
